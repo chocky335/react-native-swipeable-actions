@@ -1,0 +1,11 @@
+export const SWIPE_PROGRESS = {
+  OPEN_THRESHOLD: 0.99,
+  CLOSED_THRESHOLD: 0.01
+} as const
+
+export const SWIPE_DEFAULTS = {
+  FRICTION: 1,
+  THRESHOLD: 0.4,
+  DRAG_OFFSET_FROM_EDGE: 0,
+  ACTIONS_POSITION: 'right'
+} as const

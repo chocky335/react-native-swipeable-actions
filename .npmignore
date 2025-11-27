@@ -1,0 +1,23 @@
+# Build artifacts
+**/build/
+**/.gradle/
+**/DerivedData/
+**/.build/
+
+# Tests
+**/__tests__/
+**/__mocks__/
+**/Tests/
+**/test/
+coverage/
+*.test.ts
+*.test.tsx
+
+# Example app
+example/
+
+# Development files
+.eslintrc.js
+jest.config.js
+tsconfig.json
+.prettierrc

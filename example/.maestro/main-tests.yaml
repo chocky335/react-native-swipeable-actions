@@ -1,0 +1,125 @@
+appId: com.swipeabledemo.app
+---
+# ============================================
+# SWIPEABLE E2E TEST SUITE
+# ============================================
+
+# --- SETUP ---
+- launchApp:
+    clearState: true
+- assertVisible: 'Swipeable Demo'
+# - extendedWaitUntil:
+#     visible: "Swipeable Demo"
+#     timeout: 15000
+
+# --- TEST 1: Basic Swipe Open/Close ---
+- swipe:
+    start: 90%, 35%
+    end: 20%, 35%
+- assertVisible: 'Leave'
+- swipe:
+    start: 20%, 35%
+    end: 90%, 35%
+- assertNotVisible: 'Leave'
+
+# --- TEST 2: Swipe Action Trigger (Delete Item) ---
+- swipe:
+    start: 90%, 35%
+    end: 20%, 35%
+- assertVisible: 'Leave'
+
+- tapOn: 'Leave'
+- assertVisible: 'Left'
+
+- tapOn: 'OK'
+- assertNotVisible: 'Item 2'
+
+# --- TEST 3: Leading Mode (Swipe from Left) ---
+- tapOn:
+    id: 'config-header'
+- tapOn:
+    id: 'toggle-leading'
+- tapOn:
+    id: 'config-header'
+- swipe:
+    start: 10%, 35%
+    end: 80%, 35%
+- assertVisible: 'Leave'
+
+# Reset leading mode
+- tapOn:
+    id: 'config-header'
+- tapOn:
+    id: 'toggle-leading'
+- tapOn:
+    id: 'config-header'
+
+# --- TEST 4: Ref Close API (Close All Button) ---
+- swipe:
+    start: 90%, 35%
+    end: 20%, 35%
+- assertVisible: 'Leave'
+
+- tapOn:
+    id: 'config-header'
+- tapOn:
+    text: 'Close All'
+- extendedWaitUntil:
+    notVisible: 'Leave'
+
+- tapOn:
+    id: 'config-header'
+
+# --- TEST 5: Recycling State Persistence ---
+- swipe:
+    start: 90%, 22%
+    end: 20%, 22%
+- assertVisible: 'Leave'
+
+# Scroll down to recycle
+- swipe:
+    start: 50%, 70%
+    end: 50%, 30%
+- assertNotVisible: 'Item 2'
+# Scroll back up
+- swipe:
+    start: 50%, 30%
+    end: 50%, 70%
+- assertVisible: 'Item 2'
+
+# Verify state persisted
+- assertVisible: 'Leave'
+
+# --- TEST 6: AutoClose (Chat Demo) ---
+- tapOn:
+    id: 'config-header'
+- tapOn:
+    id: 'select-demo-chat'
+- assertVisible: 'Chat Demo'
+
+- swipe:
+    from:
+      id: 'swipeable-message-1'
+    direction: RIGHT
+
+# --- TEST 7: Keyboard Stays Open During Swipe ---
+- tapOn:
+    id: 'chat-input'
+- assertVisible:
+    id: 'chat-input'
+- swipe:
+    from:
+      id: 'swipeable-message-1'
+    direction: RIGHT
+- tapOn:
+    text: 'OK'
+    optional: true
+- assertVisible:
+    id: 'chat-input'
+
+# --- FINAL: Switch Back to List Demo ---
+- tapOn:
+    id: 'config-header'
+- tapOn:
+    id: 'select-demo-list'
+- assertVisible: 'Swipeable Demo'
