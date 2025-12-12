@@ -21,8 +21,8 @@ Benchmark comparison on Android 16, Pixel 8 Pro, GrapheneOS — List Demo with 1
 <th>react-native-swipeable-actions</th>
 </tr>
 <tr>
-<td><video src="example/assets/rngh.mp4" controls width="300"></video></td>
-<td><video src="example/assets/swipeable.mp4" controls width="300"></video></td>
+<td><video src="https://github.com/chocky335/react-native-swipeable-actions/raw/main/example/assets/rngh.mp4" controls width="300"></video></td>
+<td><video src="https://github.com/chocky335/react-native-swipeable-actions/raw/main/example/assets/swipeable.mp4" controls width="300"></video></td>
 </tr>
 <tr>
 <td align="center">Reanimated</td>
@@ -33,6 +33,8 @@ Benchmark comparison on Android 16, Pixel 8 Pro, GrapheneOS — List Demo with 1
 <td align="center"><b>Avg 116.8</b> FPS (Min: 109.9 / Max: 120.3)</td>
 </tr>
 </table>
+
+> Videos not loading? View on [GitHub](https://github.com/chocky335/react-native-swipeable-actions#performance)
 
 ## Installation
 
