@@ -21,9 +21,16 @@ Benchmark comparison on Android 16, Pixel 8 Pro, GrapheneOS — List Demo with 1
 <th>react-native-swipeable-actions</th>
 </tr>
 <tr>
-<td><video src="https://github.com/chocky335/react-native-swipeable-actions/raw/main/example/assets/rngh.mp4" controls width="300"></video></td>
-<td><video src="https://github.com/chocky335/react-native-swipeable-actions/raw/main/example/assets/swipeable.mp4" controls width="300"></video></td>
-</tr>
+<td>
+  
+https://github.com/user-attachments/assets/6d7cf1e6-c719-4044-8b47-205e94a38d10
+
+</td>
+<td>
+
+https://github.com/user-attachments/assets/f59ef788-caf4-4985-93bc-8d098122fe1a
+
+</td></tr>
 <tr>
 <td align="center">Reanimated</td>
 <td align="center">Pure native</td>
