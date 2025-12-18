@@ -1,6 +1,6 @@
 {
   "name": "react-native-swipeable-actions",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "High-performance native swipeable row component for React Native using Expo Modules",
   "main": "src/index.ts",
   "types": "build/index.d.ts",
