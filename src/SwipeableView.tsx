@@ -18,3 +18,5 @@ export const SwipeableView = forwardRef<NativeSwipeableRef, SwipeableViewProps>(
     return createElement(NativeView, { ...props, ref } as ComponentProps<typeof NativeView>)
   }
 )
+
+SwipeableView.displayName = 'SwipeableView'

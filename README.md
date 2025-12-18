@@ -254,6 +254,15 @@ import {
 } from 'react-native-swipeable-actions'
 ```
 
+## Testing
+
+Jest mock is included for testing components that use Swipeable:
+
+```js
+// jest.config.js
+import 'react-native-swipeable-actions/jestSetup.js'
+```
+
 ## License
 
 MIT

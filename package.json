@@ -14,7 +14,8 @@
     "!ios/.build",
     "android/src/main",
     "android/build.gradle",
-    "expo-module.config.json"
+    "expo-module.config.json",
+    "jestSetup.js"
   ],
   "scripts": {
     "build": "tsc",
@@ -79,7 +80,6 @@
     "react": "19.1.1",
     "react-native": "0.82.1",
     "react-test-renderer": "19.1.1",
-    "ts-jest": "^29.1.0",
     "typescript": "^5.9.3"
   }
 }

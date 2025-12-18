@@ -1,23 +1,14 @@
 module.exports = {
-  testEnvironment: 'node',
+  preset: 'react-native',
   transform: {
-    '^.+\\.tsx?$': [
-      'ts-jest',
-      {
-        isolatedModules: true,
-        tsconfig: {
-          jsx: 'react',
-          esModuleInterop: true,
-          strict: true,
-          module: 'commonjs',
-          target: 'ES2020'
-        }
-      }
-    ]
+    '^.+\\.jsx?$': 'babel-jest'
   },
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(react-native|@react-native|expo-modules-core|@expo|expo)/)'
+  ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
-  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jestSetup.js'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
@@ -44,9 +35,4 @@ module.exports = {
       statements: 100
     }
   },
-  moduleNameMapper: {
-    '^react$': '<rootDir>/src/__mocks__/react.ts',
-    '^expo-modules-core$': '<rootDir>/src/__mocks__/expo-modules-core.ts',
-    '^react-native$': '<rootDir>/src/__mocks__/react-native.ts'
-  }
 }
