@@ -2,8 +2,11 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'maven-publish'
 
+def packageJson = new groovy.json.JsonSlurper().parseText(file('../package.json').text)
+def packageVersion = packageJson.version
+
 group = 'expo.modules.swipeable'
-version = '0.1.0'
+version = packageVersion
 
 buildscript {
     def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
@@ -44,7 +47,7 @@ android {
         minSdkVersion safeExtGet("minSdkVersion", 23)
         targetSdkVersion safeExtGet("targetSdkVersion", 34)
         versionCode 1
-        versionName "0.1.0"
+        versionName packageVersion
     }
 
     publishing {
