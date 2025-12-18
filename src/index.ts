@@ -13,10 +13,6 @@ export type {
 
 export { SWIPE_PROGRESS, SWIPE_DEFAULTS } from './constants'
 
-export { isSwipeFullyOpen, isSwipeFullyClosed, calculateSwipeStateChange } from './swipeStateUtils'
-
-export type { SwipeState, SwipeStateChange } from './swipeStateUtils'
-
 // Error handling utilities
 export { setGlobalErrorHandler } from './nativeModuleUtils'
 export type { SwipeableErrorHandler, NativeModuleError } from './nativeModuleUtils'

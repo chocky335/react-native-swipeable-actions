@@ -15,7 +15,6 @@ module.exports = {
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/__mocks__/'],
   collectCoverageFrom: [
     'src/constants.ts',
-    'src/swipeStateUtils.ts',
     'src/Swipeable.types.ts',
     'src/SwipeableActions.tsx',
     'src/SwipeableView.ts',
@@ -27,12 +26,6 @@ module.exports = {
       functions: 100,
       lines: 100,
       statements: 100
-    },
-    'src/swipeStateUtils.ts': {
-      branches: 100,
-      functions: 100,
-      lines: 100,
-      statements: 100
     }
-  },
+  }
 }
