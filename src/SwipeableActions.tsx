@@ -29,12 +29,12 @@ export function SwipeableActions({ children, actionsPosition }: SwipeableActions
 
 const styles = StyleSheet.create({
   actionsTrailing: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     justifyContent: 'flex-end'
   },
   actionsLeading: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     justifyContent: 'flex-start'
   }
