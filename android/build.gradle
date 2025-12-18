@@ -81,6 +81,7 @@ repositories {
 }
 
 dependencies {
+    implementation "com.facebook.react:react-android"
     implementation project(':expo-modules-core')
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${getKotlinVersion()}"
     implementation "androidx.dynamicanimation:dynamicanimation:1.0.0"

@@ -12,6 +12,7 @@ import androidx.collection.LruCache
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import com.facebook.react.uimanager.events.NativeGestureUtil
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -301,26 +302,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      * JSTouchDispatcher and JSPointerDispatcher to cancel tracking.
      */
     private fun cancelReactTouches(event: MotionEvent) {
-        // Find ReactRootView by walking up hierarchy and checking for the method
-        var currentView: ViewGroup? = parent as? ViewGroup
-        while (currentView != null) {
-            try {
-                // Try to find onChildStartedNativeGesture method
-                val method = currentView.javaClass.getMethod(
-                    "onChildStartedNativeGesture",
-                    View::class.java,
-                    MotionEvent::class.java
-                )
-                method.invoke(currentView, this, event)
-                return
-            } catch (e: NoSuchMethodException) {
-                // Method not found, continue up the hierarchy
-            } catch (e: Exception) {
-                // Method found but invocation failed
-                break
-            }
-            currentView = currentView.parent as? ViewGroup
-        }
+        NativeGestureUtil.notifyNativeGestureStarted(this, event)
     }
 
     /**
