@@ -57,6 +57,10 @@ public class SwipeableView: ExpoView {
         registryQueue.async(flags: .barrier) { _viewRegistry.removeValue(forKey: key) }
     }
 
+    private static func clearOpenState(for key: String) {
+        registryQueue.async(flags: .barrier) { _openStateCache.removeValue(forKey: key) }
+    }
+
     private static func getAllViews() -> [SwipeableView] {
         registryQueue.sync { _viewRegistry.values.compactMap { $0.value } }
     }
@@ -239,7 +243,24 @@ public class SwipeableView: ExpoView {
 
     public override func willMove(toSuperview newSuperview: UIView?) {
         if newSuperview == nil {
+            // Stop all timers and animations
             stopProgressUpdates()
+            cancelAutoClose()
+            currentAnimator?.stopAnimation(true)
+            currentAnimator = nil
+            isAnimating = false
+
+            // Reset layer properties to prevent corruption
+            contentView?.transform = .identity
+            contentView?.layer.zPosition = 0
+            actionsView?.transform = .identity
+            actionsView?.layer.zPosition = 0
+
+            // Unregister from static registry and clear cached state
+            if let key = recyclingKey {
+                Self.unregisterView(for: key)
+                Self.clearOpenState(for: key)
+            }
         }
         super.willMove(toSuperview: newSuperview)
     }
