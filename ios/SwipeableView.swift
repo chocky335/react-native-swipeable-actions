@@ -275,6 +275,14 @@ public class SwipeableView: ExpoView {
         super.didMoveToWindow()
         guard window != nil else { return }
 
+        // Re-register in the view registry after reattach (e.g. returning from navigation).
+        // willMove(toSuperview: nil) unregisters the view, but the recyclingKey prop setter
+        // short-circuits when the value hasn't changed, so the view is never re-registered
+        // unless we do it here.
+        if let key = recyclingKey {
+            Self.registerView(self, for: key)
+        }
+
         // Ensure gesture is attached to this view (handles view hierarchy changes)
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)

@@ -914,6 +914,15 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         ))
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Re-register in the view registry after reattach (e.g. returning from navigation).
+        // onDetachedFromWindow unregisters the view, but the recyclingKey prop setter
+        // short-circuits when the value hasn't changed, so the view is never re-registered
+        // unless we do it here.
+        recyclingKey?.let { registerView(this, it) }
+    }
+
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         stopProgressUpdates()
