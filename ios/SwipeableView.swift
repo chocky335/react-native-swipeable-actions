@@ -141,6 +141,10 @@ public class SwipeableView: ExpoView {
         didSet { threshold = max(0.0, min(1.0, threshold)) }
     }
 
+    var gestureEnabled: Bool = true {
+        didSet { panGesture.isEnabled = gestureEnabled }
+    }
+
     var dragOffsetFromEdge: CGFloat = 0 {
         didSet { dragOffsetFromEdge = max(0, dragOffsetFromEdge) }
     }
@@ -819,6 +823,8 @@ public class SwipeableView: ExpoView {
 extension SwipeableView: UIGestureRecognizerDelegate {
 
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureEnabled else { return false }
+        
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: self)
         let isHorizontal = abs(velocity.x) > abs(velocity.y)

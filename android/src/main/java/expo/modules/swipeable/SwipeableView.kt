@@ -120,6 +120,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     var threshold: Float = 0.4f
         set(value) { field = value.coerceIn(0f, 1f) }
 
+    var gestureEnabled: Boolean = true
+        set(value) { field = value }
+
     var dragOffsetFromEdge: Float = 0f
         set(value) { field = maxOf(0f, value) }
 
@@ -314,7 +317,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      * - UP: If blocking → consume (children never see UP, no onPress)
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (actionsWidth <= 0f) {
+        if (!gestureEnabled || actionsWidth <= 0f) {
             return super.dispatchTouchEvent(event)
         }
 
@@ -398,7 +401,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        if (actionsWidth <= 0f) return false
+        if (!gestureEnabled || actionsWidth <= 0f) return false
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

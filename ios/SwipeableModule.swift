@@ -35,6 +35,10 @@ public class SwipeableModule: Module {
                 view.threshold = threshold
             }
 
+            Prop("gestureEnabled") { (view: SwipeableView, enabled: Bool) in
+                view.gestureEnabled = enabled
+            }
+
             Prop("dragOffsetFromEdge") { (view: SwipeableView, offset: CGFloat) in
                 view.dragOffsetFromEdge = offset
             }
