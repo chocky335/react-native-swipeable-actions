@@ -24,7 +24,7 @@ export const config: Options.Testrunner = {
       'appium:automationName': 'UiAutomator2',
       'appium:app': path.resolve(
         __dirname,
-        '../example/android/app/build/outputs/apk/debug/app-debug.apk'
+        '../example/android/app/build/outputs/apk/release/app-release.apk'
       ),
       'appium:appPackage': 'com.swipeabledemo.app',
       'appium:appActivity': '.MainActivity',
