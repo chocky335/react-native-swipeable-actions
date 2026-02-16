@@ -32,6 +32,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
     actionsPosition = SWIPE_DEFAULTS.ACTIONS_POSITION,
     friction = SWIPE_DEFAULTS.FRICTION,
     threshold = SWIPE_DEFAULTS.THRESHOLD,
+    gestureEnabled = SWIPE_DEFAULTS.GESTURE_ENABLED,
     dragOffsetFromEdge = SWIPE_DEFAULTS.DRAG_OFFSET_FROM_EDGE,
     style,
     testID,
@@ -131,6 +132,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
       actionsPosition={actionsPosition}
       friction={friction}
       threshold={threshold}
+      gestureEnabled={gestureEnabled}
       dragOffsetFromEdge={dragOffsetFromEdge}
       autoClose={autoClose}
       autoCloseTimeout={autoCloseTimeout}
