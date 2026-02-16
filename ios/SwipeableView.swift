@@ -823,8 +823,6 @@ public class SwipeableView: ExpoView {
 extension SwipeableView: UIGestureRecognizerDelegate {
 
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard gestureEnabled else { return false }
-        
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
         let velocity = pan.velocity(in: self)
         let isHorizontal = abs(velocity.x) > abs(velocity.y)
