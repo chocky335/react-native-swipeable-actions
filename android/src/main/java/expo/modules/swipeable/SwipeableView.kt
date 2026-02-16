@@ -121,7 +121,21 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         set(value) { field = value.coerceIn(0f, 1f) }
 
     var gestureEnabled: Boolean = true
-        set(value) { field = value }
+        set(value) {
+            if (field == value) return
+            field = value
+
+            if (!value && (isDragging || isGestureActivated)) {
+                isDragging = false
+                isGestureActivated = false
+                gestureStartTranslation = 0f
+                cancelGestureTimeout()
+                stopProgressUpdates()
+                velocityTracker?.recycle()
+                velocityTracker = null
+                close(animated = false)
+            }
+        }
 
     var dragOffsetFromEdge: Float = 0f
         set(value) { field = maxOf(0f, value) }
