@@ -29,8 +29,19 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install example dependencies
+        run: cd example && npm i --ignore-scripts
+
+      - name: Generate example Android project
+        run: cd example && npx expo prebuild --platform android --no-install
 
       - name: Run tests
         run: SKIP_E2E=1 ./scripts/test-all.sh
