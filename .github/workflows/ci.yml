@@ -81,7 +81,7 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build release APK
-        run: cd example/android && ./gradlew assembleRelease
+        run: cd example/android && NODE_ENV=production ./gradlew assembleRelease
 
       - name: Enable KVM
         run: |
@@ -123,12 +123,15 @@ jobs:
           disable-animations: true
           script: |
             adb logcat -d > /tmp/logcat-before-tests.txt
-            cd e2e && npm run test:android || TEST_EXIT=$?
+            set +e
+            cd e2e && npm run test:android
+            TEST_EXIT=$?
+            set -e
             adb logcat -d > /tmp/logcat-after-tests.txt
-            exit ${TEST_EXIT:-0}
+            exit $TEST_EXIT
 
-      - name: Upload logcat on failure
-        if: failure()
+      - name: Upload logcat
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: logcat
