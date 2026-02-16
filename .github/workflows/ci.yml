@@ -121,4 +121,15 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: cd e2e && npm run test:android
+          script: |
+            adb logcat -d > /tmp/logcat-before-tests.txt
+            cd e2e && npm run test:android || TEST_EXIT=$?
+            adb logcat -d > /tmp/logcat-after-tests.txt
+            exit ${TEST_EXIT:-0}
+
+      - name: Upload logcat on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logcat
+          path: /tmp/logcat-*.txt
