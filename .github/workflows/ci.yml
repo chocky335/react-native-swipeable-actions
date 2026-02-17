@@ -122,12 +122,12 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           script: |
-            adb logcat -d > /tmp/logcat-before-tests.txt
-            set +e
+            adb logcat -c
+            adb logcat > /tmp/logcat.txt &
+            LOGCAT_PID=$!
             cd e2e && npm run test:android
             TEST_EXIT=$?
-            set -e
-            adb logcat -d > /tmp/logcat-after-tests.txt
+            kill $LOGCAT_PID 2>/dev/null || true
             exit $TEST_EXIT
 
       - name: Upload logcat
@@ -135,4 +135,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logcat
-          path: /tmp/logcat-*.txt
+          path: /tmp/logcat.txt
