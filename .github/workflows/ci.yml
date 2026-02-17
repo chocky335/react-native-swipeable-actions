@@ -96,14 +96,14 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-api34-x86_64-${{ runner.os }}
+          key: avd-api34-default-x86_64-${{ runner.os }}
 
       - name: Generate AVD snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_6
           force-avd-creation: false
@@ -115,7 +115,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_6
           force-avd-creation: false
