@@ -51,5 +51,11 @@ export const config: Options.Testrunner = {
 
   before: async function () {
     setPlatform('Android')
+    // Debug: wait for app to fully render then dump page source
+    await driver.pause(5000)
+    const source = await driver.getPageSource()
+    console.log('=== PAGE SOURCE (first 3000 chars) ===')
+    console.log(source.substring(0, 3000))
+    console.log('=== END PAGE SOURCE ===')
   }
 }
