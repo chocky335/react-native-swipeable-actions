@@ -154,4 +154,34 @@ describe('Swipeable E2E Tests', () => {
       expect(isStable).toBe(true)
     })
   })
+  ;(shouldRun(7) ? describe : describe.skip)('Test 7: CloseAll after navigation reattach (PR #1 regression)', () => {
+    it('should close all rows via Close All after navigating away and back', async () => {
+      // Open rows on List Demo
+      await testSwipeOpen(numberOfRows, 'left')
+
+      // Navigate to Chat Demo (triggers onDetachedFromWindow / willMove(toSuperview: nil))
+      await configPanel.open()
+      await configPanel.selectChatDemo()
+      await configPanel.close()
+      await chatPage.waitForDisplayed()
+
+      // Navigate back to List Demo (triggers onAttachedToWindow / didMoveToWindow)
+      await configPanel.open()
+      await configPanel.selectListDemo()
+      await configPanel.close()
+      await listDemoPage.waitForDisplayed()
+      await driver.pause(500)
+
+      // Close All — this would silently fail without the PR #1 fix
+      // because views unregister on detach but wouldn't re-register on reattach
+      await configPanel.open()
+      await configPanel.tapCloseAll()
+      await configPanel.close()
+
+      // Verify all rows closed
+      await mapRows(async (index) => {
+        await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+      })
+    })
+  })
 })
