@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native'
+import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { AppHeader, HEADER_HEIGHT } from './components/AppHeader'
 import {
   ConfigPanel,
@@ -10,13 +12,24 @@ import {
   SharedConfig,
   SharedConfigCallbacks
 } from './components/ConfigPanel'
-import { ListDemo, ListDemoRef, Implementation } from './features/list-demo'
-import { ChatDemo, ChatDemoRef } from './features/chat-demo'
+import { Implementation } from './features/list-demo'
 import { BenchmarkHUD } from './PerformanceHUD'
+import { ConfigProvider, ConfigContextValue } from './contexts/ConfigContext'
+import { ListScreen, ListScreenRef } from './screens/ListScreen'
+import { ChatScreen, ChatScreenRef } from './screens/ChatScreen'
 import { colors } from './styles'
+
+type RootStackParamList = {
+  List: undefined
+  Chat: undefined
+}
+
+const Stack = createNativeStackNavigator<RootStackParamList>()
 
 function AppContent() {
   const insets = useSafeAreaInsets()
+
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null)
 
   // Demo selection state
   const [activeDemo, setActiveDemo] = useState<DemoType>('list')
@@ -28,12 +41,14 @@ function AppContent() {
   const [friction, setFriction] = useState(1.0)
   const [threshold, setThreshold] = useState(0.4)
   const [dragOffset, setDragOffset] = useState(0)
+  const [gestureEnabled, setGestureEnabled] = useState(true)
   const [isBenchmarkRunning, setIsBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<string | null>(null)
   const showBenchmarkHUD = isBenchmarkRunning || Boolean(benchmarkResult)
 
-  const listDemoRef = useRef<ListDemoRef>(null)
-  const chatDemoRef = useRef<ChatDemoRef>(null)
+  // Screen refs — persist across navigation since they live in AppContent
+  const listScreenRef = useRef<ListScreenRef>(null)
+  const chatScreenRef = useRef<ChatScreenRef>(null)
 
   const handleBenchmarkStateChange = useCallback((running: boolean, result: string | null) => {
     setIsBenchmarkRunning(running)
@@ -42,6 +57,19 @@ function AppContent() {
     }
   }, [])
 
+  const configValue: ConfigContextValue = useMemo(
+    () => ({
+      implementation,
+      isReversed,
+      friction,
+      threshold,
+      dragOffset,
+      gestureEnabled,
+      onBenchmarkStateChange: handleBenchmarkStateChange
+    }),
+    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, handleBenchmarkStateChange]
+  )
+
   const sharedConfig: SharedConfig = useMemo(
     () => ({
       implementation,
@@ -49,44 +77,36 @@ function AppContent() {
       friction,
       threshold,
       dragOffset,
+      gestureEnabled,
       isBenchmarkRunning,
       benchmarkResult
     }),
-    [
-      implementation,
-      isReversed,
-      friction,
-      threshold,
-      dragOffset,
-      isBenchmarkRunning,
-      benchmarkResult
-    ]
+    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, isBenchmarkRunning, benchmarkResult]
   )
 
   const handleCloseAll = useCallback(() => {
     if (activeDemo === 'list') {
-      listDemoRef.current?.closeAllRows()
+      listScreenRef.current?.closeAllRows()
     } else {
-      chatDemoRef.current?.closeAllRows()
+      chatScreenRef.current?.closeAllRows()
     }
   }, [activeDemo])
 
   const handleResetAll = useCallback(() => {
     if (activeDemo === 'list') {
-      listDemoRef.current?.resetAllRows()
+      listScreenRef.current?.resetAllRows()
     } else {
-      chatDemoRef.current?.resetAllRows()
+      chatScreenRef.current?.resetAllRows()
     }
   }, [activeDemo])
 
   const handleBenchmark = useCallback(() => {
-    // Collapse config first, then start benchmark
     setIsConfigCollapsed(true)
     setTimeout(() => {
       if (activeDemo === 'list') {
-        listDemoRef.current?.startBenchmark()
+        listScreenRef.current?.startBenchmark()
       } else {
-        chatDemoRef.current?.startBenchmark()
+        chatScreenRef.current?.startBenchmark()
       }
     }, 100)
   }, [activeDemo])
@@ -98,11 +118,20 @@ function AppContent() {
       onFrictionChange: setFriction,
       onThresholdChange: setThreshold,
       onDragOffsetChange: setDragOffset,
+      onGestureEnabledChange: setGestureEnabled,
       onCloseAll: handleCloseAll,
       onResetAll: handleResetAll,
       onBenchmark: handleBenchmark
     }),
     [handleCloseAll, handleResetAll, handleBenchmark]
+  )
+
+  const handleDemoChange = useCallback(
+    (demo: DemoType) => {
+      setActiveDemo(demo)
+      navigationRef.current?.navigate(demo === 'list' ? 'List' : 'Chat')
+    },
+    []
   )
 
   const handleConfigToggle = useCallback(() => {
@@ -134,37 +163,28 @@ function AppContent() {
         onConfigToggle={handleConfigToggle}
       />
 
-      {/* Main content area */}
+      {/* Main content area — NavigationContainer with native stack */}
       <View style={styles.flex}>
-        {activeDemo === 'list' ? (
-          <ListDemo
-            ref={listDemoRef}
-            implementation={implementation}
-            isReversed={isReversed}
-            friction={friction}
-            threshold={threshold}
-            dragOffset={dragOffset}
-            onBenchmarkStateChange={handleBenchmarkStateChange}
-          />
-        ) : (
-          <ChatDemo
-            ref={chatDemoRef}
-            implementation={implementation}
-            isReversed={isReversed}
-            friction={friction}
-            threshold={threshold}
-            dragOffset={dragOffset}
-            onBenchmarkStateChange={handleBenchmarkStateChange}
-          />
-        )}
+        <ConfigProvider value={configValue}>
+          <NavigationContainer ref={navigationRef}>
+            <Stack.Navigator initialRouteName='List' screenOptions={{ headerShown: false }}>
+              <Stack.Screen name='List'>
+                {() => <ListScreen ref={listScreenRef} />}
+              </Stack.Screen>
+              <Stack.Screen name='Chat'>
+                {() => <ChatScreen ref={chatScreenRef} />}
+              </Stack.Screen>
+            </Stack.Navigator>
+          </NavigationContainer>
+        </ConfigProvider>
       </View>
 
-      {/* Config panel overlay - only rendered when open */}
+      {/* Config panel overlay */}
       {!isConfigCollapsed && (
         <ConfigPanel
           isCollapsed={isConfigCollapsed}
           activeDemo={activeDemo}
-          onDemoChange={setActiveDemo}
+          onDemoChange={handleDemoChange}
           config={sharedConfig}
           callbacks={sharedCallbacks}
           topOffset={insets.top + HEADER_HEIGHT}

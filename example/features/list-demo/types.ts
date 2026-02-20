@@ -25,6 +25,7 @@ export interface SwipeableRowItemProps {
   friction?: number
   threshold?: number
   dragOffsetFromEdge?: number
+  gestureEnabled?: boolean
 }
 
 export type ReanimatedSwipeableRef = {

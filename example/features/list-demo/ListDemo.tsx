@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { StyleSheet, View, Alert } from 'react-native'
 import { FlashList, FlashListRef, useBenchmark } from '@shopify/flash-list'
-import { SwipeableMethods } from 'react-native-swipeable-actions'
+import { SwipeableMethods, Swipeable } from 'react-native-swipeable-actions'
 import { SwipeableRowItem } from './SwipeableRowItem'
 import { RNGHRowItem } from './RNGHRowItem'
 import { ItemData, Implementation, RowRef, ReanimatedSwipeableRef } from './types'
@@ -20,11 +20,12 @@ interface ListDemoProps {
   friction: number
   threshold: number
   dragOffset: number
+  gestureEnabled: boolean
   onBenchmarkStateChange?: (running: boolean, result: string | null) => void
 }
 
 export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo(
-  { implementation, isReversed, friction, threshold, dragOffset, onBenchmarkStateChange },
+  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, onBenchmarkStateChange },
   ref
 ) {
   const [data, setData] = useState(() => generateData(ITEM_COUNT))
@@ -63,9 +64,7 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
   }, [isBenchmarkRunning, onBenchmarkStateChange])
 
   const closeAllRows = useCallback(() => {
-    rowRefs.current.forEach((rowRef) => {
-      rowRef.current?.close()
-    })
+    Swipeable.closeAll()
   }, [])
 
   const resetAllRows = useCallback(() => {
@@ -119,6 +118,7 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
             friction={friction}
             threshold={threshold}
             dragOffsetFromEdge={dragOffset}
+            gestureEnabled={gestureEnabled}
           />
         )
       }
@@ -143,7 +143,8 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
       implementation,
       friction,
       threshold,
-      dragOffset
+      dragOffset,
+      gestureEnabled
     ]
   )
 

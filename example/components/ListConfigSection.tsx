@@ -35,8 +35,13 @@ const DRAG_OFFSET_OPTIONS: SelectionOption<number>[] = [
   { label: '50', value: 50, testID: 'set-offset-high' }
 ]
 
+const GESTURE_ENABLED_OPTIONS: SelectionOption<boolean>[] = [
+  { label: 'ON', value: true, testID: 'toggle-gesture-on' },
+  { label: 'OFF', value: false, testID: 'toggle-gesture-off' }
+]
+
 export function ListConfigSection({ config, callbacks }: ListConfigSectionProps) {
-  const { implementation, isReversed, friction, threshold, dragOffset, isBenchmarkRunning } = config
+  const { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, isBenchmarkRunning } = config
 
   const {
     onImplementationChange,
@@ -44,6 +49,7 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     onFrictionChange,
     onThresholdChange,
     onDragOffsetChange,
+    onGestureEnabledChange,
     onCloseAll,
     onResetAll,
     onBenchmark
@@ -63,6 +69,13 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
         options={REVERSED_OPTIONS}
         value={isReversed}
         onChange={onReversedChange}
+      />
+
+      <SelectionRow
+        label='Gesture'
+        options={GESTURE_ENABLED_OPTIONS}
+        value={gestureEnabled}
+        onChange={onGestureEnabledChange}
       />
 
       <SelectionRow

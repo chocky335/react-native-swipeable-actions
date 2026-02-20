@@ -125,15 +125,25 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (field == value) return
             field = value
 
-            if (!value && (isDragging || isGestureActivated)) {
-                isDragging = false
-                isGestureActivated = false
-                gestureStartTranslation = 0f
-                cancelGestureTimeout()
-                stopProgressUpdates()
-                velocityTracker?.recycle()
-                velocityTracker = null
-                close(animated = false)
+            if (!value) {
+                // Reset touch interception state
+                isBlockingChildEvents = false
+                isIntercepting = false
+
+                if (isDragging || isGestureActivated) {
+                    isDragging = false
+                    isGestureActivated = false
+                    gestureStartTranslation = 0f
+                    cancelGestureTimeout()
+                    stopProgressUpdates()
+                    velocityTracker?.recycle()
+                    velocityTracker = null
+                }
+
+                // Close if open or mid-translation (instant reset, no animation)
+                if (isOpen || currentTranslation != 0f) {
+                    close(animated = false)
+                }
             }
         }
 
@@ -461,7 +471,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (actionsWidth <= 0f) return false
+        if (!gestureEnabled || actionsWidth <= 0f) return false
 
         velocityTracker?.addMovement(event)
 
@@ -835,7 +845,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     fun handleGestureStart() {
-        if (actionsWidth <= 0f) return
+        if (!gestureEnabled || actionsWidth <= 0f) return
 
         isDragging = true
         startOffset = currentTranslation

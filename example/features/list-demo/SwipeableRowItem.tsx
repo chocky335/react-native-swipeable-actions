@@ -17,7 +17,8 @@ export function SwipeableRowItem({
   onSwipeEnd,
   friction,
   threshold,
-  dragOffsetFromEdge
+  dragOffsetFromEdge,
+  gestureEnabled
 }: SwipeableRowItemProps) {
   const handleMute = useCallback(() => {
     swipeableRef.current?.close()
@@ -50,6 +51,7 @@ export function SwipeableRowItem({
       friction={friction}
       threshold={threshold}
       dragOffsetFromEdge={dragOffsetFromEdge}
+      gestureEnabled={gestureEnabled}
       recyclingKey={item.id}
     >
       <RowContent item={item} onPress={handleRowPress} />

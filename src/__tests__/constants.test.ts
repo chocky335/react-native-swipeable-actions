@@ -26,4 +26,8 @@ describe('SWIPE_DEFAULTS', () => {
   it('defaults to trailing (right-side) actions', () => {
     expect(SWIPE_DEFAULTS.ACTIONS_POSITION).toBe('right')
   })
+
+  it('defaults gesture to enabled', () => {
+    expect(SWIPE_DEFAULTS.GESTURE_ENABLED).toBe(true)
+  })
 })

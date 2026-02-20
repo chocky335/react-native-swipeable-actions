@@ -75,11 +75,12 @@ export interface ChatDemoProps {
   friction: number
   threshold: number
   dragOffset: number
+  gestureEnabled?: boolean
   onBenchmarkStateChange: (running: boolean, result: string | null) => void
 }
 
 export const ChatDemo = forwardRef<ChatDemoRef, ChatDemoProps>(function ChatDemo(
-  { implementation, isReversed, friction, threshold, dragOffset, onBenchmarkStateChange },
+  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, onBenchmarkStateChange },
   ref
 ) {
   const insets = useSafeAreaInsets()
@@ -161,9 +162,10 @@ export const ChatDemo = forwardRef<ChatDemoRef, ChatDemoProps>(function ChatDemo
         threshold={threshold}
         dragOffsetFromEdge={dragOffset}
         isReversed={isReversed}
+        gestureEnabled={gestureEnabled}
       />
     ),
-    [handleReply, handleBubblePress, friction, threshold, dragOffset, isReversed]
+    [handleReply, handleBubblePress, friction, threshold, dragOffset, isReversed, gestureEnabled]
   )
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, [])

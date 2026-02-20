@@ -142,7 +142,31 @@ public class SwipeableView: ExpoView {
     }
 
     var gestureEnabled: Bool = true {
-        didSet { panGesture.isEnabled = gestureEnabled }
+        didSet {
+            guard gestureEnabled != oldValue else { return }
+
+            if !gestureEnabled {
+                // Clear gesture state BEFORE disabling pan gesture.
+                // panGesture.isEnabled = false triggers .cancelled synchronously,
+                // which calls handlePanEnded — clearing isGestureActivated first
+                // makes that handler return early via its guard.
+                if isGestureActivated || isDragging {
+                    isGestureActivated = false
+                    isDragging = false
+                    gestureStartTranslation = 0
+                    stopProgressUpdates()
+                }
+
+                panGesture.isEnabled = false
+
+                // Close if open (instant reset, no animation)
+                if isOpen || currentTranslation != 0 {
+                    close(animated: false)
+                }
+            } else {
+                panGesture.isEnabled = true
+            }
+        }
     }
 
     var dragOffsetFromEdge: CGFloat = 0 {
@@ -488,7 +512,7 @@ public class SwipeableView: ExpoView {
     // MARK: - Gesture Handling
 
     func handleGestureStart() {
-        guard actionsWidth > 0 else { return }
+        guard gestureEnabled, actionsWidth > 0 else { return }
 
         isDragging = true
         startOffset = currentTranslation

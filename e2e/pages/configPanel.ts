@@ -31,10 +31,17 @@ class ConfigPanel extends BasePage {
   }
 
   /**
-   * Toggle leading mode
+   * Enable leading (left) swipe mode
    */
-  async toggleLeadingMode(): Promise<void> {
-    await this.tap(selectors.toggleLeading)
+  async enableLeadingMode(): Promise<void> {
+    await this.tap(selectors.toggleLeadingOn)
+  }
+
+  /**
+   * Disable leading mode (back to trailing/right)
+   */
+  async disableLeadingMode(): Promise<void> {
+    await this.tap(selectors.toggleLeadingOff)
   }
 
   /**
@@ -70,6 +77,20 @@ class ConfigPanel extends BasePage {
    */
   async selectRngh(): Promise<void> {
     await this.tap(selectors.selectRngh)
+  }
+
+  /**
+   * Enable gesture
+   */
+  async enableGesture(): Promise<void> {
+    await this.tap(selectors.toggleGestureOn)
+  }
+
+  /**
+   * Disable gesture
+   */
+  async disableGesture(): Promise<void> {
+    await this.tap(selectors.toggleGestureOff)
   }
 }
 

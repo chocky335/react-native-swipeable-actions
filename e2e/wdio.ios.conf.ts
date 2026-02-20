@@ -21,11 +21,11 @@ export const config: Options.Testrunner = {
     {
       platformName: 'iOS',
       'appium:deviceName': 'iPhone 16e',
-      'appium:udid': 'FB06EE9A-2A15-44A1-8DF5-638E9C0C04A0',
+      'appium:udid': '2222B8A8-87C9-468C-AA88-91EF289442DA',
       'appium:automationName': 'XCUITest',
       'appium:app': path.resolve(
         process.env.HOME || '',
-        'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Debug-iphonesimulator/SwipeableDemo.app'
+        'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Release-iphonesimulator/SwipeableDemo.app'
       ),
       'appium:bundleId': 'com.swipeabledemo.app',
       'appium:newCommandTimeout': 240,

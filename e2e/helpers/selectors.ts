@@ -48,8 +48,11 @@ export const selectors = {
   get configHeader() {
     return byTestId('config-header')
   },
-  get toggleLeading() {
-    return byTestId('toggle-leading')
+  get toggleLeadingOn() {
+    return byTestId('toggle-leading-on')
+  },
+  get toggleLeadingOff() {
+    return byTestId('toggle-leading-off')
   },
   get selectDemoChat() {
     return byTestId('select-demo-chat')
@@ -110,7 +113,13 @@ export const selectors = {
   // Dynamic selectors for specific items
   item: (index: number) => byTextAttr(`Item ${index}`),
   swipeableRow: (index: number) => byTestId(`row-item-${index}`),
-  leaveButtonForItem: (index: number) => byTestId(`leave-action-item-${index}`)
+  leaveButtonForItem: (index: number) => byTestId(`leave-action-item-${index}`),
+  get toggleGestureOn() {
+    return byTestId('toggle-gesture-on')
+  },
+  get toggleGestureOff() {
+    return byTestId('toggle-gesture-off')
+  }
 }
 
 /**

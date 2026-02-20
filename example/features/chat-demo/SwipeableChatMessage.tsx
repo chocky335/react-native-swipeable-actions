@@ -13,6 +13,7 @@ export interface SwipeableChatMessageProps {
   threshold?: number
   dragOffsetFromEdge?: number
   isReversed?: boolean
+  gestureEnabled?: boolean
 }
 
 export function SwipeableChatMessage({
@@ -22,7 +23,8 @@ export function SwipeableChatMessage({
   friction = 0.8,
   threshold = 0.6,
   dragOffsetFromEdge = 0,
-  isReversed = false
+  isReversed = false,
+  gestureEnabled
 }: SwipeableChatMessageProps) {
   const progress = useSharedValue(0)
 
@@ -71,6 +73,7 @@ export function SwipeableChatMessage({
       threshold={threshold}
       friction={friction}
       dragOffsetFromEdge={dragOffsetFromEdge}
+      gestureEnabled={gestureEnabled}
       autoClose={true}
       actions={<ReplyAction progress={progress} />}
       onProgress={setProgress}
