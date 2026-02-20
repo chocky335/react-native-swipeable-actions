@@ -7,5 +7,6 @@ export const SWIPE_DEFAULTS = {
   FRICTION: 1,
   THRESHOLD: 0.4,
   DRAG_OFFSET_FROM_EDGE: 0,
-  ACTIONS_POSITION: 'right'
+  ACTIONS_POSITION: 'right',
+  GESTURE_ENABLED: true
 } as const

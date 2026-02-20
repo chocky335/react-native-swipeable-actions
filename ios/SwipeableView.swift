@@ -141,6 +141,10 @@ public class SwipeableView: ExpoView {
         didSet { threshold = max(0.0, min(1.0, threshold)) }
     }
 
+    var gestureEnabled: Bool = true {
+        didSet { panGesture.isEnabled = gestureEnabled }
+    }
+
     var dragOffsetFromEdge: CGFloat = 0 {
         didSet { dragOffsetFromEdge = max(0, dragOffsetFromEdge) }
     }

@@ -24,6 +24,7 @@ export interface SwipeableViewProps extends ViewProps {
   actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number
+  gestureEnabled?: boolean
   dragOffsetFromEdge?: number
   recyclingKey?: string
   onSwipeProgress?: (event: SwipeProgressEvent) => void
@@ -45,6 +46,7 @@ export interface SwipeableProps {
   actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number
+  gestureEnabled?: boolean
   dragOffsetFromEdge?: number
   style?: StyleProp<ViewStyle>
   testID?: string

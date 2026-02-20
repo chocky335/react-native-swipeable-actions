@@ -103,6 +103,7 @@ function MyRow() {
 | `actionsPosition` | `'left' \| 'right'` | `'right'` | Position of actions (`'left'` = swipe right to reveal) |
 | `friction` | `number` | `1` | Drag damping factor (0-1). Lower = more resistance |
 | `threshold` | `number` | `0.4` | Snap-to threshold as percentage of actionsWidth (0-1) |
+| `gestureEnabled` | `boolean` | `true` | Enables or disables the swipe gesture |
 | `dragOffsetFromEdge` | `number` | `0` | Minimum drag distance before gesture starts |
 | `autoClose` | `boolean` | `false` | Auto-close after swipe release (for swipe-to-reply) |
 | `autoCloseTimeout` | `number` | `0` | Delay in ms before auto-closing |
