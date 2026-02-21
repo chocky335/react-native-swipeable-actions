@@ -105,10 +105,9 @@ describe('Swipeable E2E Tests', () => {
 
       // Verify Leave button still visible (state persisted after recycling)
       await listDemoPage.scrollUp()
-      // Allow time for FlashList to restore recycled cells with their cached state
-      await driver.pause(1000)
-      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
-      await expect($(selectors.leaveButtonForItem(1))).toBeDisplayed()
+      // Wait for FlashList to restore recycled cells with their cached state
+      await $(selectors.leaveButtonForItem(0)).waitForDisplayed({ timeout: 5000 })
+      await $(selectors.leaveButtonForItem(1)).waitForDisplayed({ timeout: 5000 })
     })
   })
   const navigateToChat = async () => {

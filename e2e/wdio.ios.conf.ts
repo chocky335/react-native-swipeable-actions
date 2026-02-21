@@ -42,10 +42,10 @@ export const config: Options.Testrunner = {
   logLevel: 'info',
   bail: 0,
   waitforTimeout: 10000,
-  connectionRetryTimeout: 300000,
+  connectionRetryTimeout: 600000,
   connectionRetryCount: 3,
 
-  services: ['appium'],
+  services: [['appium', { logPath: './logs' }]],
 
   framework: 'mocha',
   reporters: ['spec'],
