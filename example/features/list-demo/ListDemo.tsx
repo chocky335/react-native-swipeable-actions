@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, useEffect, useImperativeHandle, forwardRef } from 'react'
-import { StyleSheet, View, Alert } from 'react-native'
+import { StyleSheet, View, Alert, FlatList } from 'react-native'
 import { FlashList, FlashListRef, useBenchmark } from '@shopify/flash-list'
 import { SwipeableMethods, Swipeable } from 'react-native-swipeable-actions'
 import { SwipeableRowItem } from './SwipeableRowItem'
@@ -21,11 +21,12 @@ interface ListDemoProps {
   threshold: number
   dragOffset: number
   gestureEnabled: boolean
+  useFlatList?: boolean
   onBenchmarkStateChange?: (running: boolean, result: string | null) => void
 }
 
 export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo(
-  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, onBenchmarkStateChange },
+  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, onBenchmarkStateChange },
   ref
 ) {
   const [data, setData] = useState(() => generateData(ITEM_COUNT))
@@ -156,6 +157,19 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
   const renderSeparator = useCallback(() => <View style={styles.separator} />, [])
 
   const getItemType = useCallback(() => 'list-row', [])
+
+  if (useFlatList) {
+    return (
+      <FlatList
+        data={data}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        extraData={implementation}
+        ItemSeparatorComponent={renderSeparator}
+        removeClippedSubviews={true}
+      />
+    )
+  }
 
   return (
     <FlashList

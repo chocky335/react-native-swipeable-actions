@@ -313,4 +313,56 @@ describe('Swipeable E2E Tests', () => {
       })
     })
   })
+  ;(shouldRun(13) ? describe : describe.skip)(
+    'Test 13: CloseAll after removeClippedSubviews detach/reattach (PR #1 regression)',
+    () => {
+      it('should close rows via closeAll() after scrolling offscreen and back', async () => {
+        // Switch to FlatList mode (removeClippedSubviews=true by default on Android)
+        await configPanel.open()
+        await driver.pause(500)
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Scroll down to push items offscreen and trigger detach
+        // (removeClippedSubviews → removeViewInLayout → onDetachedFromWindow → unregister)
+        for (let i = 0; i < 3; i++) {
+          await listDemoPage.scrollDown()
+        }
+        await driver.pause(500)
+
+        // Scroll back up to trigger reattach (onAttachedToWindow)
+        // With the fix: re-registers views in the registry
+        // Without the fix: views remain unregistered
+        for (let i = 0; i < 4; i++) {
+          await listDemoPage.scrollUp()
+        }
+        await driver.pause(500)
+
+        // Wait for item-0 to be visible after scrolling back
+        await $(selectors.swipeableRow(0)).waitForDisplayed({ timeout: 5000 })
+
+        // Open rows AFTER the detach/reattach cycle
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+        await listDemoPage.swipeRowOpen(1, 'left')
+        await expect($(selectors.leaveButtonForItem(1))).toBeDisplayed()
+
+        // Call closeAll() via the static registry API (Swipeable.closeAll())
+        await configPanel.open()
+        await configPanel.tapCloseAll()
+        await configPanel.close()
+
+        // Without the PR #1 fix: views not in registry → closeAll() no-op → rows stay open → FAIL
+        // With the fix: onAttachedToWindow re-registered views → closeAll() works → PASS
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await expect($(selectors.leaveButtonForItem(1))).not.toBeDisplayed()
+
+        // Restore FlashList mode
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+      })
+    }
+  )
 })

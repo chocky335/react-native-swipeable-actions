@@ -8,6 +8,7 @@ export interface ConfigContextValue {
   threshold: number
   dragOffset: number
   gestureEnabled: boolean
+  useFlatList: boolean
   onBenchmarkStateChange: (running: boolean, result: string | null) => void
 }
 

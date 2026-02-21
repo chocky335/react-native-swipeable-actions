@@ -42,6 +42,7 @@ function AppContent() {
   const [threshold, setThreshold] = useState(0.4)
   const [dragOffset, setDragOffset] = useState(0)
   const [gestureEnabled, setGestureEnabled] = useState(true)
+  const [useFlatList, setUseFlatList] = useState(false)
   const [isBenchmarkRunning, setIsBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<string | null>(null)
   const showBenchmarkHUD = isBenchmarkRunning || Boolean(benchmarkResult)
@@ -65,9 +66,10 @@ function AppContent() {
       threshold,
       dragOffset,
       gestureEnabled,
+      useFlatList,
       onBenchmarkStateChange: handleBenchmarkStateChange
     }),
-    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, handleBenchmarkStateChange]
+    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, handleBenchmarkStateChange]
   )
 
   const sharedConfig: SharedConfig = useMemo(
@@ -78,10 +80,11 @@ function AppContent() {
       threshold,
       dragOffset,
       gestureEnabled,
+      useFlatList,
       isBenchmarkRunning,
       benchmarkResult
     }),
-    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, isBenchmarkRunning, benchmarkResult]
+    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, isBenchmarkRunning, benchmarkResult]
   )
 
   const handleCloseAll = useCallback(() => {
@@ -119,6 +122,7 @@ function AppContent() {
       onThresholdChange: setThreshold,
       onDragOffsetChange: setDragOffset,
       onGestureEnabledChange: setGestureEnabled,
+      onUseFlatListChange: setUseFlatList,
       onCloseAll: handleCloseAll,
       onResetAll: handleResetAll,
       onBenchmark: handleBenchmark

@@ -13,6 +13,7 @@ export interface SharedConfig {
   threshold: number
   dragOffset: number
   gestureEnabled: boolean
+  useFlatList: boolean
   isBenchmarkRunning: boolean
   benchmarkResult: string | null
 }
@@ -24,6 +25,7 @@ export interface SharedConfigCallbacks {
   onThresholdChange: (value: number) => void
   onDragOffsetChange: (value: number) => void
   onGestureEnabledChange: (value: boolean) => void
+  onUseFlatListChange: (value: boolean) => void
   onCloseAll: () => void
   onResetAll: () => void
   onBenchmark: () => void

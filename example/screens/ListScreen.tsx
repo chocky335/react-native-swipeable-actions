@@ -31,6 +31,7 @@ export const ListScreen = forwardRef<ListScreenRef>(function ListScreen(_props, 
       threshold={config.threshold}
       dragOffset={config.dragOffset}
       gestureEnabled={config.gestureEnabled}
+      useFlatList={config.useFlatList}
       onBenchmarkStateChange={config.onBenchmarkStateChange}
     />
   )

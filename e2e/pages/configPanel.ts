@@ -92,6 +92,20 @@ class ConfigPanel extends BasePage {
   async disableGesture(): Promise<void> {
     await this.tap(selectors.toggleGestureOff)
   }
+
+  /**
+   * Enable FlatList mode
+   */
+  async enableFlatList(): Promise<void> {
+    await this.tap(selectors.toggleFlatListOn)
+  }
+
+  /**
+   * Disable FlatList mode
+   */
+  async disableFlatList(): Promise<void> {
+    await this.tap(selectors.toggleFlatListOff)
+  }
 }
 
 export const configPanel = new ConfigPanel()

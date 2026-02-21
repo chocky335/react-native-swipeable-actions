@@ -119,6 +119,12 @@ export const selectors = {
   },
   get toggleGestureOff() {
     return byTestId('toggle-gesture-off')
+  },
+  get toggleFlatListOn() {
+    return byTestId('toggle-flatlist-on')
+  },
+  get toggleFlatListOff() {
+    return byTestId('toggle-flatlist-off')
   }
 }
 

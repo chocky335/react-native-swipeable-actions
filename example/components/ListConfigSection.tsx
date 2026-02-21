@@ -40,8 +40,13 @@ const GESTURE_ENABLED_OPTIONS: SelectionOption<boolean>[] = [
   { label: 'OFF', value: false, testID: 'toggle-gesture-off' }
 ]
 
+const FLATLIST_OPTIONS: SelectionOption<boolean>[] = [
+  { label: 'ON', value: true, testID: 'toggle-flatlist-on' },
+  { label: 'OFF', value: false, testID: 'toggle-flatlist-off' }
+]
+
 export function ListConfigSection({ config, callbacks }: ListConfigSectionProps) {
-  const { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, isBenchmarkRunning } = config
+  const { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, isBenchmarkRunning } = config
 
   const {
     onImplementationChange,
@@ -50,6 +55,7 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     onThresholdChange,
     onDragOffsetChange,
     onGestureEnabledChange,
+    onUseFlatListChange,
     onCloseAll,
     onResetAll,
     onBenchmark
@@ -62,6 +68,13 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
         options={IMPLEMENTATION_OPTIONS}
         value={implementation}
         onChange={onImplementationChange}
+      />
+
+      <SelectionRow
+        label='FlatList'
+        options={FLATLIST_OPTIONS}
+        value={useFlatList}
+        onChange={onUseFlatListChange}
       />
 
       <SelectionRow
