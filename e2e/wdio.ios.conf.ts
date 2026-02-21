@@ -33,6 +33,8 @@ export const config: Options.Testrunner = {
       'appium:app': process.env.IOS_APP_PATH || defaultAppPath,
       'appium:bundleId': 'com.swipeabledemo.app',
       'appium:newCommandTimeout': 240,
+      'appium:wdaLaunchTimeout': 240000,
+      'appium:wdaConnectionTimeout': 240000,
       'appium:noReset': false
     }
   ],
@@ -40,7 +42,7 @@ export const config: Options.Testrunner = {
   logLevel: 'info',
   bail: 0,
   waitforTimeout: 10000,
-  connectionRetryTimeout: 120000,
+  connectionRetryTimeout: 300000,
   connectionRetryCount: 3,
 
   services: ['appium'],
