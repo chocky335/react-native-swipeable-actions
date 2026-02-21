@@ -2,6 +2,11 @@ import type { Options } from '@wdio/types'
 import path from 'path'
 import { setPlatform } from './helpers/selectors'
 
+const defaultAppPath = path.resolve(
+  process.env.HOME || '',
+  'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Release-iphonesimulator/SwipeableDemo.app'
+)
+
 export const config: Options.Testrunner = {
   runner: 'local',
   autoCompileOpts: {
@@ -20,13 +25,12 @@ export const config: Options.Testrunner = {
   capabilities: [
     {
       platformName: 'iOS',
-      'appium:deviceName': 'iPhone 16e',
-      'appium:udid': '2222B8A8-87C9-468C-AA88-91EF289442DA',
+      'appium:deviceName': process.env.IOS_DEVICE_NAME || 'iPhone 16e',
+      ...(process.env.IOS_UDID
+        ? { 'appium:udid': process.env.IOS_UDID }
+        : { 'appium:udid': '2222B8A8-87C9-468C-AA88-91EF289442DA' }),
       'appium:automationName': 'XCUITest',
-      'appium:app': path.resolve(
-        process.env.HOME || '',
-        'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Release-iphonesimulator/SwipeableDemo.app'
-      ),
+      'appium:app': process.env.IOS_APP_PATH || defaultAppPath,
       'appium:bundleId': 'com.swipeabledemo.app',
       'appium:newCommandTimeout': 240,
       'appium:noReset': false

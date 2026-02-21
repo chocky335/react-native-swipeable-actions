@@ -7,8 +7,13 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      enable-e2e:
-        description: 'Run E2E tests'
+      enable-e2e-android:
+        description: 'Run Android E2E tests'
+        required: false
+        type: boolean
+        default: false
+      enable-e2e-ios:
+        description: 'Run iOS E2E tests'
         required: false
         type: boolean
         default: false
@@ -42,10 +47,10 @@ jobs:
       - name: Run tests
         run: SKIP_E2E=1 ./scripts/test-all.sh
 
-  e2e:
-    if: inputs.enable-e2e == true
+  e2e-android:
+    if: inputs.enable-e2e-android == true
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -134,5 +139,96 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logcat
+          name: logcat-android
           path: /tmp/logcat.txt
+
+  e2e-ios:
+    if: inputs.enable-e2e-ios == true
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm ci
+
+      - name: Install example dependencies
+        run: cd example && npm i --ignore-scripts
+
+      - name: Generate example iOS project
+        run: cd example && npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: cd example/ios && pod install
+
+      - name: Build release app
+        run: |
+          cd example/ios
+          xcodebuild \
+            -workspace SwipeableDemo.xcworkspace \
+            -scheme SwipeableDemo \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath ./build \
+            -quiet
+
+      - name: Detect simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          for runtime, devs in devices.items():
+              if 'iOS' in runtime:
+                  for d in devs:
+                      if 'iPhone' in d['name'] and d['isAvailable']:
+                          print(d['udid'])
+                          sys.exit(0)
+          sys.exit(1)
+          ")
+          DEVICE_NAME=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          for runtime, devs in devices.items():
+              if 'iOS' in runtime:
+                  for d in devs:
+                      if 'iPhone' in d['name'] and d['isAvailable']:
+                          print(d['name'])
+                          sys.exit(0)
+          sys.exit(1)
+          ")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "device_name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
+          echo "Detected simulator: $DEVICE_NAME ($UDID)"
+
+      - name: Boot simulator
+        run: |
+          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}"
+
+      - name: Run E2E tests
+        env:
+          IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
+          IOS_UDID: ${{ steps.sim.outputs.udid }}
+          IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
+        run: cd e2e && npm run test:ios
+
+      - name: Capture simulator logs
+        if: always()
+        run: |
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --predicate 'subsystem == "com.swipeabledemo.app"' > /tmp/simulator-log.txt 2>&1 || true
+
+      - name: Upload simulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-log-ios
+          path: /tmp/simulator-log.txt
