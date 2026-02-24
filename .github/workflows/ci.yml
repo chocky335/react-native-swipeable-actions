@@ -221,6 +221,14 @@ jobs:
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
         run: cd e2e && npm run test:ios
 
+      - name: Install Maestro
+        run: curl -Ls "https://get.maestro.mobile.dev" | bash
+
+      - name: Run Maestro seekbar regression test
+        run: |
+          export PATH="$PATH:$HOME/.maestro/bin"
+          maestro test e2e/maestro/seekbar-regression.yaml
+
       - name: Upload Appium logs
         if: always()
         uses: actions/upload-artifact@v4
