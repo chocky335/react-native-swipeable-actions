@@ -31,6 +31,19 @@ public class SwipeableView: ExpoView {
         return typeName.contains("SurfaceTouchHandler") || typeName.contains("RCTTouchHandler")
     }
 
+    /// Walk from a hit-tested view up to (but not including) self, checking for gesture recognizers.
+    /// Any child view with a gesture recognizer (RNGH, custom, etc.) takes priority over our pan.
+    private func hasChildGesture(from view: UIView) -> Bool {
+        var current: UIView? = view
+        while let v = current, v !== self {
+            if !(v.gestureRecognizers ?? []).isEmpty {
+                return true
+            }
+            current = v.superview
+        }
+        return false
+    }
+
     // MARK: - Thread-Safe Static Registry
 
     private static let registryQueue = DispatchQueue(label: "com.swipeable.registry", qos: .userInteractive)
@@ -862,6 +875,13 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         let shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
 
         if shouldBegin {
+            // Prevent our pan from starting when the touch is on a child view that has
+            // its own gesture recognizers (e.g. RNGH). Delegate-based conflict resolution
+            // doesn't work with RNGH (it overrides delegates), so we yield via hit-test.
+            let touchPoint = pan.location(in: self)
+            if let hitView = super.hitTest(touchPoint, with: nil), hasChildGesture(from: hitView) {
+                return false
+            }
             cancelFabricTouches()
         }
 
@@ -891,12 +911,5 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         }
 
         return false
-    }
-
-    public func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRequireFailureOf otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        false
     }
 }
