@@ -94,15 +94,17 @@ export async function scrollUp(): Promise<void> {
 export async function swipeOnElement(
   element: WebdriverIO.Element,
   direction: 'left' | 'right',
-  duration: number = 300
+  duration: number = 300,
+  distance: number = 0.8
 ): Promise<void> {
   const location = await element.getLocation()
   const size = await element.getSize()
 
+  // distance <= 1: coefficient of element width; > 1: pixel distance
+  const swipePx = distance <= 1 ? size.width * distance : distance
   const centerY = location.y + size.height / 2
-  const startX =
-    direction === 'left' ? location.x + size.width * 0.9 : location.x + size.width * 0.1
-  const endX = direction === 'left' ? location.x + size.width * 0.1 : location.x + size.width * 0.9
+  const startX = direction === 'left' ? location.x + size.width * 0.9 : location.x + size.width * 0.1
+  const endX = direction === 'left' ? startX - swipePx : startX + swipePx
 
   await driver.performActions([
     {

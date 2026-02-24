@@ -4,6 +4,7 @@ import { FlashList, FlashListRef, useBenchmark } from '@shopify/flash-list'
 import { SwipeableMethods, Swipeable } from 'react-native-swipeable-actions'
 import { SwipeableRowItem } from './SwipeableRowItem'
 import { RNGHRowItem } from './RNGHRowItem'
+import { SeekbarRow } from './SeekbarRow'
 import { ItemData, Implementation, RowRef, ReanimatedSwipeableRef } from './types'
 import { ITEM_COUNT, generateData } from './utils'
 import { colors } from '../../styles'
@@ -156,6 +157,19 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
 
   const renderSeparator = useCallback(() => <View style={styles.separator} />, [])
 
+  const renderHeader = useCallback(
+    () => (
+      <SeekbarRow
+        isReversed={isReversed}
+        friction={friction}
+        threshold={threshold}
+        dragOffsetFromEdge={dragOffset}
+        gestureEnabled={gestureEnabled}
+      />
+    ),
+    [isReversed, friction, threshold, dragOffset, gestureEnabled]
+  )
+
   const getItemType = useCallback(() => 'list-row', [])
 
   if (useFlatList) {
@@ -166,6 +180,7 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
         keyExtractor={keyExtractor}
         extraData={implementation}
         ItemSeparatorComponent={renderSeparator}
+        ListHeaderComponent={renderHeader}
         removeClippedSubviews={true}
       />
     )
@@ -179,6 +194,7 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
       keyExtractor={keyExtractor}
       extraData={implementation}
       ItemSeparatorComponent={renderSeparator}
+      ListHeaderComponent={renderHeader}
       getItemType={getItemType}
     />
   )

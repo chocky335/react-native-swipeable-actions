@@ -364,4 +364,18 @@ describe('Swipeable E2E Tests', () => {
       })
     }
   )
+  ;(shouldRun(14) ? describe : describe.skip)(
+    'Test 14: Seekbar RNGH pan does not open swipeable (gesture conflict regression)',
+    () => {
+      it('should not reveal swipeable action when swiping seekbar track', async () => {
+        // Swipe left on the seekbar track (RNGH Pan gesture area)
+        const track = await $(selectors.seekbarThumb)
+        await swipeOnElement(track as unknown as WebdriverIO.Element, 'left', 400, 100)
+        await driver.pause(500)
+
+        // The swipeable action should NOT be revealed
+        await expect($(selectors.seekbarAction)).not.toBeDisplayed()
+      })
+    }
+  )
 })

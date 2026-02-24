@@ -125,6 +125,14 @@ export const selectors = {
   },
   get toggleFlatListOff() {
     return byTestId('toggle-flatlist-off')
+  },
+
+  // Seekbar regression
+  get seekbarThumb() {
+    return byTestId('seekbar-thumb')
+  },
+  get seekbarAction() {
+    return byTestId('seekbar-action')
   }
 }
 

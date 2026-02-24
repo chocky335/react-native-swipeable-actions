@@ -235,10 +235,18 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     // Auto-close runnable for tracking and cancellation
     private var autoCloseRunnable: Runnable? = null
 
+    // Track when a child (e.g. RNGH gesture handler) claims the touch
+    private var childRequestedDisallowIntercept: Boolean = false
+
     init {
         clipChildren = false
         clipToPadding = false
         setWillNotDraw(false)
+    }
+
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        childRequestedDisallowIntercept = disallowIntercept
+        super.requestDisallowInterceptTouchEvent(disallowIntercept)
     }
 
     override fun setClipChildren(clipChildren: Boolean) {
@@ -350,6 +358,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 dispatchTouchStartX = event.rawX
                 dispatchTouchStartY = event.rawY
                 isBlockingChildEvents = false
+                childRequestedDisallowIntercept = false
 
                 // Initialize tracking
                 touchStartX = event.rawX
@@ -379,6 +388,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
                 // Detect horizontal swipe
                 if (dx > touchSlop && dx > dy) {
+                    // If a child gesture handler (e.g. RNGH) claimed the touch, yield to it
+                    if (childRequestedDisallowIntercept) {
+                        return super.dispatchTouchEvent(event)
+                    }
+
                     val horizontalDelta = event.rawX - dispatchTouchStartX
                     val isCorrectDirection = if (isOpen) {
                         true
