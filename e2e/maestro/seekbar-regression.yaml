@@ -1,0 +1,24 @@
+appId: com.swipeabledemo.app
+---
+# Regression test: dragging the seekbar thumb (RNGH Pan gesture)
+# should NOT open the swipeable action behind it.
+#
+# This tests the iOS fix in SwipeableView.swift that prevents
+# the native pan gesture from stealing touches managed by RNGH.
+
+- launchApp
+
+# Wait for the list demo to load (Debug builds need time for Metro bundle)
+- extendedWaitUntil:
+    visible: "Seekbar"
+    timeout: 30000
+
+# Swipe left starting from the seekbar thumb
+- swipe:
+    from:
+      id: "seekbar-thumb"
+    direction: LEFT
+    duration: 500
+
+# The swipeable action should NOT be revealed
+- assertNotVisible: "Action"
