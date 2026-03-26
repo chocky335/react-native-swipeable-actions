@@ -548,20 +548,9 @@ public class SwipeableView: ExpoView {
             }
         }
 
-        if currentTranslation != 0 {
+        if isOpen && currentTranslation != 0 {
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
-
-            // Fabric may reset child transforms during prop reconciliation after a list
-            // reorder. The async dispatch ensures we run after Fabric finishes mutations.
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self,
-                      self.currentTranslation != 0,
-                      !self.isDragging,
-                      !self.isAnimating else { return }
-                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
-                self.updateActionsTransform()
-            }
         }
     }
 
