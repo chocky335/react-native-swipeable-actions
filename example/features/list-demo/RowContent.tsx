@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { avatarColors, colors } from '../../styles/theme'
 import type { RowContentProps } from './types'
-import { colors, avatarColors } from '../../styles/theme'
 
 function getColorIndex(id: string): number {
   const match = id.match(/\d+/)

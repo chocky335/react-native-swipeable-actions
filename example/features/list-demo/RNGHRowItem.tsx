@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import ReanimatedSwipeable, {
   type SwipeableMethods
 } from 'react-native-gesture-handler/ReanimatedSwipeable'
-import { StaticMuteAction, StaticLeaveAction } from './actions'
+import { StaticLeaveAction, StaticMuteAction } from './actions'
 import { RowContent } from './RowContent'
 import type { RNGHRowItemProps } from './types'
 import { DELETE_DELAY_MS } from './utils'

@@ -1,3 +1,4 @@
+import { FlashList, type FlashListRef, useBenchmark } from '@shopify/flash-list'
 import {
   forwardRef,
   useCallback,
@@ -8,24 +9,23 @@ import {
   useState
 } from 'react'
 import {
-  StyleSheet,
-  Text,
-  View,
   Alert,
-  TouchableOpacity,
-  TextInput,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Keyboard
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native'
-import { FlashList, type FlashListRef, useBenchmark } from '@shopify/flash-list'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Swipeable } from 'react-native-swipeable-actions'
-import type { ChatMessage } from '../../components/ChatBubble'
-import { SwipeableChatMessage } from './SwipeableChatMessage'
-import type { Implementation } from '../list-demo'
-import { colors } from '../../styles'
 import { HEADER_HEIGHT } from '../../components/AppHeader'
+import type { ChatMessage } from '../../components/ChatBubble'
+import { colors } from '../../styles'
+import type { Implementation } from '../list-demo'
+import { SwipeableChatMessage } from './SwipeableChatMessage'
 
 const MESSAGE_TEMPLATES = [
   'Hey! How are you doing?',

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native'
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from './styles'
 

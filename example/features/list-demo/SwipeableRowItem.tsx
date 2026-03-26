@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Swipeable } from 'react-native-swipeable-actions'
-import { MuteAction, LeaveAction } from './actions'
+import { LeaveAction, MuteAction } from './actions'
 import { RowContent } from './RowContent'
 import type { SwipeableRowItemProps } from './types'
 import { DELETE_DELAY_MS } from './utils'

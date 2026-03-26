@@ -1,11 +1,11 @@
 import { StyleSheet, Text } from 'react-native'
-import { colors } from '../styles'
 import Animated, {
-  type SharedValue,
-  useAnimatedStyle,
+  Extrapolation,
   interpolate,
-  Extrapolation
+  type SharedValue,
+  useAnimatedStyle
 } from 'react-native-reanimated'
+import { colors } from '../styles'
 
 interface ReplyActionProps {
   progress: SharedValue<number>

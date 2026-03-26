@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { StatusBar } from 'expo-status-bar'
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { NavigationContainer, type NavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import { StatusBar } from 'expo-status-bar'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { StyleSheet, View } from 'react-native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AppHeader, HEADER_HEIGHT } from './components/AppHeader'
 import {
   ConfigPanel,
@@ -12,11 +12,11 @@ import {
   type SharedConfig,
   type SharedConfigCallbacks
 } from './components/ConfigPanel'
+import { type ConfigContextValue, ConfigProvider } from './contexts/ConfigContext'
 import type { Implementation } from './features/list-demo'
 import { BenchmarkHUD } from './PerformanceHUD'
-import { ConfigProvider, type ConfigContextValue } from './contexts/ConfigContext'
-import { ListScreen, type ListScreenRef } from './screens/ListScreen'
 import { ChatScreen, type ChatScreenRef } from './screens/ChatScreen'
+import { ListScreen, type ListScreenRef } from './screens/ListScreen'
 import { colors } from './styles'
 
 type RootStackParamList = {

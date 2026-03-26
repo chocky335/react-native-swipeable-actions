@@ -1,8 +1,8 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
+import type { Implementation } from '../features/list-demo'
 import { buttonStyles, layoutStyles } from '../styles'
 import type { SharedConfig, SharedConfigCallbacks } from './ConfigPanel'
-import { SelectionRow, type SelectionOption } from './SelectionRow'
-import type { Implementation } from '../features/list-demo'
+import { type SelectionOption, SelectionRow } from './SelectionRow'
 
 export interface ListConfigSectionProps {
   config: SharedConfig

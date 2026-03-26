@@ -1,5 +1,5 @@
-import type { Options } from '@wdio/types'
 import path from 'node:path'
+import type { Options } from '@wdio/types'
 import { setPlatform } from './helpers/selectors'
 
 export const config: Options.Testrunner = {

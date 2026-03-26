@@ -1,6 +1,6 @@
-import { BasePage } from './basePage'
-import { selectors } from '../helpers/selectors'
 import { swipeOnElement } from '../helpers/gestures'
+import { selectors } from '../helpers/selectors'
+import { BasePage } from './basePage'
 
 const MESSAGES = [
   { id: '1', sender: 'Alice', text: 'Hey! How are you doing?' },

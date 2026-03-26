@@ -1,4 +1,4 @@
-import { Text, View, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import { buttonStyles, layoutStyles } from '../styles'
 
 export interface SelectionOption<T> {

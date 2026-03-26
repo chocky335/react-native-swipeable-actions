@@ -1,5 +1,5 @@
-import { BasePage } from './basePage'
 import { selectors } from '../helpers/selectors'
+import { BasePage } from './basePage'
 
 /**
  * Page object for Config Panel

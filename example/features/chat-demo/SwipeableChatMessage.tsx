@@ -1,9 +1,9 @@
-import { useCallback } from 'react'
 import * as Haptics from 'expo-haptics'
+import { useCallback } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
 import { Swipeable } from 'react-native-swipeable-actions'
 import { ChatBubble, type ChatMessage } from '../../components/ChatBubble'
 import { REPLY_WIDTH, ReplyAction } from '../../components/ReplyAction'
-import { useSharedValue } from 'react-native-reanimated'
 
 export interface SwipeableChatMessageProps {
   message: ChatMessage

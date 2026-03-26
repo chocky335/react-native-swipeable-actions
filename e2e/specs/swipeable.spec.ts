@@ -1,8 +1,8 @@
-import { listDemoPage } from '../pages/listDemoPage'
-import { configPanel } from '../pages/configPanel'
-import { chatPage } from '../pages/chatPage'
-import { selectors } from '../helpers/selectors'
 import { swipeOnElement } from '../helpers/gestures'
+import { selectors } from '../helpers/selectors'
+import { chatPage } from '../pages/chatPage'
+import { configPanel } from '../pages/configPanel'
+import { listDemoPage } from '../pages/listDemoPage'
 
 // Configure which tests to run (empty = all tests, 0-indexed)
 // prettier-ignore

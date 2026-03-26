@@ -1,6 +1,6 @@
-import { StyleSheet, View, Text } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated'
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { Swipeable } from 'react-native-swipeable-actions'
 import { colors } from '../../styles'
 
