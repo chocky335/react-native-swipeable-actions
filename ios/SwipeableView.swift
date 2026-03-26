@@ -50,7 +50,7 @@ public class SwipeableView: ExpoView {
     private static var _openStateCache: [String: Bool] = [:]
     private static var _viewRegistry: [String: WeakRef<SwipeableView>] = [:]
 
-    private static func getOpenState(for key: String) -> Bool {
+    static func getOpenState(for key: String) -> Bool {
         registryQueue.sync { _openStateCache[key] ?? false }
     }
 
@@ -291,17 +291,17 @@ public class SwipeableView: ExpoView {
             currentAnimator = nil
             isAnimating = false
 
-            // Reset layer properties to prevent corruption
-            contentView?.transform = .identity
-            contentView?.layer.zPosition = 0
-            actionsView?.transform = .identity
-            actionsView?.layer.zPosition = 0
-
-            // Unregister from static registry and clear cached state
+            // Unregister from static registry (re-registered in didMoveToWindow)
             if let key = recyclingKey {
                 Self.unregisterView(for: key)
-                Self.clearOpenState(for: key)
             }
+
+            // Note: transforms and zPositions are NOT reset here.
+            // Fabric may remove and re-insert views during list reorder (DELETE+INSERT),
+            // which triggers this callback. Resetting transforms would cause open
+            // swipeables to visually close even though native state (isOpen,
+            // currentTranslation) remains correct. The recyclingKey setter handles
+            // resetting transforms when the view is actually recycled for a new item.
         }
         super.willMove(toSuperview: newSuperview)
     }
@@ -328,6 +328,23 @@ public class SwipeableView: ExpoView {
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
+        }
+
+        // Restore visual state after Fabric reorder (DELETE+INSERT cycle).
+        // Fabric may reset child transforms during prop reconciliation. Re-apply
+        // on next runloop tick to ensure we run after Fabric finishes mutations.
+        if isOpen && currentTranslation != 0 {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self,
+                      self.isOpen,
+                      self.currentTranslation != 0,
+                      !self.isDragging,
+                      !self.isAnimating else { return }
+                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
+                self.contentView?.layer.zPosition = 1
+                self.actionsView?.layer.zPosition = -1
+                self.updateActionsTransform()
+            }
         }
     }
 
@@ -519,6 +536,17 @@ public class SwipeableView: ExpoView {
         if currentTranslation != 0 {
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
+
+            // Fabric may reset child transforms during prop reconciliation after a list
+            // reorder. The async dispatch ensures we run after Fabric finishes mutations.
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self,
+                      self.currentTranslation != 0,
+                      !self.isDragging,
+                      !self.isAnimating else { return }
+                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
+                self.updateActionsTransform()
+            }
         }
     }
 
