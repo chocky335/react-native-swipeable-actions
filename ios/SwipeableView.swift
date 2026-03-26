@@ -57,27 +57,15 @@ public class SwipeableView: ExpoView {
     // MARK: - Thread-Safe Static Registry
 
     private static let registryQueue = DispatchQueue(label: "com.swipeable.registry", qos: .userInteractive)
-    private static let maxCacheSize = 1000
-    private static var _openStateCache: [String: Bool] = [:]
-    private static var _openStateCacheOrder: [String] = []
+    static let openStateCache = OpenStateCache()
     private static var _viewRegistry: [String: WeakRef<SwipeableView>] = [:]
 
     static func getOpenState(for key: String) -> Bool {
-        registryQueue.sync { _openStateCache[key] ?? false }
+        openStateCache.get(key)
     }
 
     private static func setOpenState(for key: String, isOpen: Bool) {
-        registryQueue.async(flags: .barrier) {
-            if _openStateCache[key] == nil {
-                _openStateCacheOrder.append(key)
-            }
-            _openStateCache[key] = isOpen
-            // Evict oldest entries when cache exceeds max size
-            while _openStateCacheOrder.count > maxCacheSize {
-                let oldest = _openStateCacheOrder.removeFirst()
-                _openStateCache.removeValue(forKey: oldest)
-            }
-        }
+        openStateCache.set(key, isOpen: isOpen)
     }
 
     private static func getView(for key: String) -> SwipeableView? {
@@ -93,7 +81,7 @@ public class SwipeableView: ExpoView {
     }
 
     private static func clearOpenState(for key: String) {
-        registryQueue.async(flags: .barrier) { _openStateCache.removeValue(forKey: key) }
+        openStateCache.clear(key)
     }
 
     private static func getAllViews() -> [SwipeableView] {
