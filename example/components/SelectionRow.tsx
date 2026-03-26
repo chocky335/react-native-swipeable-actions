@@ -1,4 +1,3 @@
-import { useCallback } from 'react'
 import { Text, View, TouchableOpacity } from 'react-native'
 import { buttonStyles, layoutStyles } from '../styles'
 

@@ -1,11 +1,11 @@
 import { useCallback, useRef, useState, useEffect, useImperativeHandle, forwardRef } from 'react'
 import { StyleSheet, View, Alert, FlatList } from 'react-native'
-import { FlashList, FlashListRef, useBenchmark } from '@shopify/flash-list'
-import { SwipeableMethods, Swipeable } from 'react-native-swipeable-actions'
+import { FlashList, type FlashListRef, useBenchmark } from '@shopify/flash-list'
+import { type SwipeableMethods, Swipeable } from 'react-native-swipeable-actions'
 import { SwipeableRowItem } from './SwipeableRowItem'
 import { RNGHRowItem } from './RNGHRowItem'
 import { SeekbarRow } from './SeekbarRow'
-import { ItemData, Implementation, RowRef, ReanimatedSwipeableRef } from './types'
+import type { ItemData, Implementation, RowRef, ReanimatedSwipeableRef } from './types'
 import { ITEM_COUNT, generateData } from './utils'
 import { colors } from '../../styles'
 
@@ -28,7 +28,16 @@ interface ListDemoProps {
 }
 
 export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo(
-  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, onBenchmarkStateChange },
+  {
+    implementation,
+    isReversed,
+    friction,
+    threshold,
+    dragOffset,
+    gestureEnabled,
+    useFlatList,
+    onBenchmarkStateChange
+  },
   ref
 ) {
   const [data, setData] = useState(() => generateData(ITEM_COUNT))
@@ -98,10 +107,12 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
   )
 
   const getOrCreateRef = useCallback((itemId: string): RowRef => {
-    if (!rowRefs.current.has(itemId)) {
-      rowRefs.current.set(itemId, { current: null })
+    let ref = rowRefs.current.get(itemId)
+    if (!ref) {
+      ref = { current: null }
+      rowRefs.current.set(itemId, ref)
     }
-    return rowRefs.current.get(itemId)!
+    return ref
   }, [])
 
   const handleMute = useCallback((itemId: string) => {

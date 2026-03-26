@@ -1,7 +1,7 @@
 import { StyleSheet, Text } from 'react-native'
 import { colors } from '../styles'
 import Animated, {
-  SharedValue,
+  type SharedValue,
   useAnimatedStyle,
   interpolate,
   Extrapolation

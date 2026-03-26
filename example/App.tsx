@@ -3,20 +3,20 @@ import { StyleSheet, View } from 'react-native'
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native'
+import { NavigationContainer, type NavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { AppHeader, HEADER_HEIGHT } from './components/AppHeader'
 import {
   ConfigPanel,
-  DemoType,
-  SharedConfig,
-  SharedConfigCallbacks
+  type DemoType,
+  type SharedConfig,
+  type SharedConfigCallbacks
 } from './components/ConfigPanel'
-import { Implementation } from './features/list-demo'
+import type { Implementation } from './features/list-demo'
 import { BenchmarkHUD } from './PerformanceHUD'
-import { ConfigProvider, ConfigContextValue } from './contexts/ConfigContext'
-import { ListScreen, ListScreenRef } from './screens/ListScreen'
-import { ChatScreen, ChatScreenRef } from './screens/ChatScreen'
+import { ConfigProvider, type ConfigContextValue } from './contexts/ConfigContext'
+import { ListScreen, type ListScreenRef } from './screens/ListScreen'
+import { ChatScreen, type ChatScreenRef } from './screens/ChatScreen'
 import { colors } from './styles'
 
 type RootStackParamList = {
@@ -69,7 +69,16 @@ function AppContent() {
       useFlatList,
       onBenchmarkStateChange: handleBenchmarkStateChange
     }),
-    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, handleBenchmarkStateChange]
+    [
+      implementation,
+      isReversed,
+      friction,
+      threshold,
+      dragOffset,
+      gestureEnabled,
+      useFlatList,
+      handleBenchmarkStateChange
+    ]
   )
 
   const sharedConfig: SharedConfig = useMemo(
@@ -84,7 +93,17 @@ function AppContent() {
       isBenchmarkRunning,
       benchmarkResult
     }),
-    [implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, isBenchmarkRunning, benchmarkResult]
+    [
+      implementation,
+      isReversed,
+      friction,
+      threshold,
+      dragOffset,
+      gestureEnabled,
+      useFlatList,
+      isBenchmarkRunning,
+      benchmarkResult
+    ]
   )
 
   const handleCloseAll = useCallback(() => {
@@ -135,13 +154,10 @@ function AppContent() {
     [handleCloseAll, handleResetAll, handleBenchmark, handleSimulateReorder]
   )
 
-  const handleDemoChange = useCallback(
-    (demo: DemoType) => {
-      setActiveDemo(demo)
-      navigationRef.current?.navigate(demo === 'list' ? 'List' : 'Chat')
-    },
-    []
-  )
+  const handleDemoChange = useCallback((demo: DemoType) => {
+    setActiveDemo(demo)
+    navigationRef.current?.navigate(demo === 'list' ? 'List' : 'Chat')
+  }, [])
 
   const handleConfigToggle = useCallback(() => {
     setIsConfigCollapsed((prev) => !prev)
@@ -177,12 +193,8 @@ function AppContent() {
         <ConfigProvider value={configValue}>
           <NavigationContainer ref={navigationRef}>
             <Stack.Navigator initialRouteName='List' screenOptions={{ headerShown: false }}>
-              <Stack.Screen name='List'>
-                {() => <ListScreen ref={listScreenRef} />}
-              </Stack.Screen>
-              <Stack.Screen name='Chat'>
-                {() => <ChatScreen ref={chatScreenRef} />}
-              </Stack.Screen>
+              <Stack.Screen name='List'>{() => <ListScreen ref={listScreenRef} />}</Stack.Screen>
+              <Stack.Screen name='Chat'>{() => <ChatScreen ref={chatScreenRef} />}</Stack.Screen>
             </Stack.Navigator>
           </NavigationContainer>
         </ConfigProvider>

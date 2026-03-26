@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native'
-import { RowContentProps } from './types'
+import type { RowContentProps } from './types'
 import { colors, avatarColors } from '../../styles/theme'
 
 function getColorIndex(id: string): number {

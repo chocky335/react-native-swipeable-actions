@@ -3,7 +3,7 @@ import { StyleSheet, View, Platform } from 'react-native'
 
 import { SwipeableView } from './SwipeableView'
 import { SwipeableActions } from './SwipeableActions'
-import {
+import type {
   SwipeableProps,
   SwipeableMethods,
   SwipeProgressEvent,

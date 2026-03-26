@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { SwipeableActions, SwipeableActionsProps } from '../SwipeableActions'
+import { SwipeableActions, type SwipeableActionsProps } from '../SwipeableActions'
 
 describe('SwipeableActions', () => {
   it('is a function component', () => {

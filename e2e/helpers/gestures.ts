@@ -103,7 +103,8 @@ export async function swipeOnElement(
   // distance <= 1: coefficient of element width; > 1: pixel distance
   const swipePx = distance <= 1 ? size.width * distance : distance
   const centerY = location.y + size.height / 2
-  const startX = direction === 'left' ? location.x + size.width * 0.9 : location.x + size.width * 0.1
+  const startX =
+    direction === 'left' ? location.x + size.width * 0.9 : location.x + size.width * 0.1
   const endX = direction === 'left' ? startX - swipePx : startX + swipePx
 
   await driver.performActions([

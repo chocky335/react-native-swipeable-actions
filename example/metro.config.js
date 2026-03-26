@@ -1,5 +1,5 @@
 const { getDefaultConfig } = require('expo/metro-config')
-const path = require('path')
+const path = require('node:path')
 
 const projectRoot = __dirname
 const workspaceRoot = path.resolve(projectRoot, '..')
@@ -32,7 +32,7 @@ config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')]
 config.resolver.extraNodeModules = new Proxy(
   {},
   {
-    get: (target, name) => {
+    get: (_target, name) => {
       // First try example's node_modules
       const examplePath = path.join(projectRoot, 'node_modules', name)
       try {

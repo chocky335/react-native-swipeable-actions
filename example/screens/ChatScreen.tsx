@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { useConfig } from '../contexts/ConfigContext'
-import { ChatDemo, ChatDemoRef } from '../features/chat-demo'
+import { ChatDemo, type ChatDemoRef } from '../features/chat-demo'
 
 export interface ChatScreenRef {
   closeAllRows: () => void

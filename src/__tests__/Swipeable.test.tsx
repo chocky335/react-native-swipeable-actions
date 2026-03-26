@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import Swipeable from '../Swipeable'
-import { SwipeableProps, SwipeableMethods } from '../Swipeable.types'
+import type { SwipeableProps, SwipeableMethods } from '../Swipeable.types'
 
 const mockActions = createElement('View', { testID: 'actions' }, 'Delete')
 

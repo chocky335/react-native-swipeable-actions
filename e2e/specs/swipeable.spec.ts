@@ -6,7 +6,9 @@ import { swipeOnElement } from '../helpers/gestures'
 
 // Configure which tests to run (empty = all tests, 0-indexed)
 // prettier-ignore
-const ENABLED_TESTS: number[] = process.env.ENABLED_TESTS ? process.env.ENABLED_TESTS.split(',').map(n => parseInt(n, 10)) : []
+const ENABLED_TESTS: number[] = process.env.ENABLED_TESTS
+  ? process.env.ENABLED_TESTS.split(',').map((n) => parseInt(n, 10))
+  : []
 
 const shouldRun = (testNum: number) => ENABLED_TESTS.length === 0 || ENABLED_TESTS.includes(testNum)
 describe('Swipeable E2E Tests', () => {
@@ -236,82 +238,91 @@ describe('Swipeable E2E Tests', () => {
       await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
     })
   })
-  ;(shouldRun(10) ? describe : describe.skip)('Test 10: Disable gesture while open closes row', () => {
-    it('should close open row when gesture is disabled', async () => {
-      await listDemoPage.swipeRowOpen(0, 'left')
-      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+  ;(shouldRun(10) ? describe : describe.skip)(
+    'Test 10: Disable gesture while open closes row',
+    () => {
+      it('should close open row when gesture is disabled', async () => {
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
 
-      await configPanel.open()
-      await configPanel.disableGesture()
-      await configPanel.close()
+        await configPanel.open()
+        await configPanel.disableGesture()
+        await configPanel.close()
 
-      await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
 
-      // Verify state is actually reset: re-enable and swipe should work cleanly
-      await configPanel.open()
-      await configPanel.enableGesture()
-      await configPanel.close()
+        // Verify state is actually reset: re-enable and swipe should work cleanly
+        await configPanel.open()
+        await configPanel.enableGesture()
+        await configPanel.close()
 
-      await listDemoPage.swipeRowOpen(0, 'left')
-      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
-    })
-  })
-  ;(shouldRun(11) ? describe : describe.skip)('Test 11: Gesture disabled with leading actions', () => {
-    it('should not open leading swipeable when gesture is disabled', async () => {
-      await configPanel.open()
-      await configPanel.enableLeadingMode()
-      await configPanel.disableGesture()
-      await configPanel.close()
-
-      const element = await $(selectors.swipeableRow(0))
-      await swipeOnElement(element as unknown as WebdriverIO.Element, 'right')
-      await driver.pause(500)
-
-      // Assert FIRST — before alert dismissal changes state
-      await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
-
-      // Then clean up alert if present
-      const okButton = await $(selectors.okButton)
-      if (await okButton.isExisting()) {
-        await okButton.click()
-        await driver.pause(300)
-      }
-    })
-  })
-  ;(shouldRun(12) ? describe : describe.skip)('Test 12: Close All works with gesture disabled', () => {
-    it('should close rows via API even when gesture is disabled', async () => {
-      // Open rows first
-      await testSwipeOpen(numberOfRows, 'left')
-
-      // Disable gesture (closes all rows via setter)
-      await configPanel.open()
-      await configPanel.disableGesture()
-
-      // Call Close All on top of already-closed rows (idempotent check)
-      await configPanel.tapCloseAll()
-      await configPanel.close()
-
-      // Verify no crash and rows are closed
-      await mapRows(async (index) => {
-        await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
       })
+    }
+  )
+  ;(shouldRun(11) ? describe : describe.skip)(
+    'Test 11: Gesture disabled with leading actions',
+    () => {
+      it('should not open leading swipeable when gesture is disabled', async () => {
+        await configPanel.open()
+        await configPanel.enableLeadingMode()
+        await configPanel.disableGesture()
+        await configPanel.close()
 
-      // Re-enable gesture, open rows, then Close All should still work
-      await configPanel.open()
-      await configPanel.enableGesture()
-      await configPanel.close()
+        const element = await $(selectors.swipeableRow(0))
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'right')
+        await driver.pause(500)
 
-      await testSwipeOpen(numberOfRows, 'left')
+        // Assert FIRST — before alert dismissal changes state
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
 
-      await configPanel.open()
-      await configPanel.tapCloseAll()
-      await configPanel.close()
-
-      await mapRows(async (index) => {
-        await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        // Then clean up alert if present
+        const okButton = await $(selectors.okButton)
+        if (await okButton.isExisting()) {
+          await okButton.click()
+          await driver.pause(300)
+        }
       })
-    })
-  })
+    }
+  )
+  ;(shouldRun(12) ? describe : describe.skip)(
+    'Test 12: Close All works with gesture disabled',
+    () => {
+      it('should close rows via API even when gesture is disabled', async () => {
+        // Open rows first
+        await testSwipeOpen(numberOfRows, 'left')
+
+        // Disable gesture (closes all rows via setter)
+        await configPanel.open()
+        await configPanel.disableGesture()
+
+        // Call Close All on top of already-closed rows (idempotent check)
+        await configPanel.tapCloseAll()
+        await configPanel.close()
+
+        // Verify no crash and rows are closed
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+
+        // Re-enable gesture, open rows, then Close All should still work
+        await configPanel.open()
+        await configPanel.enableGesture()
+        await configPanel.close()
+
+        await testSwipeOpen(numberOfRows, 'left')
+
+        await configPanel.open()
+        await configPanel.tapCloseAll()
+        await configPanel.close()
+
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+      })
+    }
+  )
   ;(shouldRun(13) ? describe : describe.skip)(
     'Test 13: CloseAll after removeClippedSubviews detach/reattach (PR #1 regression)',
     () => {
