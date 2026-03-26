@@ -1,4 +1,16 @@
 import { swipeOnElement } from '../helpers/gestures'
+import {
+  assertActionsBesideContent,
+  assertContentAtRest,
+  assertContentTranslated,
+  getElementRect
+} from '../helpers/position'
+import {
+  assertVisualStability,
+  isScreenshotDiffEnabled,
+  takeElementScreenshot,
+  compareScreenshots
+} from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
 import { chatPage } from '../pages/chatPage'
 import { configPanel } from '../pages/configPanel'
@@ -414,6 +426,197 @@ describe('Swipeable E2E Tests', () => {
 
         // item-0's leave button should STILL be visible after reorder
         await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Restore FlashList mode
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+      })
+    }
+  )
+
+  // --- iOS Regression Tests (Tests 16-20) ---
+  // These tests target bugs introduced by commit 784dc64 that cause
+  // iOS-specific performance degradation and visual artifact glitches
+  // during list reorder when items are swiped open.
+
+  ;(shouldRun(16) ? describe : describe.skip)(
+    'Test 16: FlashList reorder preserves open state (default recycling mode)',
+    () => {
+      it('should keep swipeable open after reorder in FlashList (recyclingKey path)', async () => {
+        // Use default FlashList mode (NOT FlatList) - exercises the recyclingKey code path
+        // which is different from FlatList's DELETE+INSERT reorder tested in Test 15.
+
+        // Swipe item-0 open
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Trigger reorder
+        await configPanel.open()
+        await configPanel.tapSimulateReorder()
+        await configPanel.close()
+
+        // Wait for layout to settle
+        await driver.pause(500)
+
+        // item-0's leave button should still be visible
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Position assertions: actions should be beside content, not desynchronized
+        await assertActionsBesideContent(
+          selectors.swipeableRow(0),
+          selectors.leaveButtonForItem(0),
+          'right'
+        )
+      })
+    }
+  )
+
+  ;(shouldRun(17) ? describe : describe.skip)(
+    'Test 17: Rapid consecutive reorders do not corrupt state',
+    () => {
+      it('should preserve open state and not open wrong items after rapid reorders', async () => {
+        // Swipe item-0 open
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Trigger 3 rapid reorders with 50ms gaps (via example app button)
+        // This stresses the async dispatch queue and snapToOpen key-coherence.
+        await configPanel.open()
+        await configPanel.tapSimulateRapidReorder()
+        await configPanel.close()
+
+        // Wait for all async dispatches to drain
+        await driver.pause(800)
+
+        // item-0 should still be open
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // No other items should be incorrectly opened by the snapToOpen race
+        // (snapToOpen key-coherence bug would cause wrong items to open)
+        await expect($(selectors.leaveButtonForItem(1))).not.toBeDisplayed()
+        await expect($(selectors.leaveButtonForItem(2))).not.toBeDisplayed()
+        await expect($(selectors.leaveButtonForItem(3))).not.toBeDisplayed()
+      })
+    }
+  )
+
+  ;(shouldRun(18) ? describe : describe.skip)(
+    'Test 18: Actions position matches content after reorder (no desync)',
+    () => {
+      it('should maintain correct spatial relationship between content and actions', async () => {
+        // Use FlatList to test the DELETE+INSERT path specifically
+        await configPanel.open()
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Swipe item-0 open
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Record pre-reorder content position
+        const preRect = await getElementRect(selectors.swipeableRow(0))
+
+        // Trigger reorder
+        await configPanel.open()
+        await configPanel.tapSimulateReorder()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Verify content is still translated (not snapped back to origin)
+        // The stale view refs bug in didAddSubview causes transforms to not be restored,
+        // so content would be at x=0 (closed position) instead of translated.
+        await assertContentTranslated(selectors.swipeableRow(0), 40)
+
+        // Verify actions are visible and correctly positioned relative to content
+        await assertActionsBesideContent(
+          selectors.swipeableRow(0),
+          selectors.leaveButtonForItem(0),
+          'right'
+        )
+
+        // Restore FlashList mode
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+      })
+    }
+  )
+
+  ;(shouldRun(19) ? describe : describe.skip)(
+    'Test 19: Visual stability during reorder (no flicker artifacts)',
+    () => {
+      it('should show no visual flicker between pre-reorder and post-reorder states', async () => {
+        // Use FlatList to isolate the layout lifecycle
+        await configPanel.open()
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Swipe item-0 open
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+        await driver.pause(300)
+
+        // Assert visual stability through the reorder action.
+        // The willMove/didAddSubview/layoutSubviews double-dispatch bugs cause
+        // intermediate frames where content flashes to position 0 then snaps back.
+        await assertVisualStability(
+          selectors.swipeableRow(0),
+          async () => {
+            await configPanel.open()
+            await configPanel.tapSimulateReorder()
+            await configPanel.close()
+          },
+          {
+            sampleIntervals: [100, 300, 500],
+            threshold: 0.05 // 5% tolerance for animation/position differences
+          }
+        )
+
+        // Restore FlashList mode
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+      })
+    }
+  )
+
+  ;(shouldRun(20) ? describe : describe.skip)(
+    'Test 20: Close animation after reorder completes cleanly',
+    () => {
+      it('should fully close an open row after reorder without animation fighting', async () => {
+        // Use FlatList
+        await configPanel.open()
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Swipe item-0 open
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Trigger reorder
+        await configPanel.open()
+        await configPanel.tapSimulateReorder()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Verify still open after reorder
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Now close the item (swipe back to closed)
+        await listDemoPage.swipeRowClose(0, 'right')
+        await driver.pause(500)
+
+        // The item should be fully closed.
+        // The currentTranslation stale state bug causes layoutSubviews async dispatch
+        // to fight the close animation, preventing clean close.
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+
+        // Content should be back at rest position (x ~= 0)
+        await assertContentAtRest(selectors.swipeableRow(0), 10)
 
         // Restore FlashList mode
         await configPanel.open()
