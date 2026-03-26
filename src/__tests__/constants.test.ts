@@ -1,4 +1,4 @@
-import { SWIPE_PROGRESS, SWIPE_DEFAULTS } from '../constants'
+import { SWIPE_DEFAULTS, SWIPE_PROGRESS } from '../constants'
 
 describe('SWIPE_PROGRESS', () => {
   it('defines open threshold near 1', () => {

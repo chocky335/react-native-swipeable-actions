@@ -1,5 +1,5 @@
-import { ReactNode, Ref } from 'react'
-import { ViewProps, StyleProp, ViewStyle } from 'react-native'
+import type { ReactNode, Ref } from 'react'
+import type { StyleProp, ViewProps, ViewStyle } from 'react-native'
 
 export interface SwipeProgressEvent {
   nativeEvent: {

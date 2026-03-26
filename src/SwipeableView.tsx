@@ -1,6 +1,6 @@
-import { forwardRef, createElement, ComponentProps } from 'react'
-import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core'
-import { SwipeableViewProps, NativeSwipeableRef } from './Swipeable.types'
+import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core'
+import { type ComponentProps, createElement, forwardRef } from 'react'
+import type { NativeSwipeableRef, SwipeableViewProps } from './Swipeable.types'
 
 const NativeView = requireNativeViewManager<SwipeableViewProps>('Swipeable')
 

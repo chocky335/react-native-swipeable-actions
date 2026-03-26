@@ -1,0 +1,8 @@
+`<ScrollView $...>$body</ScrollView>` where {
+    $body <: contains `$_.map($...)`,
+    register_diagnostic(
+        span = $body,
+        message = "Avoid rendering lists with ScrollView + .map(). Use FlatList for virtualized rendering and better memory usage.",
+        severity = "warn"
+    )
+}

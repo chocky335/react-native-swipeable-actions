@@ -1,5 +1,5 @@
+import path from 'node:path'
 import type { Options } from '@wdio/types'
-import path from 'path'
 import { setPlatform } from './helpers/selectors'
 
 const defaultAppPath = path.resolve(
@@ -55,7 +55,7 @@ export const config: Options.Testrunner = {
     timeout: 120000
   },
 
-  before: async function () {
+  before: async () => {
     setPlatform('iOS')
   }
 }

@@ -1,6 +1,6 @@
-import { StyleSheet, View, Text } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import Animated, { useSharedValue, useAnimatedStyle } from 'react-native-reanimated'
+import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { Swipeable } from 'react-native-swipeable-actions'
 import { colors } from '../../styles'
 
@@ -25,7 +25,13 @@ interface SeekbarRowProps {
   gestureEnabled: boolean
 }
 
-export function SeekbarRow({ isReversed, friction, threshold, dragOffsetFromEdge, gestureEnabled }: SeekbarRowProps) {
+export function SeekbarRow({
+  isReversed,
+  friction,
+  threshold,
+  dragOffsetFromEdge,
+  gestureEnabled
+}: SeekbarRowProps) {
   const thumbX = useSharedValue(TRACK_WIDTH - THUMB_SIZE)
   const startX = useSharedValue(0)
 
@@ -45,7 +51,7 @@ export function SeekbarRow({ isReversed, friction, threshold, dragOffsetFromEdge
   }))
 
   return (
-    <View testID="seekbar-row">
+    <View testID='seekbar-row'>
       <Swipeable
         actionsPosition={isReversed ? 'left' : 'right'}
         actionsWidth={80}
@@ -61,7 +67,7 @@ export function SeekbarRow({ isReversed, friction, threshold, dragOffsetFromEdge
           <GestureDetector gesture={pan}>
             <Animated.View style={styles.trackHitArea}>
               <View style={styles.track}>
-                <Animated.View style={[styles.thumb, thumbStyle]} testID="seekbar-thumb" />
+                <Animated.View style={[styles.thumb, thumbStyle]} testID='seekbar-thumb' />
               </View>
             </Animated.View>
           </GestureDetector>

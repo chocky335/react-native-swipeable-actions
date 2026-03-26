@@ -1,0 +1,12 @@
+or {
+    `$_.indexOf($_) !== -1`,
+    `$_.indexOf($_) === -1`,
+    `$_.indexOf($_) > -1`,
+    `$_.indexOf($_) >= 0`
+} as $expr where {
+    register_diagnostic(
+        span = $expr,
+        message = "Use .includes() instead of .indexOf() comparison. It's more readable and returns a boolean directly.",
+        severity = "warn"
+    )
+}

@@ -19,7 +19,30 @@ on:
         default: false
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Biome lint
+        run: npm run lint
+
+      - name: Biome format check
+        run: npm run format:check
+
+      - name: TypeScript check
+        run: npm run typecheck
+
   test:
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -220,6 +243,14 @@ jobs:
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
         run: cd e2e && npm run test:ios
+
+      - name: Install Maestro
+        run: curl -Ls "https://get.maestro.mobile.dev" | bash
+
+      - name: Run Maestro seekbar regression test
+        run: |
+          export PATH="$PATH:$HOME/.maestro/bin"
+          maestro test e2e/maestro/seekbar-regression.yaml
 
       - name: Upload Appium logs
         if: always()

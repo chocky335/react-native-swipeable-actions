@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import { Implementation } from '../features/list-demo'
+import type { Implementation } from '../features/list-demo'
 
 export interface ConfigContextValue {
   implementation: Implementation

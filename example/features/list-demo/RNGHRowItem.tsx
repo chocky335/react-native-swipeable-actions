@@ -1,9 +1,11 @@
 import { useCallback } from 'react'
 import { StyleSheet, View } from 'react-native'
-import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable'
-import { StaticMuteAction, StaticLeaveAction } from './actions'
+import ReanimatedSwipeable, {
+  type SwipeableMethods
+} from 'react-native-gesture-handler/ReanimatedSwipeable'
+import { StaticLeaveAction, StaticMuteAction } from './actions'
 import { RowContent } from './RowContent'
-import { RNGHRowItemProps } from './types'
+import type { RNGHRowItemProps } from './types'
 import { DELETE_DELAY_MS } from './utils'
 
 export function RNGHRowItem({
@@ -51,7 +53,7 @@ export function RNGHRowItem({
 
   return (
     <ReanimatedSwipeable
-      ref={swipeableRef as React.RefObject<any>}
+      ref={swipeableRef as React.RefObject<SwipeableMethods | null>}
       renderRightActions={isReversed ? undefined : renderActions}
       renderLeftActions={isReversed ? renderActions : undefined}
       overshootRight={false}

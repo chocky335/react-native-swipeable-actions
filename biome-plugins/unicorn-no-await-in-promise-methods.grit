@@ -1,0 +1,12 @@
+or {
+    `Promise.all([$body])`,
+    `Promise.allSettled([$body])`,
+    `Promise.race([$body])`
+} as $call where {
+    $body <: contains `await $_`,
+    register_diagnostic(
+        span = $call,
+        message = "Awaiting inside Promise.all/allSettled/race defeats parallelism — promises are resolved sequentially before being passed. Remove the inner await.",
+        severity = "error"
+    )
+}

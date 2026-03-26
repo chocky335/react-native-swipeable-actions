@@ -1,17 +1,16 @@
-import { forwardRef, useImperativeHandle, useRef, useCallback, useState, useEffect } from 'react'
-import { StyleSheet, View, Platform } from 'react-native'
-
-import { SwipeableView } from './SwipeableView'
-import { SwipeableActions } from './SwipeableActions'
-import {
-  SwipeableProps,
-  SwipeableMethods,
-  SwipeProgressEvent,
-  SwipeStateEvent,
-  NativeSwipeableRef
-} from './Swipeable.types'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { Platform, StyleSheet, View } from 'react-native'
 import { SWIPE_DEFAULTS } from './constants'
-import { openByKey, closeByKey, closeAll, isOpenByKey } from './nativeModuleUtils'
+import { closeAll, closeByKey, isOpenByKey, openByKey } from './nativeModuleUtils'
+import type {
+  NativeSwipeableRef,
+  SwipeableMethods,
+  SwipeableProps,
+  SwipeProgressEvent,
+  SwipeStateEvent
+} from './Swipeable.types'
+import { SwipeableActions } from './SwipeableActions'
+import { SwipeableView } from './SwipeableView'
 
 function normalizeRecyclingKey(key: string | number | undefined): string | undefined {
   if (key == null) return undefined

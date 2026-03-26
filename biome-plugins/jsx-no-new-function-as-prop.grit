@@ -1,0 +1,14 @@
+or {
+    `($...) => $_`,
+    `function($...) { $_ }`
+} as $fn where {
+    $fn <: within or {
+        `<$_ $... />`,
+        `<$_ $...>$_</$_>`
+    },
+    register_diagnostic(
+        span = $fn,
+        message = "Inline function as JSX prop creates a new function every render, defeating memoization. Extract to a variable or useCallback().",
+        severity = "warn"
+    )
+}

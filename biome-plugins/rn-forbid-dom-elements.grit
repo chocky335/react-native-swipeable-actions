@@ -1,0 +1,21 @@
+or {
+	`<div $... />`, `<div $...>$_</div>`,
+	`<span $... />`, `<span $...>$_</span>`,
+	`<p $... />`, `<p $...>$_</p>`,
+	`<h1 $... />`, `<h1 $...>$_</h1>`,
+	`<h2 $... />`, `<h2 $...>$_</h2>`,
+	`<h3 $... />`, `<h3 $...>$_</h3>`,
+	`<h4 $... />`, `<h4 $...>$_</h4>`,
+	`<h5 $... />`, `<h5 $...>$_</h5>`,
+	`<h6 $... />`, `<h6 $...>$_</h6>`,
+	`<a $... />`, `<a $...>$_</a>`,
+	`<img $... />`,
+	`<input $... />`,
+	`<button $... />`, `<button $...>$_</button>`
+} as $el where {
+	register_diagnostic(
+		span = $el,
+		message = "DOM elements don't work in React Native. Use <View>, <Text>, <Image>, <Pressable>, <TextInput> from 'react-native'.",
+		severity = "warn"
+	)
+}

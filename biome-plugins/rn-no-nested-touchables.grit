@@ -1,0 +1,16 @@
+or {
+	`<Pressable $...>$body</Pressable>`,
+	`<TouchableOpacity $...>$body</TouchableOpacity>`
+} where {
+	$body <: contains or {
+		`<Pressable $... />`,
+		`<Pressable $...>$_</Pressable>`,
+		`<TouchableOpacity $... />`,
+		`<TouchableOpacity $...>$_</TouchableOpacity>`
+	} as $inner,
+	register_diagnostic(
+		span = $inner,
+		message = "Nested touchable/pressable elements cause accessibility issues. Screen readers cannot distinguish between the outer and inner touch targets. Restructure to avoid nesting.",
+		severity = "error"
+	)
+}

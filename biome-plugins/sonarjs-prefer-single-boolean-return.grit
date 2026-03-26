@@ -1,0 +1,10 @@
+or {
+	`if ($_) { return true; } else { return false; }`,
+	`if ($_) { return false; } else { return true; }`
+} as $stmt where {
+	register_diagnostic(
+		span = $stmt,
+		message = "Simplify boolean return. Use 'return <condition>' (or 'return !<condition>') instead of if/else with true/false.",
+		severity = "hint"
+	)
+}

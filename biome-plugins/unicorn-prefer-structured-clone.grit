@@ -1,0 +1,7 @@
+`JSON.parse(JSON.stringify($_))` as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Use structuredClone() instead. JSON.parse(JSON.stringify()) is lossy — it drops functions, undefined, Dates, RegExps, Maps, Sets.",
+		severity = "warn"
+	)
+}

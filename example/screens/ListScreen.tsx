@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { useConfig } from '../contexts/ConfigContext'
-import { ListDemo, ListDemoRef } from '../features/list-demo'
+import { ListDemo, type ListDemoRef } from '../features/list-demo'
 
 export interface ListScreenRef {
   closeAllRows: () => void

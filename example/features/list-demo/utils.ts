@@ -1,4 +1,4 @@
-import { ItemData } from './types'
+import type { ItemData } from './types'
 
 export const ITEM_COUNT = 100
 export const DELETE_DELAY_MS = 200

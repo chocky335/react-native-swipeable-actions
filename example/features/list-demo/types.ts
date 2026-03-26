@@ -1,5 +1,4 @@
-import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable'
-import { SwipeableMethods } from 'react-native-swipeable-actions'
+import type { SwipeableMethods } from 'react-native-swipeable-actions'
 
 export type Implementation = 'swipeable' | 'rngh'
 

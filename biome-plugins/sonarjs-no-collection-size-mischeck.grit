@@ -1,0 +1,10 @@
+or {
+	`$_.length >= 0`,
+	`$_.size >= 0`
+} as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Collection .length/.size is always >= 0. Did you mean '> 0'?",
+		severity = "error"
+	)
+}

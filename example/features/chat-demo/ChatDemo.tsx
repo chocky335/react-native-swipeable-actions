@@ -1,3 +1,4 @@
+import { FlashList, type FlashListRef, useBenchmark } from '@shopify/flash-list'
 import {
   forwardRef,
   useCallback,
@@ -8,24 +9,23 @@ import {
   useState
 } from 'react'
 import {
-  StyleSheet,
-  Text,
-  View,
   Alert,
-  TouchableOpacity,
-  TextInput,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Keyboard
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native'
-import { FlashList, FlashListRef, useBenchmark } from '@shopify/flash-list'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Swipeable } from 'react-native-swipeable-actions'
-import { ChatMessage } from '../../components/ChatBubble'
-import { SwipeableChatMessage } from './SwipeableChatMessage'
-import { Implementation } from '../list-demo'
-import { colors } from '../../styles'
 import { HEADER_HEIGHT } from '../../components/AppHeader'
+import type { ChatMessage } from '../../components/ChatBubble'
+import { colors } from '../../styles'
+import type { Implementation } from '../list-demo'
+import { SwipeableChatMessage } from './SwipeableChatMessage'
 
 const MESSAGE_TEMPLATES = [
   'Hey! How are you doing?',
@@ -80,7 +80,15 @@ export interface ChatDemoProps {
 }
 
 export const ChatDemo = forwardRef<ChatDemoRef, ChatDemoProps>(function ChatDemo(
-  { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, onBenchmarkStateChange },
+  {
+    implementation: _implementation,
+    isReversed,
+    friction,
+    threshold,
+    dragOffset,
+    gestureEnabled,
+    onBenchmarkStateChange
+  },
   ref
 ) {
   const insets = useSafeAreaInsets()
@@ -102,7 +110,7 @@ export const ChatDemo = forwardRef<ChatDemoRef, ChatDemoProps>(function ChatDemo
     }
   }, [])
 
-  const { startBenchmark, isBenchmarkRunning } = useBenchmark(
+  const { startBenchmark } = useBenchmark(
     flashListRef as React.RefObject<FlashListRef<ChatMessage>>,
     (result) => {
       if (result.js) {

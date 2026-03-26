@@ -1,0 +1,8 @@
+`$_ ? $_ : $alt` as $outer where {
+	$alt <: `$_ ? $_ : $_`,
+	register_diagnostic(
+		span = $outer,
+		message = "Nested ternary expressions are hard to read. Use if/else statements or extract to a separate function.",
+		severity = "warn"
+	)
+}

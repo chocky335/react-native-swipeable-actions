@@ -1,0 +1,7 @@
+`export * from $_` as $decl where {
+	register_diagnostic(
+		span = $decl,
+		message = "export * re-exports everything, defeating tree-shaking and increasing bundle size. Use named exports instead.",
+		severity = "warn"
+	)
+}

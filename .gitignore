@@ -1,4 +1,4 @@
 build
 node_modules
 .build
-coverage
+coveragee2e/logs/

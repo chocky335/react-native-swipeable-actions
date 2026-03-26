@@ -1,6 +1,6 @@
-import { BasePage } from './basePage'
-import { selectors } from '../helpers/selectors'
 import { scrollDown, scrollUp, swipeOnElement } from '../helpers/gestures'
+import { selectors } from '../helpers/selectors'
+import { BasePage } from './basePage'
 
 class ListDemoPage extends BasePage {
   async waitForDisplayed(): Promise<void> {

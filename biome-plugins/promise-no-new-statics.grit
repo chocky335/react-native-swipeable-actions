@@ -1,0 +1,14 @@
+or {
+	`new Promise.resolve($...)`,
+	`new Promise.reject($...)`,
+	`new Promise.all($...)`,
+	`new Promise.allSettled($...)`,
+	`new Promise.race($...)`,
+	`new Promise.any($...)`
+} as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Promise.resolve(), Promise.reject(), and other static methods should not be called with 'new'. This throws a TypeError at runtime. Remove the 'new' keyword.",
+		severity = "error"
+	)
+}

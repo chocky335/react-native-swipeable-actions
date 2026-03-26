@@ -1,0 +1,9 @@
+`useEffect($callback, $...)` where {
+    $callback <: contains or { `setTimeout($...)`, `setInterval($...)` },
+    not $callback <: contains `return $_`,
+    register_diagnostic(
+        span = $callback,
+        message = "useEffect with setTimeout/setInterval must return a cleanup function. Leaked timers cause memory leaks and stale closures.",
+        severity = "error"
+    )
+}

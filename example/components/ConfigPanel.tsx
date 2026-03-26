@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native'
-import { Implementation } from '../features/list-demo'
+import type { Implementation } from '../features/list-demo'
 import { colors } from '../styles'
 import { ListConfigSection } from './ListConfigSection'
 import { SelectionRow } from './SelectionRow'

@@ -33,12 +33,12 @@ else
 fi
 echo ""
 
-# 2. ESLint
-echo -e "${YELLOW}[2/6] ESLint...${NC}"
+# 2. Biome lint
+echo -e "${YELLOW}[2/6] Biome lint...${NC}"
 if npm run lint; then
-    echo -e "${GREEN}  ✓ ESLint passed${NC}"
+    echo -e "${GREEN}  ✓ Biome lint passed${NC}"
 else
-    echo -e "${RED}  ✗ ESLint failed${NC}"
+    echo -e "${RED}  ✗ Biome lint failed${NC}"
     OVERALL_STATUS=1
 fi
 echo ""

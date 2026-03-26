@@ -1,2 +1,2 @@
-export { ChatDemo, type ChatDemoRef, type ChatDemoProps } from './ChatDemo'
+export { ChatDemo, type ChatDemoProps, type ChatDemoRef } from './ChatDemo'
 export { SwipeableChatMessage, type SwipeableChatMessageProps } from './SwipeableChatMessage'

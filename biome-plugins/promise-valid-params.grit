@@ -1,0 +1,11 @@
+or {
+	`$_.then()`,
+	`$_.catch()`,
+	`$_.finally()`
+} as $call where {
+	register_diagnostic(
+		span = $call,
+		message = "Promise method called without arguments. .then()/.catch()/.finally() require a callback.",
+		severity = "warn"
+	)
+}

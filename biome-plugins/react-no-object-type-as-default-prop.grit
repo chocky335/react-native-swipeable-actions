@@ -1,0 +1,12 @@
+or {
+	`function $name($params) { $_ }`,
+	`const $name = ($params) => { $_ }`,
+	`const $name = ($params) => $_`
+} where {
+	$params <: contains or { `[]`, `{}` } as $default,
+	register_diagnostic(
+		span = $default,
+		message = "Object/array default props create a new reference every render, defeating React.memo and causing unnecessary re-renders. Extract to a module-level constant.",
+		severity = "warn"
+	)
+}

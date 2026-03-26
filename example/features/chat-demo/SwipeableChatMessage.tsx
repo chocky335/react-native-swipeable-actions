@@ -1,9 +1,9 @@
-import { useCallback } from 'react'
 import * as Haptics from 'expo-haptics'
-import { Swipeable } from 'react-native-swipeable-actions'
-import { ChatBubble, ChatMessage } from '../../components/ChatBubble'
-import { REPLY_WIDTH, ReplyAction } from '../../components/ReplyAction'
+import { useCallback } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
+import { Swipeable } from 'react-native-swipeable-actions'
+import { ChatBubble, type ChatMessage } from '../../components/ChatBubble'
+import { REPLY_WIDTH, ReplyAction } from '../../components/ReplyAction'
 
 export interface SwipeableChatMessageProps {
   message: ChatMessage
@@ -53,7 +53,7 @@ export function SwipeableChatMessage({
     (value: number) => {
       progress.value = value
     },
-    [message, onBubblePress]
+    [progress]
   )
 
   // Determine actions position based on isReversed and message direction

@@ -1,8 +1,8 @@
-import { View, Text, TouchableOpacity } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
+import type { Implementation } from '../features/list-demo'
 import { buttonStyles, layoutStyles } from '../styles'
-import { SharedConfig, SharedConfigCallbacks } from './ConfigPanel'
-import { SelectionRow, SelectionOption } from './SelectionRow'
-import { Implementation } from '../features/list-demo'
+import type { SharedConfig, SharedConfigCallbacks } from './ConfigPanel'
+import { type SelectionOption, SelectionRow } from './SelectionRow'
 
 export interface ListConfigSectionProps {
   config: SharedConfig
@@ -46,7 +46,16 @@ const FLATLIST_OPTIONS: SelectionOption<boolean>[] = [
 ]
 
 export function ListConfigSection({ config, callbacks }: ListConfigSectionProps) {
-  const { implementation, isReversed, friction, threshold, dragOffset, gestureEnabled, useFlatList, isBenchmarkRunning } = config
+  const {
+    implementation,
+    isReversed,
+    friction,
+    threshold,
+    dragOffset,
+    gestureEnabled,
+    useFlatList,
+    isBenchmarkRunning
+  } = config
 
   const {
     onImplementationChange,
