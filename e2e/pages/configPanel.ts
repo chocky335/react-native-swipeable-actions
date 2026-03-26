@@ -106,6 +106,13 @@ class ConfigPanel extends BasePage {
   async disableFlatList(): Promise<void> {
     await this.tap(selectors.toggleFlatListOff)
   }
+
+  /**
+   * Tap Simulate Reorder button (moves item-3 to top of list)
+   */
+  async tapSimulateReorder(): Promise<void> {
+    await this.tap(selectors.simulateReorderButton)
+  }
 }
 
 export const configPanel = new ConfigPanel()

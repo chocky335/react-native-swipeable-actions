@@ -378,4 +378,37 @@ describe('Swipeable E2E Tests', () => {
       })
     }
   )
+  ;(shouldRun(15) ? describe : describe.skip)(
+    'Test 15: Reorder while swiped open retains open state (lobby reorder regression)',
+    () => {
+      it('should keep swipeable open when list reorders around it', async () => {
+        // Use FlatList to avoid FlashList recycling (isolate the layout bug)
+        await configPanel.open()
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Swipe item-0 open (reveal mute/leave actions)
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Trigger reorder: item-3 moves to top, item-0 shifts to index 1
+        // This simulates the lobby scenario where a new message bumps a room above
+        await configPanel.open()
+        await configPanel.tapSimulateReorder()
+        await configPanel.close()
+
+        // Wait for layout to settle after reorder
+        await driver.pause(1000)
+
+        // item-0's leave button should STILL be visible after reorder
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Restore FlashList mode
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+      })
+    }
+  )
 })
