@@ -1,12 +1,9 @@
 import { swipeOnElement } from '../helpers/gestures'
+import { assertActionsBesideContent, assertContentAtRest } from '../helpers/position'
 import {
-  assertActionsBesideContent,
-  assertContentAtRest
-} from '../helpers/position'
-import {
+  compareScreenshots,
   isScreenshotDiffEnabled,
-  takeElementScreenshot,
-  compareScreenshots
+  takeElementScreenshot
 } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
 import { chatPage } from '../pages/chatPage'
@@ -436,7 +433,6 @@ describe('Swipeable E2E Tests', () => {
   // These tests target bugs introduced by commit 784dc64 that cause
   // iOS-specific performance degradation and visual artifact glitches
   // during list reorder when items are swiped open.
-
   ;(shouldRun(18) ? describe : describe.skip)(
     'Test 18: Actions position matches content after reorder (no desync)',
     () => {

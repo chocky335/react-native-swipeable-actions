@@ -81,8 +81,7 @@ export async function assertActionsBesideContent(
   // Actions and content should share vertical space (same row)
   const contentBottom = content.y + content.height
   const actionsBottom = actions.y + actions.height
-  const verticalOverlap =
-    Math.min(contentBottom, actionsBottom) - Math.max(content.y, actions.y)
+  const verticalOverlap = Math.min(contentBottom, actionsBottom) - Math.max(content.y, actions.y)
   expect(verticalOverlap).toBeGreaterThan(0)
 }
 

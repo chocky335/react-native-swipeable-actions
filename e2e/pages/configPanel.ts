@@ -113,7 +113,6 @@ class ConfigPanel extends BasePage {
   async tapSimulateReorder(): Promise<void> {
     await this.tap(selectors.simulateReorderButton)
   }
-
 }
 
 export const configPanel = new ConfigPanel()

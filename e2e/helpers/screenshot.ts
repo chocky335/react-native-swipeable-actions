@@ -6,8 +6,8 @@
  */
 
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 import * as os from 'node:os'
+import * as path from 'node:path'
 
 const SCREENSHOT_DIR = path.join(os.tmpdir(), 'swipeable-e2e-screenshots')
 
@@ -21,10 +21,7 @@ function ensureDir(): void {
  * Take a screenshot of a specific element and save it.
  * Returns the base64 string for comparison.
  */
-export async function takeElementScreenshot(
-  selector: string,
-  name: string
-): Promise<string> {
+export async function takeElementScreenshot(selector: string, name: string): Promise<string> {
   ensureDir()
   const el = await $(selector)
   await el.waitForDisplayed({ timeout: 5000 })
@@ -96,7 +93,6 @@ export async function assertVisualStability(
   selector: string,
   action: () => Promise<void>,
   options: {
-    settleTime?: number
     sampleIntervals?: number[]
     threshold?: number
   } = {}
@@ -107,11 +103,7 @@ export async function assertVisualStability(
     return
   }
 
-  const {
-    settleTime = 500,
-    sampleIntervals = [100, 300, 500],
-    threshold = 0.02
-  } = options
+  const { sampleIntervals = [100, 300, 500], threshold = 0.02 } = options
 
   // Take baseline before the action
   const baseline = await takeElementScreenshot(selector, 'stability-baseline')
@@ -123,10 +115,7 @@ export async function assertVisualStability(
   const samples: string[] = []
   for (const interval of sampleIntervals) {
     await driver.pause(interval - (sampleIntervals[sampleIntervals.indexOf(interval) - 1] ?? 0))
-    const sample = await takeElementScreenshot(
-      selector,
-      `stability-sample-${interval}ms`
-    )
+    const sample = await takeElementScreenshot(selector, `stability-sample-${interval}ms`)
     samples.push(sample)
   }
 

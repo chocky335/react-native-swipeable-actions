@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native'
+import { render } from '@testing-library/react-native'
 import { createElement } from 'react'
 import Swipeable from '../Swipeable'
 import type { SwipeableMethods, SwipeableProps } from '../Swipeable.types'
@@ -95,12 +95,15 @@ describe('Swipeable', () => {
       ;(SwipeableModule.isOpenByKey as jest.Mock).mockReturnValue(false)
 
       render(
-        createElement(Swipeable, {
-          actions: mockActions,
-          actionsWidth: 80,
-          recyclingKey: 'key-1',
-          children: createElement('View')
-        })
+        createElement(
+          Swipeable,
+          {
+            actions: mockActions,
+            actionsWidth: 80,
+            recyclingKey: 'key-1'
+          },
+          createElement('View')
+        )
       )
 
       // isOpenByKey should be called exactly once (in useState initializer).
@@ -113,24 +116,30 @@ describe('Swipeable', () => {
       ;(SwipeableModule.isOpenByKey as jest.Mock).mockReturnValue(false)
 
       const { rerender } = render(
-        createElement(Swipeable, {
-          actions: mockActions,
-          actionsWidth: 80,
-          recyclingKey: 'key-1',
-          children: createElement('View')
-        })
+        createElement(
+          Swipeable,
+          {
+            actions: mockActions,
+            actionsWidth: 80,
+            recyclingKey: 'key-1'
+          },
+          createElement('View')
+        )
       )
 
       jest.clearAllMocks()
       ;(SwipeableModule.isOpenByKey as jest.Mock).mockReturnValue(true)
 
       rerender(
-        createElement(Swipeable, {
-          actions: mockActions,
-          actionsWidth: 80,
-          recyclingKey: 'key-2',
-          children: createElement('View')
-        })
+        createElement(
+          Swipeable,
+          {
+            actions: mockActions,
+            actionsWidth: 80,
+            recyclingKey: 'key-2'
+          },
+          createElement('View')
+        )
       )
 
       // useEffect should call isOpenByKey for the new key
@@ -141,13 +150,16 @@ describe('Swipeable', () => {
       ;(SwipeableModule.isOpenByKey as jest.Mock).mockReturnValue(true)
 
       const { getByTestId } = render(
-        createElement(Swipeable, {
-          actions: mockActions,
-          actionsWidth: 80,
-          recyclingKey: 'key-1',
-          testID: 'swipeable',
-          children: createElement('View')
-        })
+        createElement(
+          Swipeable,
+          {
+            actions: mockActions,
+            actionsWidth: 80,
+            recyclingKey: 'key-1',
+            testID: 'swipeable'
+          },
+          createElement('View')
+        )
       )
 
       // SwipeableActions should be rendered on the first render (no flash)

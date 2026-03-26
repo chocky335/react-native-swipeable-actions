@@ -138,7 +138,7 @@ export const selectors = {
   // Reorder regression
   get simulateReorderButton() {
     return byTestId('simulate-reorder-button')
-  },
+  }
 }
 
 /**
