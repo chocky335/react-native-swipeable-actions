@@ -55,3 +55,11 @@ export function closeAll(animated?: boolean): void {
     handleNativeError(error, 'closeAll')
   }
 }
+
+export function isOpenByKey(key: string): boolean {
+  try {
+    return SwipeableModule.isOpenByKey(key)
+  } catch {
+    return false
+  }
+}

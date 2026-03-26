@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useCallback, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useCallback, useState, useEffect } from 'react'
 import { StyleSheet, View, Platform } from 'react-native'
 
 import { SwipeableView } from './SwipeableView'
@@ -11,7 +11,7 @@ import {
   NativeSwipeableRef
 } from './Swipeable.types'
 import { SWIPE_DEFAULTS } from './constants'
-import { openByKey, closeByKey, closeAll } from './nativeModuleUtils'
+import { openByKey, closeByKey, closeAll, isOpenByKey } from './nativeModuleUtils'
 
 function normalizeRecyclingKey(key: string | number | undefined): string | undefined {
   if (key == null) return undefined
@@ -47,8 +47,24 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
   ref
 ) {
   const nativeRef = useRef<NativeSwipeableRef>(null)
-  const [hasActionsRendered, setHasActionsRendered] = useState(false)
+  // Initialize from native cache: if this recyclingKey was open, render actions immediately.
+  // This handles FlatList remounting components during data reorder - React state is lost
+  // but native cache preserves the open state.
+  const [hasActionsRendered, setHasActionsRendered] = useState(() => {
+    const cachedOpen = normalizedKey != null && isOpenByKey(normalizedKey)
+    return cachedOpen
+  })
   const swipeStartedRef = useRef(false)
+
+  // When recyclingKey changes (FlatList reorder/recycle), check if the new key
+  // was previously open. FlatList reuses component instances without remounting,
+  // so useState initializer doesn't re-run. This effect syncs hasActionsRendered
+  // with the native cached open state when the key changes.
+  useEffect(() => {
+    if (normalizedKey && !hasActionsRendered && isOpenByKey(normalizedKey)) {
+      setHasActionsRendered(true)
+    }
+  }, [normalizedKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Normalize and sync recyclingKey to ref for use in useImperativeHandle
   // (set during render to ensure it's always current before callbacks fire)
@@ -143,8 +159,8 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
       onSwipeStateChange={handleSwipeStateChange}
       onSwipeEnd={handleSwipeEnd}
     >
-      {hasActionsRendered && (
-        <SwipeableActions actionsPosition={actionsPosition}>{actions}</SwipeableActions>
+      {(hasActionsRendered || (normalizedKey != null && isOpenByKey(normalizedKey))) && (
+        <SwipeableActions actionsPosition={actionsPosition} testID={testID ? `${testID}-actions` : undefined}>{actions}</SwipeableActions>
       )}
 
       <View style={styles.content}>{children}</View>

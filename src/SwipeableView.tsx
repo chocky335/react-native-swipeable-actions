@@ -9,6 +9,7 @@ interface SwipeableNativeModule {
   openByKey: (key: string) => void
   closeByKey: (key: string, animated?: boolean) => void
   closeAll: (animated?: boolean) => void
+  isOpenByKey: (key: string) => boolean
 }
 
 export const SwipeableModule = requireNativeModule<SwipeableNativeModule>('Swipeable')

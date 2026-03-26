@@ -9,6 +9,8 @@ export interface SwipeableActionsProps {
   children: ReactNode
   /** Position of actions: 'left' or 'right' */
   actionsPosition: 'left' | 'right'
+  /** Test ID for e2e testing */
+  testID?: string
 }
 
 /**
@@ -16,11 +18,12 @@ export interface SwipeableActionsProps {
  *
  * Handles entrance animation when children mount.
  */
-export function SwipeableActions({ children, actionsPosition }: SwipeableActionsProps) {
+export function SwipeableActions({ children, actionsPosition, testID }: SwipeableActionsProps) {
   return (
     <View
       style={actionsPosition === 'left' ? styles.actionsLeading : styles.actionsTrailing}
       pointerEvents={children ? 'auto' : 'none'}
+      testID={testID}
     >
       {children}
     </View>
