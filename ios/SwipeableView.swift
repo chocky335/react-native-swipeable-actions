@@ -457,6 +457,9 @@ public class SwipeableView: ExpoView {
         var translation = currentTranslation
         if isAnimating, let presentationLayer = contentView?.layer.presentation() {
             translation = presentationLayer.transform.m41 // tx component of transform
+            // Keep currentTranslation in sync so layoutSubviews and other guards
+            // see the real position, not a stale value from before animation started.
+            currentTranslation = translation
             // Update actions to match content position
             let progress = min(abs(translation) / actionsWidth, 1.0)
             let offset = isLeading ? -actionsWidth : actionsWidth
