@@ -225,7 +225,11 @@ public class SwipeableView: ExpoView {
 
             // Apply using local shouldOpen (pendingShouldOpen was cleared by close)
             if shouldOpen {
-                DispatchQueue.main.async { [weak self] in self?.snapToOpen() }
+                let keyAtDispatch = recyclingKey
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.recyclingKey == keyAtDispatch else { return }
+                    self.snapToOpen()
+                }
             }
         }
     }
