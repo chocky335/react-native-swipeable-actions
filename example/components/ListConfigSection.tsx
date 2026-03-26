@@ -58,7 +58,8 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     onUseFlatListChange,
     onCloseAll,
     onResetAll,
-    onBenchmark
+    onBenchmark,
+    onSimulateReorder
   } = callbacks
 
   return (
@@ -128,6 +129,13 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
           <Text style={buttonStyles.closeButtonText}>Reset All</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          testID='simulate-reorder-button'
+          style={buttonStyles.closeButton}
+          onPress={onSimulateReorder}
+        >
+          <Text style={buttonStyles.closeButtonText}>Reorder</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           testID='run-benchmark'
           style={[

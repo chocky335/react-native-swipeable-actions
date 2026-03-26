@@ -133,6 +133,11 @@ export const selectors = {
   },
   get seekbarAction() {
     return byTestId('seekbar-action')
+  },
+
+  // Reorder regression
+  get simulateReorderButton() {
+    return byTestId('simulate-reorder-button')
   }
 }
 

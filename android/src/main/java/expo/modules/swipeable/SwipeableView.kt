@@ -89,6 +89,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         fun clearCache() {
             openStateCache.evictAll()
         }
+
+        /** Check if a recyclingKey is cached as open (for JS-side state initialization) */
+        fun isOpenByKey(key: String): Boolean = getOpenState(key)
     }
 
     private val density = context.resources.displayMetrics.density
@@ -182,7 +185,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
             close(animated = false)
 
-            // Apply using local shouldOpen (pendingShouldOpen was cleared by close)
+            // Apply using local shouldOpen (pendingShouldOpen was cleared by close).
+            // Set recycleSnapPending so onViewAdded can position actions immediately
+            // when React renders them (isOpenByKey initializes hasActionsRendered=true
+            // before snapToOpen runs on the next frame).
+            recycleSnapPending = shouldOpen
             if (shouldOpen) {
                 post { snapToOpen() }
             }
@@ -197,6 +204,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var isGestureActivated: Boolean = false
     private var lastEmittedProgress: Float = -1f
     private var pendingShouldOpen: Boolean = false
+    /** Tracks pending snapToOpen from recyclingKey setter. Unlike pendingShouldOpen,
+     *  this survives close(animated:false) so onViewAdded can position actions correctly. */
+    private var recycleSnapPending: Boolean = false
     private var lastEmittedWillEndState: String? = null
 
     // Track if open animation was explicitly interrupted by close() for autoClose
@@ -237,6 +247,41 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     // Track when a child (e.g. RNGH gesture handler) claims the touch
     private var childRequestedDisallowIntercept: Boolean = false
+
+    // Layout guard: re-applies translations for a few frames after a reorder.
+    // Fabric may reset child translationX during prop reconciliation after a
+    // recyclingKey change. This guard runs for a bounded number of frames to
+    // detect and correct mismatches, then stops automatically.
+    private var layoutGuardCallback: Choreographer.FrameCallback? = null
+    private var layoutGuardFramesRemaining: Int = 0
+
+    private fun startLayoutGuard(frames: Int = 5) {
+        stopLayoutGuard()
+        layoutGuardFramesRemaining = frames
+        layoutGuardCallback = Choreographer.FrameCallback {
+            layoutGuardFramesRemaining--
+            if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
+                val contentTx = contentView?.translationX ?: 0f
+                if (contentTx != currentTranslation) {
+                    contentView?.translationX = currentTranslation
+                    updateActionsTransform()
+                    actionsView?.visibility = View.VISIBLE
+                }
+            }
+            if (layoutGuardFramesRemaining > 0) {
+                layoutGuardCallback?.let { Choreographer.getInstance().postFrameCallback(it) }
+            } else {
+                layoutGuardCallback = null
+            }
+        }
+        layoutGuardCallback?.let { Choreographer.getInstance().postFrameCallback(it) }
+    }
+
+    private fun stopLayoutGuard() {
+        layoutGuardCallback?.let { Choreographer.getInstance().removeFrameCallback(it) }
+        layoutGuardCallback = null
+        layoutGuardFramesRemaining = 0
+    }
 
     init {
         clipChildren = false
@@ -283,6 +328,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
 
         if (wasActionsNil && actionsView != null) {
+            // Prevent child clipping: Yoga lays out children for absoluteFill (full parent width)
+            // but our onLayout overrides the actionsView bounds to actionsWidth. Without this,
+            // children positioned by Yoga's flex-end would be clipped beyond the narrower bounds.
+            (actionsView as? ViewGroup)?.clipChildren = false
+            (actionsView as? ViewGroup)?.clipToPadding = false
+
             if (isOpen || isAnimating) {
                 actionsView?.visibility = View.VISIBLE
                 actionsView?.translationX = 0f
@@ -294,6 +345,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             else if (pendingShouldOpen) {
                 pendingShouldOpen = false
                 post { snapToOpen() }
+            }
+            else if (recycleSnapPending) {
+                // Actions were rendered by React (via isOpenByKey) before native snapToOpen ran.
+                // Position them immediately so they're visible when UIAutomator checks.
+                recycleSnapPending = false
+                actionsView?.visibility = View.VISIBLE
+                actionsView?.translationX = 0f
             }
         }
     }
@@ -313,21 +371,29 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         for (i in 0 until childCount) {
             val child = getChildAt(i)
-            if (child === actionsView && actionsWidthPx > 0f) {
-                val actionsWidthInt = actionsWidthPx.toInt()
-                if (isLeading) {
-                    child.layout(0, 0, actionsWidthInt, height)
-                } else {
-                    child.layout(width - actionsWidthInt, 0, width, height)
-                }
-            } else {
-                child.layout(0, 0, width, height)
-            }
+            // Don't override actionsView layout - Yoga positions it via absoluteFill
+            // and lays out children (flex-end) based on full parent width. Overriding
+            // the bounds to actionsWidth causes children to be positioned outside the
+            // narrower bounds, making them invisible during FlatList reorder.
+            // Instead, use translationX to hide/show the actions.
+            child.layout(0, 0, width, height)
         }
 
-        if (!isDragging && !isAnimating && currentTranslation == 0f && actionsWidthPx > 0f) {
+        if (!isDragging && !isAnimating && currentTranslation == 0f && actionsWidthPx > 0f && !recycleSnapPending) {
             val actionsOffset = if (isLeading) -actionsWidthPx else actionsWidthPx
             actionsView?.translationX = actionsOffset
+        }
+
+        // Re-apply translations when open. Fabric may reset child translationX during
+        // prop reconciliation after a list reorder. The post {} ensures we run after
+        // Fabric finishes applying all mutations in the current frame.
+        if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
+            post {
+                if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
+                    contentView?.translationX = currentTranslation
+                    updateActionsTransform()
+                }
+            }
         }
     }
 
@@ -728,6 +794,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     return@addEndListener
                 }
                 isAnimating = false
+                startLayoutGuard()
                 emitFinalProgress(1f, targetX)
                 // With autoClose, let close() emit onSwipeEnd("open") instead
                 if (!autoClose) {
@@ -763,6 +830,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             onSwipeStart(emptyMap())
         }
 
+        startLayoutGuard()
+
         // Emit final progress
         emitFinalProgress(1f, targetX)
     }
@@ -770,6 +839,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     fun close(animated: Boolean = true, velocity: Float = 0f) {
         cancelAutoClose()
         stopProgressUpdates()
+        stopLayoutGuard()
 
         // Cancel any running animations
         openAnimationInterruptedByClose = true
@@ -957,16 +1027,28 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        // Re-register in the view registry after reattach (e.g. returning from navigation).
-        // onDetachedFromWindow unregisters the view, but the recyclingKey prop setter
-        // short-circuits when the value hasn't changed, so the view is never re-registered
-        // unless we do it here.
         recyclingKey?.let { registerView(this, it) }
+
+        if (isOpen && currentTranslation != 0f) {
+            post {
+                if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
+                    contentView?.translationX = currentTranslation
+                    updateActionsTransform()
+                    actionsView?.visibility = View.VISIBLE
+                }
+            }
+
+            // Restart autoClose timer if it was cancelled during detach
+            if (autoClose) {
+                scheduleAutoClose()
+            }
+        }
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         stopProgressUpdates()
+        stopLayoutGuard()
         cancelGestureTimeout()
         cancelAutoClose()
         contentSpringAnimation?.cancel()

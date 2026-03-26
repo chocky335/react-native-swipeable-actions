@@ -29,6 +29,7 @@ export interface SharedConfigCallbacks {
   onCloseAll: () => void
   onResetAll: () => void
   onBenchmark: () => void
+  onSimulateReorder: () => void
 }
 
 interface ConfigPanelProps {

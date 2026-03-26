@@ -17,6 +17,10 @@ public class SwipeableModule: Module {
             SwipeableView.closeAll(animated: animated ?? true)
         }
 
+        Function("isOpenByKey") { (key: String) -> Bool in
+            SwipeableView.getOpenState(for: key)
+        }
+
         View(SwipeableView.self) {
             // Props
             Prop("actionsWidth") { (view: SwipeableView, width: CGFloat) in

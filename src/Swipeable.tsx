@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useCallback, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useCallback, useState, useEffect } from 'react'
 import { StyleSheet, View, Platform } from 'react-native'
 
 import { SwipeableView } from './SwipeableView'
@@ -11,7 +11,7 @@ import {
   NativeSwipeableRef
 } from './Swipeable.types'
 import { SWIPE_DEFAULTS } from './constants'
-import { openByKey, closeByKey, closeAll } from './nativeModuleUtils'
+import { openByKey, closeByKey, closeAll, isOpenByKey } from './nativeModuleUtils'
 
 function normalizeRecyclingKey(key: string | number | undefined): string | undefined {
   if (key == null) return undefined
@@ -47,14 +47,28 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
   ref
 ) {
   const nativeRef = useRef<NativeSwipeableRef>(null)
-  const [hasActionsRendered, setHasActionsRendered] = useState(false)
-  const swipeStartedRef = useRef(false)
 
-  // Normalize and sync recyclingKey to ref for use in useImperativeHandle
-  // (set during render to ensure it's always current before callbacks fire)
+  // Normalize recyclingKey before hooks that depend on it
   const normalizedKey = normalizeRecyclingKey(recyclingKey)
   const recyclingKeyRef = useRef<string | undefined>(undefined)
   recyclingKeyRef.current = normalizedKey
+
+  // Initialize from native cache: if this recyclingKey was open, render actions immediately.
+  // This handles FlatList remounting components during data reorder - React state is lost
+  // but native cache preserves the open state.
+  const [hasActionsRendered, setHasActionsRendered] = useState(() => {
+    return normalizedKey != null && isOpenByKey(normalizedKey)
+  })
+  const swipeStartedRef = useRef(false)
+
+  // When recyclingKey changes (FlatList reorder/recycle), sync hasActionsRendered
+  // with the native cached open state. FlatList reuses component instances without
+  // remounting, so useState initializer doesn't re-run.
+  useEffect(() => {
+    if (!normalizedKey) return
+    const cachedOpen = isOpenByKey(normalizedKey)
+    setHasActionsRendered(cachedOpen)
+  }, [normalizedKey])
 
   // Development-time validation
   if (__DEV__) {
@@ -144,7 +158,12 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
       onSwipeEnd={handleSwipeEnd}
     >
       {hasActionsRendered && (
-        <SwipeableActions actionsPosition={actionsPosition}>{actions}</SwipeableActions>
+        <SwipeableActions
+          actionsPosition={actionsPosition}
+          {...(testID ? { testID: `${testID}-actions` } : {})}
+        >
+          {actions}
+        </SwipeableActions>
       )}
 
       <View style={styles.content}>{children}</View>
