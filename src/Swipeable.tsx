@@ -59,14 +59,17 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
     return normalizedKey != null && isOpenByKey(normalizedKey)
   })
   const swipeStartedRef = useRef(false)
+  const initialKeyRef = useRef(normalizedKey)
 
   // When recyclingKey changes (FlatList reorder/recycle), sync hasActionsRendered
   // with the native cached open state. FlatList reuses component instances without
-  // remounting, so useState initializer doesn't re-run.
+  // remounting, so useState initializer doesn't re-run. Skip on initial mount
+  // since the useState initializer already handled it.
   useEffect(() => {
     if (!normalizedKey) return
-    const cachedOpen = isOpenByKey(normalizedKey)
-    setHasActionsRendered(cachedOpen)
+    if (normalizedKey === initialKeyRef.current) return
+    initialKeyRef.current = normalizedKey
+    setHasActionsRendered(isOpenByKey(normalizedKey))
   }, [normalizedKey])
 
   // Development-time validation
