@@ -31,13 +31,23 @@ public class SwipeableView: ExpoView {
         return typeName.contains("SurfaceTouchHandler") || typeName.contains("RCTTouchHandler")
     }
 
-    /// Walk from a hit-tested view up to (but not including) self, checking for gesture recognizers.
-    /// Any child view with a gesture recognizer (RNGH, custom, etc.) takes priority over our pan.
-    private func hasChildGesture(from view: UIView) -> Bool {
+    /// Check if a gesture recognizer belongs to react-native-gesture-handler.
+    /// RNGH uses custom recognizer classes prefixed with "RNBetter" (e.g. RNBetterPanGestureRecognizer)
+    /// and "RNManualActivation" for manual activation recognizers.
+    private static func isRNGHGestureHandler(_ recognizer: UIGestureRecognizer) -> Bool {
+        let typeName = String(describing: type(of: recognizer))
+        return typeName.hasPrefix("RNBetter") || typeName.hasPrefix("RNManualActivation")
+    }
+
+    /// Walk from a hit-tested view up to (but not including) self, checking for RNGH recognizers.
+    /// Used to prevent our pan gesture from beginning when the touch landed on a RNGH-managed view.
+    private func hasRNGHGesture(from view: UIView) -> Bool {
         var current: UIView? = view
         while let v = current, v !== self {
-            if !(v.gestureRecognizers ?? []).isEmpty {
-                return true
+            for recognizer in v.gestureRecognizers ?? [] {
+                if Self.isRNGHGestureHandler(recognizer) {
+                    return true
+                }
             }
             current = v.superview
         }
@@ -47,7 +57,9 @@ public class SwipeableView: ExpoView {
     // MARK: - Thread-Safe Static Registry
 
     private static let registryQueue = DispatchQueue(label: "com.swipeable.registry", qos: .userInteractive)
+    private static let maxCacheSize = 1000
     private static var _openStateCache: [String: Bool] = [:]
+    private static var _openStateCacheOrder: [String] = []
     private static var _viewRegistry: [String: WeakRef<SwipeableView>] = [:]
 
     static func getOpenState(for key: String) -> Bool {
@@ -55,7 +67,17 @@ public class SwipeableView: ExpoView {
     }
 
     private static func setOpenState(for key: String, isOpen: Bool) {
-        registryQueue.async(flags: .barrier) { _openStateCache[key] = isOpen }
+        registryQueue.async(flags: .barrier) {
+            if _openStateCache[key] == nil {
+                _openStateCacheOrder.append(key)
+            }
+            _openStateCache[key] = isOpen
+            // Evict oldest entries when cache exceeds max size
+            while _openStateCacheOrder.count > maxCacheSize {
+                let oldest = _openStateCacheOrder.removeFirst()
+                _openStateCache.removeValue(forKey: oldest)
+            }
+        }
     }
 
     private static func getView(for key: String) -> SwipeableView? {
@@ -344,6 +366,11 @@ public class SwipeableView: ExpoView {
                 self.contentView?.layer.zPosition = 1
                 self.actionsView?.layer.zPosition = -1
                 self.updateActionsTransform()
+            }
+
+            // Restart autoClose timer if it was cancelled during detach
+            if autoClose {
+                scheduleAutoClose()
             }
         }
     }
@@ -903,11 +930,11 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         let shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
 
         if shouldBegin {
-            // Prevent our pan from starting when the touch is on a child view that has
-            // its own gesture recognizers (e.g. RNGH). Delegate-based conflict resolution
-            // doesn't work with RNGH (it overrides delegates), so we yield via hit-test.
+            // Prevent our pan from starting when the touch is on a RNGH-managed view.
+            // Delegate-based conflict resolution is broken with RNGH (it overrides delegates),
+            // so we use hit-test prevention instead.
             let touchPoint = pan.location(in: self)
-            if let hitView = super.hitTest(touchPoint, with: nil), hasChildGesture(from: hitView) {
+            if let hitView = super.hitTest(touchPoint, with: nil), hasRNGHGesture(from: hitView) {
                 return false
             }
             cancelFabricTouches()

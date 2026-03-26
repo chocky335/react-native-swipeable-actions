@@ -248,14 +248,18 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     // Track when a child (e.g. RNGH gesture handler) claims the touch
     private var childRequestedDisallowIntercept: Boolean = false
 
-    // Layout guard: continuously re-applies translations while open and idle.
-    // Fabric may reset child translationX during prop reconciliation without
-    // triggering any native callbacks. This guard detects and corrects mismatches.
+    // Layout guard: re-applies translations for a few frames after a reorder.
+    // Fabric may reset child translationX during prop reconciliation after a
+    // recyclingKey change. This guard runs for a bounded number of frames to
+    // detect and correct mismatches, then stops automatically.
     private var layoutGuardCallback: Choreographer.FrameCallback? = null
+    private var layoutGuardFramesRemaining: Int = 0
 
-    private fun startLayoutGuard() {
-        if (layoutGuardCallback != null) return
+    private fun startLayoutGuard(frames: Int = 5) {
+        stopLayoutGuard()
+        layoutGuardFramesRemaining = frames
         layoutGuardCallback = Choreographer.FrameCallback {
+            layoutGuardFramesRemaining--
             if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
                 val contentTx = contentView?.translationX ?: 0f
                 if (contentTx != currentTranslation) {
@@ -263,6 +267,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     updateActionsTransform()
                     actionsView?.visibility = View.VISIBLE
                 }
+            }
+            if (layoutGuardFramesRemaining > 0) {
                 layoutGuardCallback?.let { Choreographer.getInstance().postFrameCallback(it) }
             } else {
                 layoutGuardCallback = null
@@ -274,6 +280,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private fun stopLayoutGuard() {
         layoutGuardCallback?.let { Choreographer.getInstance().removeFrameCallback(it) }
         layoutGuardCallback = null
+        layoutGuardFramesRemaining = 0
     }
 
     init {
@@ -1029,6 +1036,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     updateActionsTransform()
                     actionsView?.visibility = View.VISIBLE
                 }
+            }
+
+            // Restart autoClose timer if it was cancelled during detach
+            if (autoClose) {
+                scheduleAutoClose()
             }
         }
     }
