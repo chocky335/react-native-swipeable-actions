@@ -18,14 +18,16 @@ public class OpenStateCache {
         queue.sync { cache[key] ?? false }
     }
 
-    /// Set the open state for a key. Evicts oldest entries when cache exceeds max size.
+    /// Set the open state for a key. Promotes existing keys to most-recently-used.
+    /// Evicts the least-recently-used entry when cache exceeds max size.
     public func set(_ key: String, isOpen: Bool) {
         queue.async(flags: .barrier) { [self] in
-            if cache[key] == nil {
-                insertionOrder.append(key)
+            if cache[key] != nil {
+                insertionOrder.removeAll { $0 == key }
             }
+            insertionOrder.append(key)
             cache[key] = isOpen
-            while insertionOrder.count > maxSize {
+            if insertionOrder.count > maxSize {
                 let oldest = insertionOrder.removeFirst()
                 cache.removeValue(forKey: oldest)
             }
