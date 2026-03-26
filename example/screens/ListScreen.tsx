@@ -6,6 +6,7 @@ export interface ListScreenRef {
   closeAllRows: () => void
   resetAllRows: () => void
   startBenchmark: () => void
+  simulateReorder: () => void
 }
 
 export const ListScreen = forwardRef<ListScreenRef>(function ListScreen(_props, ref) {
@@ -17,7 +18,8 @@ export const ListScreen = forwardRef<ListScreenRef>(function ListScreen(_props, 
     () => ({
       closeAllRows: () => listDemoRef.current?.closeAllRows(),
       resetAllRows: () => listDemoRef.current?.resetAllRows(),
-      startBenchmark: () => listDemoRef.current?.startBenchmark()
+      startBenchmark: () => listDemoRef.current?.startBenchmark(),
+      simulateReorder: () => listDemoRef.current?.simulateReorder()
     }),
     []
   )

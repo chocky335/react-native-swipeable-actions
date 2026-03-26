@@ -13,6 +13,7 @@ export interface ListDemoRef {
   closeAllRows: () => void
   resetAllRows: () => void
   startBenchmark: () => void
+  simulateReorder: () => void
 }
 
 interface ListDemoProps {
@@ -75,14 +76,25 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
     })
   }, [])
 
+  const simulateReorder = useCallback(() => {
+    setData((prev) => {
+      if (prev.length < 4) return prev
+      const reordered = [...prev]
+      const [moved] = reordered.splice(3, 1)
+      reordered.unshift(moved)
+      return reordered
+    })
+  }, [])
+
   useImperativeHandle(
     ref,
     () => ({
       closeAllRows,
       resetAllRows,
-      startBenchmark
+      startBenchmark,
+      simulateReorder
     }),
-    [closeAllRows, resetAllRows, startBenchmark]
+    [closeAllRows, resetAllRows, startBenchmark, simulateReorder]
   )
 
   const getOrCreateRef = useCallback((itemId: string): RowRef => {
