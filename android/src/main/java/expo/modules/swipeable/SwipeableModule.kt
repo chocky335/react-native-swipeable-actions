@@ -20,6 +20,10 @@ class SwipeableModule : Module() {
             SwipeableView.closeAll(animated ?: true)
         }
 
+        Function("isOpenByKey") { key: String ->
+            SwipeableView.isOpenByKey(key)
+        }
+
         View(SwipeableView::class) {
             Prop("actionsWidth") { view: SwipeableView, width: Float ->
                 view.actionsWidth = width
