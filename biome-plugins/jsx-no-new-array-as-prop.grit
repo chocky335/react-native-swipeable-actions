@@ -1,0 +1,11 @@
+`[ $... ]` as $arr where {
+    $arr <: within or {
+        `<$_ $... />`,
+        `<$_ $...>$_</$_>`
+    },
+    register_diagnostic(
+        span = $arr,
+        message = "Inline array as JSX prop creates a new reference every render, defeating memoization. Extract to a variable or useMemo().",
+        severity = "warn"
+    )
+}

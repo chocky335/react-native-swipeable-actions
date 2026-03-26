@@ -1,0 +1,8 @@
+`<FlatList $... />` as $el where {
+    not $el <: contains `keyExtractor`,
+    register_diagnostic(
+        span = $el,
+        message = "FlatList is missing 'keyExtractor' prop. Without it, React Native falls back to index-based keys which hurts re-render performance.",
+        severity = "warn"
+    )
+}

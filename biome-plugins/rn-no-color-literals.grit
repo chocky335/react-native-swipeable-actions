@@ -1,0 +1,12 @@
+or {
+	`color: "$_"`, `backgroundColor: "$_"`, `borderColor: "$_"`,
+	`borderTopColor: "$_"`, `borderBottomColor: "$_"`,
+	`borderLeftColor: "$_"`, `borderRightColor: "$_"`,
+	`shadowColor: "$_"`, `tintColor: "$_"`, `overlayColor: "$_"`
+} as $prop where {
+	register_diagnostic(
+		span = $prop,
+		message = "Avoid hardcoded color literals in styles. Use a theme/design token constant for maintainability.",
+		severity = "hint"
+	)
+}

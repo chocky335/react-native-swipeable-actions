@@ -1,0 +1,11 @@
+or {
+	`$x === $x`, `$x !== $x`,
+	`$x && $x`, `$x || $x`,
+	`$x - $x`, `$x / $x`
+} as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Both sides of this expression are identical. This is likely a copy-paste error.",
+		severity = "error"
+	)
+}

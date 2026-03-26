@@ -1,0 +1,12 @@
+or {
+	`fetch($_, { method: "GET", body: $_, $... })`,
+	`fetch($_, { body: $_, method: "GET", $... })`,
+	`fetch($_, { method: "HEAD", body: $_, $... })`,
+	`fetch($_, { body: $_, method: "HEAD", $... })`
+} as $call where {
+	register_diagnostic(
+		span = $call,
+		message = "fetch() with GET or HEAD cannot have a body. This throws a TypeError at runtime.",
+		severity = "error"
+	)
+}

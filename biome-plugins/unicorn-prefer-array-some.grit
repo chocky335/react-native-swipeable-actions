@@ -1,0 +1,11 @@
+or {
+    `$_.filter($_).length > 0`,
+    `$_.filter($_).length !== 0`,
+    `$_.filter($_).length >= 1`
+} as $expr where {
+    register_diagnostic(
+        span = $expr,
+        message = "Use .some() instead of .filter().length to check if any element matches. It short-circuits on the first match.",
+        severity = "warn"
+    )
+}

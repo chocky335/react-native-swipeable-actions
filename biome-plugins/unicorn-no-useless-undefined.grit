@@ -1,0 +1,11 @@
+or {
+	`return undefined`,
+	`let $_ = undefined`,
+	`const $_ = undefined`
+} as $stmt where {
+	register_diagnostic(
+		span = $stmt,
+		message = "Explicit 'undefined' is unnecessary. 'return' without a value, or 'let x' without an initializer, are equivalent and clearer.",
+		severity = "hint"
+	)
+}

@@ -1,0 +1,9 @@
+`useEffect($callback, $...)` where {
+    $callback <: contains or { `$_.addEventListener($...)`, `$_.addListener($...)` },
+    not $callback <: contains `return $_`,
+    register_diagnostic(
+        span = $callback,
+        message = "useEffect with addEventListener/addListener must return a cleanup function. Leaked listeners cause memory leaks.",
+        severity = "error"
+    )
+}

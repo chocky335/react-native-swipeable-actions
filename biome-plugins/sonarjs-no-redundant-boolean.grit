@@ -1,0 +1,12 @@
+or {
+	`$_ ? true : false`,
+	`$_ ? false : true`,
+	`$_ || false`,
+	`$_ && true`
+} as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Redundant boolean. Use Boolean(x), !!x, or !x directly.",
+		severity = "warn"
+	)
+}

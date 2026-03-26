@@ -1,0 +1,11 @@
+or {
+    `<$el $... style={$expr} $... />`,
+    `<$el $... style={$expr} $...>$_</$el>`
+} where {
+    $expr <: `{ $... }`,
+    register_diagnostic(
+        span = $expr,
+        message = "Avoid inline style objects — they create a new object every render. Use StyleSheet.create() for static styles.",
+        severity = "warn"
+    )
+}

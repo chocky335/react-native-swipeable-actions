@@ -1,0 +1,11 @@
+`{ $key: $_, $... }` as $obj where {
+    $obj <: within or {
+        `<$_ $... />`,
+        `<$_ $...>$_</$_>`
+    },
+    register_diagnostic(
+        span = $obj,
+        message = "Inline object as JSX prop creates a new reference every render, defeating memoization. Extract to a variable or useMemo().",
+        severity = "warn"
+    )
+}

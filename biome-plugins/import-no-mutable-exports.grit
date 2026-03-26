@@ -1,0 +1,10 @@
+or {
+	`export var $_ = $_`,
+	`export var $_`
+} as $decl where {
+	register_diagnostic(
+		span = $decl,
+		message = "Mutable exports (let/var) make it hard to reason about module state. Use export const instead.",
+		severity = "warn"
+	)
+}

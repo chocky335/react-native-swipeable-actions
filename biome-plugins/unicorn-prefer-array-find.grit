@@ -1,0 +1,10 @@
+or {
+	`$arr.filter($fn)[0]`,
+	`$arr.filter($fn).at(0)`
+} as $expr where {
+	register_diagnostic(
+		span = $expr,
+		message = "Use .find() instead of .filter()[0]. find() is more readable and stops iterating after the first match.",
+		severity = "warn"
+	)
+}

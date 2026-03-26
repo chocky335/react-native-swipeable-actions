@@ -39,5 +39,37 @@
       "bracketSameLine": false,
       "quoteProperties": "asNeeded"
     }
-  }
+  },
+  "plugins": [
+    "./biome-plugins/rn-no-unclean-effect-timer.grit",
+    "./biome-plugins/rn-no-unclean-effect-listener.grit",
+    "./biome-plugins/rn-no-scrollview-map.grit",
+    "./biome-plugins/rn-no-flatlist-missing-keyextractor.grit",
+    "./biome-plugins/rn-no-inline-styles.grit",
+    "./biome-plugins/rn-no-nested-touchables.grit",
+    "./biome-plugins/rn-forbid-dom-elements.grit",
+    "./biome-plugins/rn-no-color-literals.grit",
+    "./biome-plugins/react-no-unstable-context-value.grit",
+    "./biome-plugins/react-no-object-type-as-default-prop.grit",
+    "./biome-plugins/jsx-no-new-object-as-prop.grit",
+    "./biome-plugins/jsx-no-new-array-as-prop.grit",
+    "./biome-plugins/jsx-no-new-function-as-prop.grit",
+    "./biome-plugins/unicorn-prefer-array-some.grit",
+    "./biome-plugins/unicorn-prefer-includes.grit",
+    "./biome-plugins/unicorn-prefer-array-find.grit",
+    "./biome-plugins/unicorn-no-await-in-promise-methods.grit",
+    "./biome-plugins/unicorn-no-invalid-fetch-options.grit",
+    "./biome-plugins/unicorn-no-useless-undefined.grit",
+    "./biome-plugins/unicorn-no-nested-ternary.grit",
+    "./biome-plugins/unicorn-prefer-structured-clone.grit",
+    "./biome-plugins/promise-no-new-statics.grit",
+    "./biome-plugins/promise-no-return-in-finally.grit",
+    "./biome-plugins/promise-valid-params.grit",
+    "./biome-plugins/sonarjs-prefer-single-boolean-return.grit",
+    "./biome-plugins/sonarjs-no-identical-expressions.grit",
+    "./biome-plugins/sonarjs-no-collection-size-mischeck.grit",
+    "./biome-plugins/sonarjs-no-redundant-boolean.grit",
+    "./biome-plugins/import-no-mutable-exports.grit",
+    "./biome-plugins/import-no-export-all.grit"
+  ]
 }
