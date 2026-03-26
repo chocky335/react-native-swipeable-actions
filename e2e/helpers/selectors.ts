@@ -139,9 +139,6 @@ export const selectors = {
   get simulateReorderButton() {
     return byTestId('simulate-reorder-button')
   },
-  get simulateRapidReorderButton() {
-    return byTestId('simulate-rapid-reorder-button')
-  }
 }
 
 /**

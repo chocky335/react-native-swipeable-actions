@@ -68,8 +68,7 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     onCloseAll,
     onResetAll,
     onBenchmark,
-    onSimulateReorder,
-    onSimulateRapidReorder
+    onSimulateReorder
   } = callbacks
 
   return (
@@ -145,13 +144,6 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
           onPress={onSimulateReorder}
         >
           <Text style={buttonStyles.closeButtonText}>Reorder</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          testID='simulate-rapid-reorder-button'
-          style={buttonStyles.closeButton}
-          onPress={onSimulateRapidReorder}
-        >
-          <Text style={buttonStyles.closeButtonText}>Rapid</Text>
         </TouchableOpacity>
         <TouchableOpacity
           testID='run-benchmark'

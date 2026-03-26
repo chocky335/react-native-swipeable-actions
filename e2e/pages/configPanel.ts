@@ -114,12 +114,6 @@ class ConfigPanel extends BasePage {
     await this.tap(selectors.simulateReorderButton)
   }
 
-  /**
-   * Tap Simulate Rapid Reorder button (3 reorders with 50ms gaps)
-   */
-  async tapSimulateRapidReorder(): Promise<void> {
-    await this.tap(selectors.simulateRapidReorderButton)
-  }
 }
 
 export const configPanel = new ConfigPanel()

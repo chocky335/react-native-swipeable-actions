@@ -137,10 +137,6 @@ function AppContent() {
     listScreenRef.current?.simulateReorder()
   }, [])
 
-  const handleSimulateRapidReorder = useCallback(() => {
-    listScreenRef.current?.simulateRapidReorder()
-  }, [])
-
   const sharedCallbacks: SharedConfigCallbacks = useMemo(
     () => ({
       onImplementationChange: setImplementation,
@@ -153,10 +149,9 @@ function AppContent() {
       onCloseAll: handleCloseAll,
       onResetAll: handleResetAll,
       onBenchmark: handleBenchmark,
-      onSimulateReorder: handleSimulateReorder,
-      onSimulateRapidReorder: handleSimulateRapidReorder
+      onSimulateReorder: handleSimulateReorder
     }),
-    [handleCloseAll, handleResetAll, handleBenchmark, handleSimulateReorder, handleSimulateRapidReorder]
+    [handleCloseAll, handleResetAll, handleBenchmark, handleSimulateReorder]
   )
 
   const handleDemoChange = useCallback((demo: DemoType) => {
