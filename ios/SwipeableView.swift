@@ -306,12 +306,11 @@ public class SwipeableView: ExpoView {
                 Self.unregisterView(for: key)
             }
 
-            // Note: transforms and zPositions are NOT reset here.
-            // Fabric may remove and re-insert views during list reorder (DELETE+INSERT),
-            // which triggers this callback. Resetting transforms would cause open
-            // swipeables to visually close even though native state (isOpen,
-            // currentTranslation) remains correct. The recyclingKey setter handles
-            // resetting transforms when the view is actually recycled for a new item.
+            // Nil view references so didAddSubview correctly detects new children
+            // on re-insertion (wasActionsNil/wasContentNil guards).
+            // Do NOT reset transforms - Fabric DELETE+INSERT must preserve open visual state.
+            contentView = nil
+            actionsView = nil
         }
         super.willMove(toSuperview: newSuperview)
     }
