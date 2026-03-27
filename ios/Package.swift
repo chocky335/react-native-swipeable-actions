@@ -17,7 +17,7 @@ let package = Package(
                 "SwipeableModule.swift",
                 "react-native-swipeable-actions.podspec"
             ],
-            sources: ["SwipePhysics.swift", "SwipeAnimationConfig.swift", "OpenStateCache.swift"]
+            sources: ["SwipePhysics.swift", "SwipeAnimationConfig.swift"]
         ),
         .testTarget(
             name: "SwipeableActionsTests",

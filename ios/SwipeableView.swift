@@ -31,23 +31,13 @@ public class SwipeableView: ExpoView {
         return typeName.contains("SurfaceTouchHandler") || typeName.contains("RCTTouchHandler")
     }
 
-    /// Check if a gesture recognizer belongs to react-native-gesture-handler.
-    /// RNGH uses custom recognizer classes prefixed with "RNBetter" (e.g. RNBetterPanGestureRecognizer)
-    /// and "RNManualActivation" for manual activation recognizers.
-    private static func isRNGHGestureHandler(_ recognizer: UIGestureRecognizer) -> Bool {
-        let typeName = String(describing: type(of: recognizer))
-        return typeName.hasPrefix("RNBetter") || typeName.hasPrefix("RNManualActivation")
-    }
-
-    /// Walk from a hit-tested view up to (but not including) self, checking for RNGH recognizers.
-    /// Used to prevent our pan gesture from beginning when the touch landed on a RNGH-managed view.
-    private func hasRNGHGesture(from view: UIView) -> Bool {
+    /// Walk from a hit-tested view up to (but not including) self, checking for gesture recognizers.
+    /// Any child view with a gesture recognizer (RNGH, custom, etc.) takes priority over our pan.
+    private func hasChildGesture(from view: UIView) -> Bool {
         var current: UIView? = view
         while let v = current, v !== self {
-            for recognizer in v.gestureRecognizers ?? [] {
-                if Self.isRNGHGestureHandler(recognizer) {
-                    return true
-                }
+            if !(v.gestureRecognizers ?? []).isEmpty {
+                return true
             }
             current = v.superview
         }
@@ -57,15 +47,15 @@ public class SwipeableView: ExpoView {
     // MARK: - Thread-Safe Static Registry
 
     private static let registryQueue = DispatchQueue(label: "com.swipeable.registry", qos: .userInteractive)
-    static let openStateCache = OpenStateCache()
+    private static var _openStateCache: [String: Bool] = [:]
     private static var _viewRegistry: [String: WeakRef<SwipeableView>] = [:]
 
     static func getOpenState(for key: String) -> Bool {
-        openStateCache.get(key)
+        registryQueue.sync { _openStateCache[key] ?? false }
     }
 
     private static func setOpenState(for key: String, isOpen: Bool) {
-        openStateCache.set(key, isOpen: isOpen)
+        registryQueue.async(flags: .barrier) { _openStateCache[key] = isOpen }
     }
 
     private static func getView(for key: String) -> SwipeableView? {
@@ -81,7 +71,7 @@ public class SwipeableView: ExpoView {
     }
 
     private static func clearOpenState(for key: String) {
-        openStateCache.clear(key)
+        registryQueue.async(flags: .barrier) { _openStateCache.removeValue(forKey: key) }
     }
 
     private static func getAllViews() -> [SwipeableView] {
@@ -225,11 +215,7 @@ public class SwipeableView: ExpoView {
 
             // Apply using local shouldOpen (pendingShouldOpen was cleared by close)
             if shouldOpen {
-                let keyAtDispatch = recyclingKey
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self, self.recyclingKey == keyAtDispatch else { return }
-                    self.snapToOpen()
-                }
+                DispatchQueue.main.async { [weak self] in self?.snapToOpen() }
             }
         }
     }
@@ -305,16 +291,17 @@ public class SwipeableView: ExpoView {
             currentAnimator = nil
             isAnimating = false
 
-            // Unregister from static registry (re-registered in didMoveToWindow)
+            // Reset layer properties to prevent corruption
+            contentView?.transform = .identity
+            contentView?.layer.zPosition = 0
+            actionsView?.transform = .identity
+            actionsView?.layer.zPosition = 0
+
+            // Unregister from static registry and clear cached state
             if let key = recyclingKey {
                 Self.unregisterView(for: key)
+                Self.clearOpenState(for: key)
             }
-
-            // Nil view references so didAddSubview correctly detects new children
-            // on re-insertion (wasActionsNil/wasContentNil guards).
-            // Do NOT reset transforms - Fabric DELETE+INSERT must preserve open visual state.
-            contentView = nil
-            actionsView = nil
         }
         super.willMove(toSuperview: newSuperview)
     }
@@ -341,28 +328,6 @@ public class SwipeableView: ExpoView {
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
-        }
-
-        // Restore visual state after Fabric reorder (DELETE+INSERT cycle).
-        // Fabric may reset child transforms during prop reconciliation. Re-apply
-        // on next runloop tick to ensure we run after Fabric finishes mutations.
-        if isOpen && currentTranslation != 0 {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self,
-                      self.isOpen,
-                      self.currentTranslation != 0,
-                      !self.isDragging,
-                      !self.isAnimating else { return }
-                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
-                self.contentView?.layer.zPosition = 1
-                self.actionsView?.layer.zPosition = -1
-                self.updateActionsTransform()
-            }
-
-            // Restart autoClose timer if it was cancelled during detach
-            if autoClose {
-                scheduleAutoClose()
-            }
         }
     }
 
@@ -457,9 +422,6 @@ public class SwipeableView: ExpoView {
         var translation = currentTranslation
         if isAnimating, let presentationLayer = contentView?.layer.presentation() {
             translation = presentationLayer.transform.m41 // tx component of transform
-            // Keep currentTranslation in sync so layoutSubviews and other guards
-            // see the real position, not a stale value from before animation started.
-            currentTranslation = translation
             // Update actions to match content position
             let progress = min(abs(translation) / actionsWidth, 1.0)
             let offset = isLeading ? -actionsWidth : actionsWidth
@@ -554,7 +516,7 @@ public class SwipeableView: ExpoView {
             }
         }
 
-        if isOpen && currentTranslation != 0 {
+        if currentTranslation != 0 {
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
         }
@@ -913,11 +875,11 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         let shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
 
         if shouldBegin {
-            // Prevent our pan from starting when the touch is on a RNGH-managed view.
-            // Delegate-based conflict resolution is broken with RNGH (it overrides delegates),
-            // so we use hit-test prevention instead.
+            // Prevent our pan from starting when the touch is on a child view that has
+            // its own gesture recognizers (e.g. RNGH). Delegate-based conflict resolution
+            // doesn't work with RNGH (it overrides delegates), so we yield via hit-test.
             let touchPoint = pan.location(in: self)
-            if let hitView = super.hitTest(touchPoint, with: nil), hasRNGHGesture(from: hitView) {
+            if let hitView = super.hitTest(touchPoint, with: nil), hasChildGesture(from: hitView) {
                 return false
             }
             cancelFabricTouches()
