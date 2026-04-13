@@ -1,4 +1,4 @@
-import { swipeOnElement } from '../helpers/gestures'
+import { scrollUpUntilDisplayed, swipeOnElement } from '../helpers/gestures'
 import { compareImages, takeViewportScreenshot } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
 import { chatPage } from '../pages/chatPage'
@@ -92,25 +92,23 @@ describe('Swipeable E2E Tests', () => {
       const numberOfScrolls = 2
 
       // Scroll down to recycle the row
-
       await mapRows(async () => {
         await listDemoPage.scrollDown()
         await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
         await expect($(selectors.leaveButtonForItem(1))).not.toBeDisplayed()
       }, numberOfScrolls)
 
-      // Scroll back up to restore the row
-      await mapRows(async () => {
-        await listDemoPage.scrollUp()
-        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
-        await expect($(selectors.leaveButtonForItem(1))).not.toBeDisplayed()
-      }, numberOfScrolls - 1)
-
-      // Verify Leave button still visible (state persisted after recycling)
-      await listDemoPage.scrollUp()
-      // Wait for FlashList to restore recycled cells with their cached state
-      await $(selectors.leaveButtonForItem(0)).waitForDisplayed({ timeout: 5000 })
-      await $(selectors.leaveButtonForItem(1)).waitForDisplayed({ timeout: 5000 })
+      // Scroll back up until item-0's row is visible. Gesture-based scrolls
+      // accumulate drift, so matching the down count isn't reliable - on
+      // flaky runs the list lands below the starting position. Using
+      // swipeableRow(0) (the row container) as the anchor is safe because
+      // it always renders when on screen, unlike leaveButtonForItem which
+      // only renders when state is preserved (the behaviour we're testing).
+      await scrollUpUntilDisplayed(selectors.swipeableRow(0))
+      // Both rows' leave buttons should be visible now with state preserved
+      // (native cache restored)
+      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      await expect($(selectors.leaveButtonForItem(1))).toBeDisplayed()
     })
   })
   const navigateToChat = async () => {
