@@ -552,4 +552,79 @@ describe('Swipeable E2E Tests', () => {
       })
     }
   )
+  ;(shouldRun(21) ? describe : describe.skip)(
+    'Test 21: Reset All (instance ref close(false)) closes every row instantly',
+    () => {
+      it('should close all open rows via instance ref close without animation', async () => {
+        // Trailing direction
+        await testSwipeOpen(numberOfRows, 'left')
+
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        await configPanel.close()
+
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+
+        // Leading direction (separate code path for position='left')
+        await configPanel.open()
+        await configPanel.enableLeadingMode()
+        await configPanel.close()
+
+        await testSwipeOpen(numberOfRows, 'right')
+
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        await configPanel.close()
+
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+      })
+    }
+  )
+  ;(shouldRun(22) ? describe : describe.skip)(
+    'Test 22: Sibling swipeables remain open independently (no implicit group close)',
+    () => {
+      it('should keep row 0 open while opening row 1', async () => {
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        await listDemoPage.swipeRowOpen(1, 'left')
+        await expect($(selectors.leaveButtonForItem(1))).toBeDisplayed()
+
+        // Row 0 must still be open - the library does not implement
+        // "only one row open at a time" behavior.
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(23) ? describe : describe.skip)(
+    'Test 23: closeAll is a no-op on fresh launch with nothing open',
+    () => {
+      it('should not crash when closeAll is called before any swipe', async () => {
+        await configPanel.open()
+        await configPanel.tapCloseAll()
+        await configPanel.close()
+
+        // App still responsive: can swipe a row open afterwards.
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(24) ? describe : describe.skip)('Test 24: Leading action tap triggers alert', () => {
+    it('should fire action when tapping revealed button in leading mode', async () => {
+      await configPanel.open()
+      await configPanel.enableLeadingMode()
+      await configPanel.close()
+
+      await listDemoPage.swipeRowOpen(0, 'right')
+      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      await listDemoPage.tapLeaveAction(0)
+      await expect($(selectors.alertForItem(0))).toBeDisplayed()
+      await listDemoPage.dismissAlert(0)
+    })
+  })
 })
