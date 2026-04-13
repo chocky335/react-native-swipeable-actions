@@ -155,6 +155,13 @@ class ConfigPanel extends BasePage {
   async setDragOffsetHigh(): Promise<void> {
     await this.tap(selectors.setOffsetHigh)
   }
+
+  /**
+   * Tap Run Benchmark button
+   */
+  async tapRunBenchmark(): Promise<void> {
+    await this.tap(selectors.runBenchmarkButton)
+  }
 }
 
 export const configPanel = new ConfigPanel()

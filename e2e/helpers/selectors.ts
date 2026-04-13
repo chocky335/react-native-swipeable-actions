@@ -162,6 +162,20 @@ export const selectors = {
   },
   get setOffsetHigh() {
     return byTestId('set-offset-high')
+  },
+
+  // Benchmark
+  get runBenchmarkButton() {
+    return byTestId('run-benchmark')
+  },
+  get benchmarkRunning() {
+    return byTestId('benchmark-running')
+  },
+  get benchmarkResult() {
+    return byTestId('benchmark-result')
+  },
+  get benchmarkResultText() {
+    return byTestId('benchmark-result-text')
   }
 }
 
