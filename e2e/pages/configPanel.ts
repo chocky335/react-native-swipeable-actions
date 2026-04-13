@@ -113,6 +113,48 @@ class ConfigPanel extends BasePage {
   async tapSimulateReorder(): Promise<void> {
     await this.tap(selectors.simulateReorderButton)
   }
+
+  /**
+   * Tap Reset All (exercises instance ref close(false) on every row)
+   */
+  async tapResetAll(): Promise<void> {
+    await this.tap(selectors.resetAllButton)
+  }
+
+  /**
+   * Set threshold to 0.2
+   */
+  async setThresholdLow(): Promise<void> {
+    await this.tap(selectors.setThresholdLow)
+  }
+
+  /**
+   * Set threshold to 0.4 (default)
+   */
+  async setThresholdMedium(): Promise<void> {
+    await this.tap(selectors.setThresholdMedium)
+  }
+
+  /**
+   * Set threshold to 0.7
+   */
+  async setThresholdHigh(): Promise<void> {
+    await this.tap(selectors.setThresholdHigh)
+  }
+
+  /**
+   * Set dragOffsetFromEdge to 0 (default)
+   */
+  async setDragOffsetZero(): Promise<void> {
+    await this.tap(selectors.setOffsetZero)
+  }
+
+  /**
+   * Set dragOffsetFromEdge to 50 (high)
+   */
+  async setDragOffsetHigh(): Promise<void> {
+    await this.tap(selectors.setOffsetHigh)
+  }
 }
 
 export const configPanel = new ConfigPanel()

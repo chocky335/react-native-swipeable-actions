@@ -459,4 +459,97 @@ describe('Swipeable E2E Tests', () => {
       })
     }
   )
+
+  // Default list props: actionsWidth=144, threshold=0.4, friction=1.0.
+  // Threshold distance = 144 * 0.4 = ~57.6px of translation committed.
+  // Raw pixel drags below/above 57.6 exercise the snap-decision path directly.
+  const dismissAlertIfPresent = async () => {
+    const ok = await $(selectors.okButton)
+    if (await ok.isExisting()) {
+      await ok.click()
+      await driver.pause(300)
+    }
+  }
+  ;(shouldRun(17) ? describe : describe.skip)(
+    'Test 17: Release below threshold snaps back closed',
+    () => {
+      it('should not open when swipe translates less than threshold distance', async () => {
+        const element = await $(selectors.swipeableRow(0))
+        // 35px << threshold distance 57.6px. Slow release (500ms) keeps
+        // velocity projection (~10.5px) from pushing us past threshold.
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 35)
+        await driver.pause(500)
+
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+      })
+    }
+  )
+  ;(shouldRun(18) ? describe : describe.skip)(
+    'Test 18: Release above threshold snaps fully open',
+    () => {
+      it('should open even when swipe translates only slightly past threshold', async () => {
+        const element = await $(selectors.swipeableRow(0))
+        // 85px > threshold distance 57.6px. Animation completes open.
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 85)
+        await driver.pause(500)
+
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(19) ? describe : describe.skip)(
+    'Test 19: threshold prop changes the snap-point',
+    () => {
+      it('should require larger drag with high threshold than with low threshold', async () => {
+        // Low threshold: 0.2 * 144 = 28.8px commits the swipe
+        await configPanel.open()
+        await configPanel.setThresholdLow()
+        await configPanel.close()
+
+        let element = await $(selectors.swipeableRow(0))
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 50)
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Reset row via instance ref close(false)
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        // High threshold: 0.7 * 144 = 100.8px required
+        await configPanel.setThresholdHigh()
+        await configPanel.close()
+
+        element = await $(selectors.swipeableRow(0))
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 50)
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+      })
+    }
+  )
+  ;(shouldRun(20) ? describe : describe.skip)(
+    'Test 20: dragOffsetFromEdge blocks drags shorter than the offset',
+    () => {
+      it('should activate gesture only after drag exceeds offset', async () => {
+        await configPanel.open()
+        await configPanel.setDragOffsetHigh() // 50px
+        await configPanel.close()
+
+        // Short drag (40px) is below the offset - gesture never activates,
+        // touch falls through to child onPress (alert may appear).
+        let element = await $(selectors.swipeableRow(0))
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 40)
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+
+        // Long drag (150px) absorbs 50px offset then translates 100px effective,
+        // well above default threshold 57.6px.
+        element = await $(selectors.swipeableRow(0))
+        await swipeOnElement(element as unknown as WebdriverIO.Element, 'left', 500, 150)
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
 })

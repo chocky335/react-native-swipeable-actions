@@ -138,6 +138,30 @@ export const selectors = {
   // Reorder regression
   get simulateReorderButton() {
     return byTestId('simulate-reorder-button')
+  },
+
+  // Reset All (exercises instance ref close(false))
+  get resetAllButton() {
+    return byTestId('reset-all-button')
+  },
+
+  // Threshold prop controls
+  get setThresholdLow() {
+    return byTestId('set-threshold-low')
+  },
+  get setThresholdMedium() {
+    return byTestId('set-threshold-medium')
+  },
+  get setThresholdHigh() {
+    return byTestId('set-threshold-high')
+  },
+
+  // Drag offset prop controls
+  get setOffsetZero() {
+    return byTestId('set-offset-zero')
+  },
+  get setOffsetHigh() {
+    return byTestId('set-offset-high')
   }
 }
 
