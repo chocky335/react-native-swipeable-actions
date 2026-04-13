@@ -1,4 +1,5 @@
 import { swipeOnElement } from '../helpers/gestures'
+import { compareImages, takeViewportScreenshot } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
 import { chatPage } from '../pages/chatPage'
 import { configPanel } from '../pages/configPanel'
@@ -419,6 +420,44 @@ describe('Swipeable E2E Tests', () => {
         await configPanel.open()
         await configPanel.disableFlatList()
         await configPanel.close()
+      })
+    }
+  )
+
+  // --- iOS Regression Test (Test 16) ---
+  // Targets bugs introduced by commit 784dc64 that cause
+  // iOS-specific rendering corruption after toggling list implementation.
+  // iOS bugs (willMove not resetting transforms, onLayout clipping)
+  // cause avatar numbers to vanish, colors to shift, and seekbar to disappear
+  // when switching FlashList -> FlatList -> FlashList.
+  ;(shouldRun(16) ? describe : describe.skip)(
+    'Test 16: Visual integrity after list implementation switch (iOS layout regression)',
+    () => {
+      it('should render identically after FlatList round-trip toggle', async () => {
+        // Wait for full render
+        await $(selectors.swipeableRow(0)).waitForDisplayed({ timeout: 5000 })
+        await driver.pause(300)
+
+        // Baseline: clean app launch, status bar cropped out
+        const baseline = await takeViewportScreenshot('flatlist-toggle-baseline')
+
+        // Toggle: enable FlatList then disable (back to FlashList)
+        await configPanel.open()
+        await configPanel.enableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        await configPanel.open()
+        await configPanel.disableFlatList()
+        await configPanel.close()
+        await driver.pause(500)
+
+        // Post-toggle screenshot, same crop
+        const afterToggle = await takeViewportScreenshot('flatlist-toggle-after')
+
+        // Pixel-level comparison (status bar excluded, no clock diff)
+        const diff = compareImages(baseline.png, afterToggle.png, 0.005)
+        expect(diff.match).toBe(true)
       })
     }
   )
