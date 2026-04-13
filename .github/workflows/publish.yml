@@ -11,6 +11,7 @@ on:
           - patch
           - minor
           - major
+          - prerelease
 
 jobs:
   publish:
@@ -52,13 +53,27 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version
-        run: npm version ${{ inputs.version }} -m "Release %s"
+        env:
+          VERSION_TYPE: ${{ inputs.version }}
+        run: |
+          if [ "$VERSION_TYPE" = "prerelease" ]; then
+            npm version prerelease --preid=canary -m "Pre-release %s"
+          else
+            npm version "$VERSION_TYPE" -m "Release %s"
+          fi
 
       - name: Build
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --provenance
+        env:
+          VERSION_TYPE: ${{ inputs.version }}
+        run: |
+          if [ "$VERSION_TYPE" = "prerelease" ]; then
+            npm publish --tag canary --provenance
+          else
+            npm publish --provenance
+          fi
 
       - name: Push version commit and tag
         run: git push --follow-tags
