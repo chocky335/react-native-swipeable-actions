@@ -89,6 +89,26 @@ export async function scrollUp(): Promise<void> {
 }
 
 /**
+ * Scroll up repeatedly until the target element is displayed, or maxScrolls
+ * attempts have been made. Gesture-based scrolls accumulate drift, so fixed
+ * scroll counts aren't reliable for returning to a specific list position.
+ */
+export async function scrollUpUntilDisplayed(
+  selector: string,
+  maxScrolls: number = 10
+): Promise<void> {
+  for (let i = 0; i < maxScrolls; i++) {
+    const el = await $(selector)
+    if (await el.isDisplayed().catch(() => false)) {
+      return
+    }
+    await scrollUp()
+    await driver.pause(300)
+  }
+  throw new Error(`Element "${selector}" not visible after ${maxScrolls} scroll attempts`)
+}
+
+/**
  * Swipe on a specific element
  */
 export async function swipeOnElement(
