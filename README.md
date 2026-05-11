@@ -133,6 +133,12 @@ swipeableRef.current?.close(false)    // instant
 
 // Open the row
 swipeableRef.current?.open()
+
+// Cancel an in-flight gesture and snap back to closed.
+// Use from `onSwipeStart` to abort a swipe before it can complete —
+// e.g. when the parent screen has unsaved state and wants to show a
+// confirm dialog instead of letting the swipe-to-pop proceed.
+swipeableRef.current?.cancel()
 ```
 
 ## Static Methods
@@ -152,6 +158,9 @@ Swipeable.close('row-1', false)    // instant
 // Close all open rows
 Swipeable.closeAll()               // animated
 Swipeable.closeAll(false)          // instant
+
+// Cancel an in-flight gesture on a specific row
+Swipeable.cancel('row-1')
 ```
 
 ## AutoClose Pattern (Swipe-to-Reply)

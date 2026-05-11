@@ -48,6 +48,14 @@ export function closeByKey(key: string, animated?: boolean): void {
   }
 }
 
+export function cancelByKey(key: string): void {
+  try {
+    SwipeableModule.cancelByKey(key)
+  } catch (error) {
+    handleNativeError(error, 'cancelByKey', key)
+  }
+}
+
 export function closeAll(animated?: boolean): void {
   try {
     SwipeableModule.closeAll(animated)

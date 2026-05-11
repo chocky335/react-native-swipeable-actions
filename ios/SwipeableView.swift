@@ -92,6 +92,12 @@ public class SwipeableView: ExpoView {
         }
     }
 
+    static func cancelByKey(_ key: String) {
+        DispatchQueue.main.async {
+            getView(for: key)?.cancelGesture()
+        }
+    }
+
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
     static func closeAll(animated: Bool = true) {
         let views = getAllViews()
@@ -159,17 +165,7 @@ public class SwipeableView: ExpoView {
             guard gestureEnabled != oldValue else { return }
 
             if !gestureEnabled {
-                // Clear gesture state BEFORE disabling pan gesture.
-                // panGesture.isEnabled = false triggers .cancelled synchronously,
-                // which calls handlePanEnded — clearing isGestureActivated first
-                // makes that handler return early via its guard.
-                if isGestureActivated || isDragging {
-                    isGestureActivated = false
-                    isDragging = false
-                    gestureStartTranslation = 0
-                    stopProgressUpdates()
-                }
-
+                abortActiveGesture()
                 panGesture.isEnabled = false
 
                 // Close if open (instant reset, no animation)
@@ -180,6 +176,31 @@ public class SwipeableView: ExpoView {
                 panGesture.isEnabled = true
             }
         }
+    }
+
+    /// Cancels an in-flight pan gesture and snaps the view back to closed.
+    /// Use from `onSwipeStart` to abort a swipe before it can complete.
+    func cancelGesture() {
+        guard isGestureActivated || isDragging || currentTranslation != 0 else { return }
+
+        abortActiveGesture()
+
+        // Toggle isEnabled to fire .cancelled synchronously on the recognizer,
+        // then re-enable so the next gesture can begin.
+        panGesture.isEnabled = false
+        panGesture.isEnabled = true
+
+        if isOpen || currentTranslation != 0 {
+            close(animated: false)
+        }
+    }
+
+    private func abortActiveGesture() {
+        guard isGestureActivated || isDragging else { return }
+        isGestureActivated = false
+        isDragging = false
+        gestureStartTranslation = 0
+        stopProgressUpdates()
     }
 
     var dragOffsetFromEdge: CGFloat = 0 {
