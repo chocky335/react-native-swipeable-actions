@@ -146,11 +146,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      * Cancels an in-flight gesture and snaps the view back to closed.
      * Use from `onSwipeStart` to abort a swipe before it can complete.
      * The current touch sequence is suppressed until the next ACTION_DOWN
-     * so the user can't reactivate the swipe by continuing the same drag.
+     * so the user can't reactivate the swipe by continuing the same drag —
+     * including the case where cancel is called between ACTION_DOWN and
+     * gesture activation (before any horizontal motion is detected).
      */
     fun cancelGesture() {
-        if (!isDragging && !isGestureActivated && currentTranslation == 0f) return
-
         abortActiveGesture()
         isCurrentTouchCancelled = true
 
