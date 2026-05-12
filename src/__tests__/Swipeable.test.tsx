@@ -1,6 +1,8 @@
-import { createElement } from 'react'
+import { render } from '@testing-library/react-native'
+import { createElement, createRef } from 'react'
 import Swipeable from '../Swipeable'
 import type { SwipeableMethods, SwipeableProps } from '../Swipeable.types'
+import { SwipeableModule } from '../SwipeableView'
 
 const mockActions = createElement('View', { testID: 'actions' }, 'Delete')
 
@@ -73,13 +75,57 @@ describe('Swipeable', () => {
   })
 
   describe('SwipeableMethods interface', () => {
-    it('exposes close and open methods', () => {
+    it('exposes close, open, and cancel methods', () => {
       const methods: SwipeableMethods = {
         close: jest.fn(),
-        open: jest.fn()
+        open: jest.fn(),
+        cancel: jest.fn()
       }
       expect(typeof methods.close).toBe('function')
       expect(typeof methods.open).toBe('function')
+      expect(typeof methods.cancel).toBe('function')
+    })
+  })
+
+  describe('cancel()', () => {
+    beforeEach(() => {
+      jest.clearAllMocks()
+    })
+
+    it('calls native cancelByKey when invoked via ref', () => {
+      const ref = createRef<SwipeableMethods>()
+      render(
+        createElement(
+          Swipeable,
+          { ref, actions: mockActions, actionsWidth: 80, recyclingKey: 'cancel-test' },
+          createElement('View')
+        )
+      )
+      ref.current?.cancel()
+      expect(SwipeableModule.cancelByKey).toHaveBeenCalledWith('cancel-test')
+    })
+
+    it('warns and no-ops when called without recyclingKey', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+      const ref = createRef<SwipeableMethods>()
+      render(
+        createElement(
+          Swipeable,
+          { ref, actions: mockActions, actionsWidth: 80 },
+          createElement('View')
+        )
+      )
+      ref.current?.cancel()
+      expect(SwipeableModule.cancelByKey).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('cancel() called without recyclingKey')
+      )
+      warn.mockRestore()
+    })
+
+    it('static Swipeable.cancel(key) calls native cancelByKey', () => {
+      Swipeable.cancel('static-cancel-test')
+      expect(SwipeableModule.cancelByKey).toHaveBeenCalledWith('static-cancel-test')
     })
   })
 })

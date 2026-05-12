@@ -70,6 +70,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
         }
 
+        fun cancelByKey(key: String) {
+            getView(key)?.let { view ->
+                view.post { view.cancelGesture() }
+            }
+        }
+
         /** Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views. */
         fun closeAll(animated: Boolean = true) {
             getAllViews().forEach { view ->
@@ -129,26 +135,44 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             field = value
 
             if (!value) {
-                // Reset touch interception state
-                isBlockingChildEvents = false
-                isIntercepting = false
-
-                if (isDragging || isGestureActivated) {
-                    isDragging = false
-                    isGestureActivated = false
-                    gestureStartTranslation = 0f
-                    cancelGestureTimeout()
-                    stopProgressUpdates()
-                    velocityTracker?.recycle()
-                    velocityTracker = null
-                }
-
-                // Close if open or mid-translation (instant reset, no animation)
+                abortActiveGesture()
                 if (isOpen || currentTranslation != 0f) {
                     close(animated = false)
                 }
             }
         }
+
+    /**
+     * Cancels an in-flight gesture and snaps the view back to closed.
+     * Use from `onSwipeStart` to abort a swipe before it can complete.
+     * The current touch sequence is suppressed until the next ACTION_DOWN
+     * so the user can't reactivate the swipe by continuing the same drag —
+     * including the case where cancel is called between ACTION_DOWN and
+     * gesture activation (before any horizontal motion is detected).
+     */
+    fun cancelGesture() {
+        abortActiveGesture()
+        isCurrentTouchCancelled = true
+
+        if (isOpen || currentTranslation != 0f) {
+            close(animated = false)
+        }
+    }
+
+    private fun abortActiveGesture() {
+        isBlockingChildEvents = false
+        isIntercepting = false
+
+        if (isDragging || isGestureActivated) {
+            isDragging = false
+            isGestureActivated = false
+            gestureStartTranslation = 0f
+            cancelGestureTimeout()
+            stopProgressUpdates()
+            velocityTracker?.recycle()
+            velocityTracker = null
+        }
+    }
 
     var dragOffsetFromEdge: Float = 0f
         set(value) { field = maxOf(0f, value) }
@@ -233,6 +257,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var dispatchTouchStartX: Float = 0f
     private var dispatchTouchStartY: Float = 0f
     private var isBlockingChildEvents: Boolean = false
+    private var isCurrentTouchCancelled: Boolean = false
 
     private var contentSpringAnimation: SpringAnimation? = null
     private var actionsSpringAnimation: SpringAnimation? = null
@@ -417,6 +442,19 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (!gestureEnabled || actionsWidth <= 0f) {
             return super.dispatchTouchEvent(event)
+        }
+
+        // After cancelGesture(), swallow the rest of the touch sequence so the user
+        // can't reactivate the swipe by continuing to drag the same finger down.
+        if (isCurrentTouchCancelled) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> isCurrentTouchCancelled = false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    isCurrentTouchCancelled = false
+                    return true
+                }
+                else -> return true
+            }
         }
 
         when (event.actionMasked) {

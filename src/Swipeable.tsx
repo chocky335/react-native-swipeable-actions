@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import { SWIPE_DEFAULTS } from './constants'
-import { closeAll, closeByKey, isOpenByKey, openByKey } from './nativeModuleUtils'
+import { cancelByKey, closeAll, closeByKey, isOpenByKey, openByKey } from './nativeModuleUtils'
 import type {
   NativeSwipeableRef,
   SwipeableMethods,
@@ -97,6 +97,18 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableProps>(function Swipeabl
         } else if (__DEV__) {
           console.warn('[Swipeable] open() called without recyclingKey - method has no effect')
         }
+      },
+      cancel: () => {
+        const key = recyclingKeyRef.current
+        if (key) {
+          cancelByKey(key)
+          // Native cancelGesture() short-circuits handlePanEnded so onSwipeEnd
+          // is never emitted. Reset the JS-side gate so the next gesture fires
+          // onSwipeStart to our consumer again.
+          swipeStartedRef.current = false
+        } else if (__DEV__) {
+          console.warn('[Swipeable] cancel() called without recyclingKey - method has no effect')
+        }
       }
     }),
     []
@@ -187,6 +199,7 @@ Swipeable.displayName = 'Swipeable'
 type SwipeableWithStatic = typeof Swipeable & {
   open: (recyclingKey: string) => void
   close: (recyclingKey: string, animated?: boolean) => void
+  cancel: (recyclingKey: string) => void
   closeAll: (animated?: boolean) => void
 }
 
@@ -206,6 +219,14 @@ SwipeableExport.close = (recyclingKey: string, animated?: boolean) => {
     return
   }
   closeByKey(recyclingKey, animated)
+}
+
+SwipeableExport.cancel = (recyclingKey: string) => {
+  if (__DEV__ && (!recyclingKey || typeof recyclingKey !== 'string')) {
+    console.warn('[Swipeable.cancel] recyclingKey must be a non-empty string')
+    return
+  }
+  cancelByKey(recyclingKey)
 }
 
 SwipeableExport.closeAll = (animated?: boolean) => {

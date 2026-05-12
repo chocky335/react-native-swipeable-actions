@@ -16,6 +16,10 @@ class SwipeableModule : Module() {
             SwipeableView.closeByKey(key, animated ?: true)
         }
 
+        Function("cancelByKey") { key: String ->
+            SwipeableView.cancelByKey(key)
+        }
+
         Function("closeAll") { animated: Boolean? ->
             SwipeableView.closeAll(animated ?: true)
         }
@@ -60,6 +64,9 @@ class SwipeableModule : Module() {
             }
             AsyncFunction("open") { view: SwipeableView ->
                 view.post { view.open() }
+            }
+            AsyncFunction("cancel") { view: SwipeableView ->
+                view.post { view.cancelGesture() }
             }
 
             AsyncFunction("handleGestureStart") { view: SwipeableView ->

@@ -8,6 +8,7 @@ const NativeView = requireNativeViewManager<SwipeableViewProps>('Swipeable')
 interface SwipeableNativeModule {
   openByKey: (key: string) => void
   closeByKey: (key: string, animated?: boolean) => void
+  cancelByKey: (key: string) => void
   closeAll: (animated?: boolean) => void
   isOpenByKey: (key: string) => boolean
 }
