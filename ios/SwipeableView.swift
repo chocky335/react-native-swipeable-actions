@@ -135,6 +135,9 @@ public class SwipeableView: ExpoView {
                 actionsWidth = validated
                 return
             }
+            if shouldSyncOpenLayoutForPropChange(oldValue: oldValue, newValue: validated) {
+                syncOpenStateToCurrentWidth()
+            }
             setNeedsLayout()
         }
     }
@@ -467,6 +470,26 @@ public class SwipeableView: ExpoView {
         let offset = isLeading ? -actionsWidth : actionsWidth
         let actionsTranslateX = offset * (1 - progress)
         actionsView.transform = CGAffineTransform(translationX: actionsTranslateX, y: 0)
+    }
+
+    private func shouldSyncOpenLayoutForPropChange(oldValue: CGFloat, newValue: CGFloat) -> Bool {
+        guard oldValue != newValue else { return false }
+        guard isOpen, !isDragging, !isAnimating, !isGestureActivated else { return false }
+        return newValue > 0
+    }
+
+    private func syncOpenStateToCurrentWidth() {
+        let targetX = isLeading ? actionsWidth : -actionsWidth
+        currentTranslation = targetX
+        contentView?.transform = CGAffineTransform(translationX: targetX, y: 0)
+
+        if actionsView != nil {
+            actionsView?.transform = .identity
+        } else {
+            onSwipeStart([:])
+        }
+
+        onSwipeProgress(["progress": 1.0, "translationX": targetX])
     }
 
     // MARK: - View Lifecycle

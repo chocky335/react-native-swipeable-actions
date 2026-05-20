@@ -105,8 +105,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     var actionsWidth: Float = 0f
         set(value) {
             val validated = maxOf(0f, value)
-            if (field == validated) return
+            val previous = field
+            if (previous == validated) return
             field = validated
+            if (shouldSyncOpenLayoutForPropChange(previous, validated)) {
+                syncOpenStateToCurrentWidth()
+            }
             requestLayout()
         }
 
@@ -764,6 +768,28 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         val actionsTranslateX = offset * (1f - progress)
 
         actions.translationX = actionsTranslateX
+    }
+
+    private fun shouldSyncOpenLayoutForPropChange(oldValue: Float, newValue: Float): Boolean {
+        if (oldValue == newValue) return false
+        if (!isOpen || isDragging || isAnimating || isGestureActivated) return false
+        return newValue > 0f
+    }
+
+    private fun syncOpenStateToCurrentWidth() {
+        val targetX = if (isLeading) actionsWidthPx else -actionsWidthPx
+        currentTranslation = targetX
+        contentView?.translationX = targetX
+
+        if (actionsView != null) {
+            actionsView?.visibility = View.VISIBLE
+            actionsView?.translationX = 0f
+        } else {
+            onSwipeStart(emptyMap())
+        }
+
+        startLayoutGuard()
+        emitFinalProgress(1f, targetX)
     }
 
     fun open(velocity: Float = 0f) {
