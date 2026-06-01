@@ -37,6 +37,7 @@ export const config: Options.Testrunner = {
       'appium:wdaConnectionTimeout': 240000,
       'appium:showXcodeLog': true,
       'appium:noReset': false,
+      'appium:isHeadless': true,
       ...(process.env.IOS_PREBUILT_WDA
         ? {
             'appium:usePreinstalledWDA': true,
