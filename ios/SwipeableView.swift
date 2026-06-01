@@ -66,8 +66,25 @@ public class SwipeableView: ExpoView {
         registryQueue.async(flags: .barrier) { _viewRegistry[key] = WeakRef(view) }
     }
 
-    private static func unregisterView(for key: String) {
-        registryQueue.async(flags: .barrier) { _viewRegistry.removeValue(forKey: key) }
+    private static func unregisterView(_ view: SwipeableView, for key: String) {
+        // Identity-check: a newer SwipeableView may have already taken over this
+        // key (FlashList remounts a new instance before the old one's deinit
+        // fires). Without this guard the old view's deinit blindly removes the
+        // key, leaving the new view orphaned in the registry — closeByKey for
+        // that key then returns nil and the visible row can't be closed.
+        //
+        // Capture identity as a *value* (ObjectIdentifier), never reference
+        // `view` inside the async closure. Callers include `deinit`, where
+        // `self` is mid-deallocation; strongly capturing it in an escaping
+        // closure produces a zombie reference and crashes (EXC_BAD_ACCESS) when
+        // the barrier finally runs after the object has been freed.
+        let identity = ObjectIdentifier(view)
+        registryQueue.async(flags: .barrier) {
+            if let registered = _viewRegistry[key]?.value,
+               ObjectIdentifier(registered) == identity {
+                _viewRegistry.removeValue(forKey: key)
+            }
+        }
     }
 
     private static func clearOpenState(for key: String) {
@@ -88,7 +105,15 @@ public class SwipeableView: ExpoView {
 
     static func closeByKey(_ key: String, animated: Bool = true) {
         DispatchQueue.main.async {
-            getView(for: key)?.close(animated: animated)
+            if let view = getView(for: key) {
+                view.close(animated: animated)
+            } else {
+                // View was recycled away (or unregistered) before this close
+                // could run. Update the cache directly so a future cell binding
+                // to this key starts closed instead of inheriting a stale open
+                // state — see recyclingKey setter for the matching invariant.
+                setOpenState(for: key, isOpen: false)
+            }
         }
     }
 
@@ -229,10 +254,15 @@ public class SwipeableView: ExpoView {
             let shouldOpen = recyclingKey.map { Self.getOpenState(for: $0) } ?? false
             pendingShouldOpen = shouldOpen
 
-            // Thread-safe write of old key's state and unregister
+            // Unregister from the old key. We intentionally do NOT write back
+            // `isOpen` here: open() and close() already maintain the cache when
+            // the user actually triggers the state change. Writing the view's
+            // current `isOpen` at reassignment time captures stale state when a
+            // pending async close hasn't run yet, leaving the old key cached as
+            // open forever — the next cell binding to it would snap open
+            // without any user intent.
             if let old = oldValue {
-                Self.setOpenState(for: old, isOpen: isOpen)
-                Self.unregisterView(for: old)
+                Self.unregisterView(self, for: old)
             }
 
             // Thread-safe register with new key
@@ -307,7 +337,7 @@ public class SwipeableView: ExpoView {
         removeGestureRecognizer(panGesture)
         // Thread-safe deregister from view registry
         if let key = recyclingKey {
-            Self.unregisterView(for: key)
+            Self.unregisterView(self, for: key)
         }
     }
 
@@ -340,7 +370,7 @@ public class SwipeableView: ExpoView {
 
             // Unregister from static registry and clear cached state
             if let key = recyclingKey {
-                Self.unregisterView(for: key)
+                Self.unregisterView(self, for: key)
                 Self.clearOpenState(for: key)
             }
         }
