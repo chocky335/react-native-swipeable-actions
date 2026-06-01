@@ -237,11 +237,22 @@ jobs:
           xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}"
 
+      - name: Build WebDriverAgent
+        run: |
+          xcodebuild build-for-testing \
+            -project e2e/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent/WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "${{ github.workspace }}/wda-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet
+
       - name: Run E2E tests
         env:
           IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
+          IOS_PREBUILT_WDA: ${{ github.workspace }}/wda-build/Build/Products/Debug-iphonesimulator/WebDriverAgentRunner-Runner.app
         run: cd e2e && npm run test:ios
 
       - name: Install Maestro

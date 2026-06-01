@@ -36,7 +36,15 @@ export const config: Options.Testrunner = {
       'appium:wdaLaunchTimeout': 240000,
       'appium:wdaConnectionTimeout': 240000,
       'appium:showXcodeLog': true,
-      'appium:noReset': false
+      'appium:noReset': false,
+      'appium:isHeadless': true,
+      ...(process.env.IOS_PREBUILT_WDA
+        ? {
+            'appium:usePreinstalledWDA': true,
+            'appium:prebuiltWDAPath': process.env.IOS_PREBUILT_WDA,
+            'appium:updatedWDABundleId': 'com.facebook.WebDriverAgentRunner'
+          }
+        : {})
     }
   ],
 
