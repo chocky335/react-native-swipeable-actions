@@ -291,9 +291,6 @@ public class SwipeableView: ExpoView {
     // Auto-close work item for tracking and cancellation
     private var autoCloseWorkItem: DispatchWorkItem?
 
-    // Override onSwipeEnd state when autoClose triggers close() (emit "open" instead of "closed")
-    private var autoCloseEndEventOverride = false
-
     // UIViewPropertyAnimator for interruptible animations (2.1, 2.2)
     private var currentAnimator: UIViewPropertyAnimator?
 
@@ -481,8 +478,7 @@ public class SwipeableView: ExpoView {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: retryWorkItem)
         } else if isOpen {
             // Emit "open" state when autoClose completes - user's swipe intent was achieved
-            autoCloseEndEventOverride = true
-            close()
+            close(autoCloseOverride: true)
         }
     }
 
@@ -546,12 +542,27 @@ public class SwipeableView: ExpoView {
     // views that UIView.subviews would otherwise include.
     public override func mountChildComponentView(_ childComponentView: UIView, index: Int) {
         super.mountChildComponentView(childComponentView, index: index)
+        // Incoming child may carry a stale transform/zPosition from Fabric recycling;
+        // reset it (refreshChildAssignments re-applies the open transform when open).
+        childComponentView.transform = .identity
+        childComponentView.layer.zPosition = 0
         let clampedIndex = min(max(index, 0), reactChildren.count)
         reactChildren.insert(childComponentView, at: clampedIndex)
         refreshChildAssignments()
     }
 
     public override func unmountChildComponentView(_ childComponentView: UIView, index: Int) {
+        // Content recycled mid-animation: stop the animator before contentView is
+        // nil'd below, else it keeps writing a transform onto the pooled view.
+        // (Android skips this — RN zeroes translationX on recycle; port if needed.)
+        if childComponentView === contentView {
+            currentAnimator?.stopAnimation(true)
+            currentAnimator = nil
+            isAnimating = false
+            stopProgressUpdates()
+            cancelAutoClose()  // a pending timer would fire on the reused view
+        }
+
         // Fabric recycles UIView instances. Before handing this child back, undo any
         // transform / zPosition we may have applied — otherwise the next React
         // component that receives this recycled UIView inherits our stale state and
@@ -907,7 +918,9 @@ public class SwipeableView: ExpoView {
         onSwipeProgress(["progress": 1.0, "translationX": targetX])
     }
 
-    func close(animated: Bool = true, velocity: CGFloat = 0) {
+    // autoCloseOverride is a value, not a sticky flag: an interrupted close (which
+    // never runs the completion) can't strand it and mislabel a later close as "open".
+    func close(animated: Bool = true, velocity: CGFloat = 0, autoCloseOverride: Bool = false) {
         cancelAutoClose()
         stopProgressUpdates()
 
@@ -951,8 +964,7 @@ public class SwipeableView: ExpoView {
                 self.actionsView?.transform = CGAffineTransform(translationX: actionsOffset, y: 0)
                 self.onSwipeProgress(["progress": 0.0, "translationX": 0.0])
                 // Emit "open" when autoClose completes - user's swipe intent was achieved
-                let endState = self.autoCloseEndEventOverride ? "open" : "closed"
-                self.autoCloseEndEventOverride = false
+                let endState = autoCloseOverride ? "open" : "closed"
                 self.onSwipeEnd(["state": endState])
 
                 // Restore first responder if it was lost during swipe (keyboard preservation)
