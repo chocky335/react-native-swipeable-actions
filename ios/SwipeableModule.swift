@@ -21,7 +21,39 @@ public class SwipeableModule: Module {
             SwipeableView.getOpenState(for: key)
         }
 
+        Function("openByKeyOnSide") { (key: String, side: String) in
+            SwipeableView.openByKeyOnSide(key, side: side)
+        }
+
+        Function("getOpenSideByKey") { (key: String) -> String? in
+            SwipeableView.getOpenSide(for: key)
+        }
+
         View(SwipeableView.self) {
+            Prop("twoSided") { (view: SwipeableView, value: Bool) in
+                view.twoSided = value
+            }
+
+            Prop("leftActionsWidth") { (view: SwipeableView, width: CGFloat) in
+                view.leftActionsWidth = width
+            }
+
+            Prop("rightActionsWidth") { (view: SwipeableView, width: CGFloat) in
+                view.rightActionsWidth = width
+            }
+
+            Prop("appearance") { (view: SwipeableView, value: String) in
+                view.appearance = value
+            }
+
+            Prop("hapticFeedback") { (view: SwipeableView, value: Bool?) in
+                view.hapticFeedback = value
+            }
+
+            OnViewDidUpdateProps { (view: SwipeableView) in
+                view.commitProps()
+            }
+
             // Props
             Prop("actionsWidth") { (view: SwipeableView, width: CGFloat) in
                 view.actionsWidth = width
@@ -60,18 +92,18 @@ public class SwipeableModule: Module {
             }
 
             // Events
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd")
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded")
 
             // Imperative methods
             AsyncFunction("close") { (view: SwipeableView, animated: Bool?) in
-                DispatchQueue.main.async {
-                    view.close(animated: animated ?? true)
+                view.enqueueCommand {
+                    $0.close(animated: animated ?? true)
                 }
             }
 
             AsyncFunction("open") { (view: SwipeableView) in
-                DispatchQueue.main.async {
-                    view.open()
+                view.enqueueCommand {
+                    $0.open()
                 }
             }
 

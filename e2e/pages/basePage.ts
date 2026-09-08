@@ -8,7 +8,7 @@ export class BasePage {
   async waitForElement(selector: string): Promise<WebdriverIO.Element> {
     const element = await $(selector)
     await element.waitForDisplayed()
-    return element
+    return element.getElement()
   }
 
   /**

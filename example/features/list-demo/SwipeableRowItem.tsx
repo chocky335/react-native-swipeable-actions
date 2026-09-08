@@ -14,7 +14,9 @@ export function SwipeableRowItem({
   onRowPress,
   swipeableRef,
   onSwipeStart,
+  onSwipeStateChange,
   onSwipeEnd,
+  onProgress,
   friction,
   threshold,
   dragOffsetFromEdge,
@@ -47,7 +49,9 @@ export function SwipeableRowItem({
         </View>
       }
       onSwipeStart={onSwipeStart}
+      onSwipeStateChange={onSwipeStateChange}
       onSwipeEnd={onSwipeEnd}
+      onProgress={onProgress}
       friction={friction}
       threshold={threshold}
       dragOffsetFromEdge={dragOffsetFromEdge}

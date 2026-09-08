@@ -5,12 +5,7 @@ import UIKit
 import React
 #endif
 
-// MARK: - WeakRef Helper
-
-private class WeakRef<T: AnyObject> {
-    weak var value: T?
-    init(_ value: T) { self.value = value }
-}
+extension UIView: SwipeChildVisibility {}
 
 public class SwipeableView: ExpoView {
 
@@ -58,89 +53,161 @@ public class SwipeableView: ExpoView {
 
     private static let registryQueue = DispatchQueue(label: "com.swipeable.registry", qos: .userInteractive)
     private static let maxCacheSize = 1000
-    private static var _openStateCache: [String: Bool] = [:]
-    private static var _openStateCacheOrder: [String] = []
-    private static var _viewRegistry: [String: WeakRef<SwipeableView>] = [:]
+    private static var _openStateCache = SwipeOpenStateCache(capacity: maxCacheSize)
+    private static var _viewRegistry: [String: SwipeCommandTarget<SwipeableView>] = [:]
 
     static func getOpenState(for key: String) -> Bool {
-        registryQueue.sync { _openStateCache[key] ?? false }
+        registryQueue.sync { _openStateCache.side(for: key) != nil }
     }
 
-    private static func setOpenState(for key: String, isOpen: Bool) {
-        registryQueue.async(flags: .barrier) {
-            if _openStateCache[key] == nil {
-                _openStateCacheOrder.append(key)
-            }
-            _openStateCache[key] = isOpen
-            // Evict oldest entries when cache exceeds max size
-            while _openStateCacheOrder.count > maxCacheSize {
-                let oldest = _openStateCacheOrder.removeFirst()
-                _openStateCache.removeValue(forKey: oldest)
-            }
+    static func getOpenSide(for key: String) -> String? {
+        registryQueue.sync { _openStateCache.side(for: key)?.rawValue }
+    }
+
+    private static func setOpenState(for key: String, side: SwipeSide?, owner: SwipeableView) {
+        let identity = ObjectIdentifier(owner)
+        registryQueue.async {
+            // A recycled/detached view must not overwrite its replacement's state.
+            if let current = _viewRegistry[key]?.value, ObjectIdentifier(current) != identity { return }
+            _openStateCache.set(side, for: key)
         }
     }
 
-    private static func getView(for key: String) -> SwipeableView? {
-        registryQueue.sync { _viewRegistry[key]?.value }
-    }
-
     private static func registerView(_ view: SwipeableView, for key: String) {
-        registryQueue.async(flags: .barrier) { _viewRegistry[key] = WeakRef(view) }
+        // Registration creates a fresh binding identity, even for A -> B -> A on
+        // the same view or a detach/reattach. Open/close never change this identity.
+        let reference = SwipeCommandTarget(view)
+        registryQueue.async(flags: .barrier) { _viewRegistry[key] = reference }
     }
 
-    private static func unregisterView(for key: String) {
-        registryQueue.async(flags: .barrier) { _viewRegistry.removeValue(forKey: key) }
+    private static func unregisterView(_ view: SwipeableView, for key: String) {
+        // Do not retain a deinitializing view in asynchronous registry work.
+        let identity = ObjectIdentifier(view)
+        registryQueue.async {
+            guard _viewRegistry[key]?.identity == identity else { return }
+            _viewRegistry.removeValue(forKey: key)
+        }
     }
 
-    private static func clearOpenState(for key: String) {
-        registryQueue.async(flags: .barrier) { _openStateCache.removeValue(forKey: key) }
+    private static func enqueueCommand(for key: String, _ command: @escaping (SwipeableView) -> Void) {
+        guard let target = registryQueue.sync(execute: { _viewRegistry[key] }) else { return }
+        DispatchQueue.main.async {
+            performCommand(command, for: key, target: target)
+        }
     }
 
-    private static func getAllViews() -> [SwipeableView] {
-        registryQueue.sync { _viewRegistry.values.compactMap { $0.value } }
+    private static func performCommand(
+        _ command: (SwipeableView) -> Void, for key: String, target: SwipeCommandTarget<SwipeableView>
+    ) {
+        let current = registryQueue.sync { _viewRegistry[key] }
+        target.perform(ifCurrent: current) { view in
+            guard view.recyclingKey == key, !view.isDetached else { return }
+            command(view)
+        }
+    }
+
+    // Raw view refs also need a binding guard, including refs without a key.
+    // Opening/closing must not invalidate other commands queued for this binding.
+    private lazy var commandTarget = SwipeCommandTarget(self)
+
+    func enqueueCommand(_ command: @escaping (SwipeableView) -> Void) {
+        let target = commandTarget
+        let key = recyclingKey
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, !self.isDetached, self.recyclingKey == key else { return }
+            target.perform(ifCurrent: self.commandTarget) { view in
+                if let key = key {
+                    let current = Self.registryQueue.sync { Self._viewRegistry[key] }
+                    guard current?.value === view else { return }
+                }
+                command(view)
+            }
+        }
     }
 
     // MARK: - Static Methods (by recyclingKey)
 
     static func openByKey(_ key: String) {
-        DispatchQueue.main.async {
-            getView(for: key)?.open()
-        }
+        enqueueCommand(for: key) { $0.open() }
+    }
+
+    static func openByKeyOnSide(_ key: String, side: String) {
+        guard let side = SwipeSide(rawValue: side) else { return }
+        enqueueCommand(for: key) { $0.open(side: side) }
     }
 
     static func closeByKey(_ key: String, animated: Bool = true) {
-        DispatchQueue.main.async {
-            getView(for: key)?.close(animated: animated)
-        }
+        enqueueCommand(for: key) { $0.close(animated: animated) }
     }
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
     static func closeAll(animated: Bool = true) {
-        let views = getAllViews()
+        let targets = registryQueue.sync { _viewRegistry.map { (key: $0.key, target: $0.value) } }
         DispatchQueue.main.async {
-            if animated {
-                // Only close open views when animated
-                views.filter { $0.isOpen }.forEach { $0.close(animated: true) }
-            } else {
-                // Reset all views when not animated
-                views.forEach { $0.close(animated: false) }
+            for entry in targets {
+                performCommand({ view in
+                    if !animated || SwipePhysics.shouldCloseForCloseAll(
+                        isOpen: view.isOpen, twoSided: view.twoSided, isAnimating: view.isAnimating,
+                        hasPendingInteraction: view.isDragging || view.isGestureActivated ||
+                            view.directGesturePending || view.pendingRestoreSide != nil
+                    ) {
+                        view.close(animated: animated)
+                    }
+                }, for: entry.key, target: entry.target)
             }
         }
     }
 
     // MARK: - State
-    private var actionsView: UIView?
+
+    private var legacyActionsView: UIView?
+    private var leftActionsView: UIView?
+    private var rightActionsView: UIView?
     private var contentView: UIView?
+    private let railVisibility = SwipeRailVisibility()
+    private var assignedTwoSided = false
+    private var awaitingChildProtocol = false
+    private var isDetached = false
     private var currentTranslation: CGFloat = 0
-    private var isOpen = false
+    private var openSide: SwipeSide?
+    private var gestureSide: SwipeSide?
+    private var animationSide: SwipeSide?
+    private var isOpen: Bool { openSide != nil }
     private var startOffset: CGFloat = 0
+    private var gestureStartedOpen = false
     private var isDragging = false
     private var isAnimating = false
     private var gestureStartTranslation: CGFloat = 0
     private var isGestureActivated = false
-    private var pendingShouldOpen = false
+    private var directGesturePending = false
+    private var ignoresPanUntilNextBegin = false
     private var lastEmittedWillEndState: String?
     private weak var savedFirstResponder: UIView?
+
+    // Every asynchronous operation belongs to one key/configuration/command generation.
+    private var workGeneration = 0
+    private var pendingRestoreSide: SwipeSide?
+    private var reconciliationWorkItem: DispatchWorkItem?
+    private var visualRestoreWorkItem: DispatchWorkItem?
+    private var requestedSides: Set<SwipeSide> = []
+    private var slotChildren: [SwipeSide: [ObjectIdentifier]] = [:]
+
+    private struct LayoutConfiguration: Equatable {
+        var twoSided: Bool
+        var leftWidth: CGFloat
+        var rightWidth: CGFloat
+        var position: String
+        var enabled: Bool
+        var friction: CGFloat
+        var threshold: CGFloat
+        var dragOffset: CGFloat
+        var autoClose: Bool
+        var autoCloseTimeout: CGFloat
+    }
+    private var appliedConfiguration = LayoutConfiguration(
+        twoSided: false, leftWidth: 0, rightWidth: 0, position: "right", enabled: true,
+        friction: 1, threshold: 0.4, dragOffset: 0, autoClose: false, autoCloseTimeout: 0
+    )
 
     // MARK: - Props
 
@@ -151,114 +218,351 @@ public class SwipeableView: ExpoView {
                 actionsWidth = validated
                 return
             }
-            setNeedsLayout()
+            guard actionsWidth != oldValue else { return }
+            scheduleReconciliation()
         }
     }
 
-    var actionsPosition: String = "right" {
+    var twoSided = false {
+        didSet { if twoSided != oldValue { scheduleReconciliation() } }
+    }
+
+    var leftActionsWidth: CGFloat = 0 {
         didSet {
-            let validPositions = ["left", "right"]
-            if !validPositions.contains(actionsPosition) {
+            leftActionsWidth = SwipePhysics.validWidth(leftActionsWidth)
+            if leftActionsWidth != oldValue { scheduleReconciliation() }
+        }
+    }
+
+    var rightActionsWidth: CGFloat = 0 {
+        didSet {
+            rightActionsWidth = SwipePhysics.validWidth(rightActionsWidth)
+            if rightActionsWidth != oldValue { scheduleReconciliation() }
+        }
+    }
+
+    var actionsPosition = "right" {
+        didSet {
+            if actionsPosition != "left" && actionsPosition != "right" {
                 actionsPosition = "right"
                 return
             }
-            setNeedsLayout()
+            guard actionsPosition != oldValue else { return }
+            scheduleReconciliation()
         }
     }
-
     var isLeading: Bool { actionsPosition == "left" }
+    private var legacySide: SwipeSide { isLeading ? .left : .right }
 
     var friction: CGFloat = 1.0 {
-        didSet { friction = max(0.0, min(1.0, friction)) }
+        didSet {
+            friction = max(0.0, min(1.0, friction))
+            if twoSided && friction != oldValue { scheduleReconciliation() }
+        }
     }
-
     var threshold: CGFloat = 0.4 {
-        didSet { threshold = max(0.0, min(1.0, threshold)) }
+        didSet {
+            threshold = max(0.0, min(1.0, threshold))
+            if twoSided && threshold != oldValue { scheduleReconciliation() }
+        }
     }
-
-    var gestureEnabled: Bool = true {
+    var gestureEnabled = true {
         didSet {
             guard gestureEnabled != oldValue else { return }
-
-            if !gestureEnabled {
-                // Clear gesture state BEFORE disabling pan gesture.
-                // panGesture.isEnabled = false triggers .cancelled synchronously,
-                // which calls handlePanEnded — clearing isGestureActivated first
-                // makes that handler return early via its guard.
-                if isGestureActivated || isDragging {
+            if !twoSided {
+                // Preserve legacy immediate disabling and its nonanimated cache behavior.
+                if !gestureEnabled {
                     isGestureActivated = false
                     isDragging = false
                     gestureStartTranslation = 0
-                    stopProgressUpdates()
+                    panGesture.isEnabled = false
+                    if isOpen || currentTranslation != 0 { close(animated: false) }
+                    else { invalidateWork() }
+                } else {
+                    panGesture.isEnabled = true
                 }
-
-                panGesture.isEnabled = false
-
-                // Close if open (instant reset, no animation)
-                if isOpen || currentTranslation != 0 {
-                    close(animated: false)
-                }
-            } else {
-                panGesture.isEnabled = true
+            }
+            scheduleReconciliation()
+        }
+    }
+    var dragOffsetFromEdge: CGFloat = 0 {
+        didSet {
+            dragOffsetFromEdge = max(0, dragOffsetFromEdge)
+            if twoSided && dragOffsetFromEdge != oldValue { scheduleReconciliation() }
+        }
+    }
+    var autoClose = false {
+        didSet {
+            if twoSided && autoClose != oldValue {
+                cancelAutoClose()
+                scheduleReconciliation()
             }
         }
     }
-
-    var dragOffsetFromEdge: CGFloat = 0 {
-        didSet { dragOffsetFromEdge = max(0, dragOffsetFromEdge) }
+    var autoCloseTimeout: CGFloat = 0 {
+        didSet {
+            autoCloseTimeout = max(0, autoCloseTimeout)
+            if twoSided && autoCloseTimeout != oldValue { scheduleReconciliation() }
+        }
     }
 
-    var autoClose: Bool = false
-
-    var autoCloseTimeout: CGFloat = 0 {  // milliseconds
-        didSet { autoCloseTimeout = max(0, autoCloseTimeout) }
+    var appearance = "default" {
+        didSet {
+            if appearance != oldValue {
+                resetFeedback()
+                updateActionsTransform()
+            }
+        }
+    }
+    var hapticFeedback: Bool? {
+        didSet {
+            if hapticFeedback != oldValue {
+                resetFeedback()
+                updateActionsTransform()
+            }
+        }
     }
 
     var recyclingKey: String? {
         didSet {
             guard oldValue != recyclingKey else { return }
-
-            // Thread-safe read of new key's state
-            let shouldOpen = recyclingKey.map { Self.getOpenState(for: $0) } ?? false
-            pendingShouldOpen = shouldOpen
-
-            // Thread-safe write of old key's state and unregister
+            commandTarget = SwipeCommandTarget(self)
+            let restored = recyclingKey.flatMap { Self.getOpenSide(for: $0) }
+                .flatMap { SwipeSide(rawValue: $0) }
             if let old = oldValue {
-                Self.setOpenState(for: old, isOpen: isOpen)
-                Self.unregisterView(for: old)
+                Self.setOpenState(for: old, side: openSide, owner: self)
+                Self.unregisterView(self, for: old)
             }
-
-            // Thread-safe register with new key
-            if let new = recyclingKey {
-                Self.registerView(self, for: new)
-            }
-
-            close(animated: false)
-
-            // Apply using local shouldOpen (pendingShouldOpen was cleared by close)
-            if shouldOpen {
-                DispatchQueue.main.async { [weak self] in self?.snapToOpen() }
-            }
+            invalidateWork(preservePresentation: false)
+            openSide = nil
+            currentTranslation = 0
+            savedFirstResponder = nil
+            requestedSides.removeAll()
+            slotChildren.removeAll()
+            contentView?.transform = .identity
+            updateActionsTransform()
+            pendingRestoreSide = restored
+            if let key = recyclingKey, !isDetached { Self.registerView(self, for: key) }
+            // Widths and layout mode may follow the key in the same Expo prop transaction.
+            scheduleReconciliation()
         }
     }
 
-    // MARK: - Events
+    // MARK: - Events and animation
 
     let onSwipeProgress = EventDispatcher()
     let onSwipeStart = EventDispatcher()
     let onSwipeStateChange = EventDispatcher()
     let onSwipeEnd = EventDispatcher()
+    let onActionsNeeded = EventDispatcher()
     private var displayLink: CADisplayLink?
     private var lastEmittedProgress: CGFloat = -1
-
-    // Auto-close work item for tracking and cancellation
     private var autoCloseWorkItem: DispatchWorkItem?
-
-    // Override onSwipeEnd state when autoClose triggers close() (emit "open" instead of "closed")
-    private var autoCloseEndEventOverride = false
-
-    // UIViewPropertyAnimator for interruptible animations (2.1, 2.2)
+    private var autoCloseGeneration = 0
     private var currentAnimator: UIViewPropertyAnimator?
+    private var feedback = SwipeFeedbackState()
+    private var feedbackGenerator: UIImpactFeedbackGenerator?
+    private var popStartedAt: CFTimeInterval?
+    private var reduceMotion = UIAccessibility.isReduceMotionEnabled
+    private var usesAppearance: Bool { appearance == "ios26" }
+    private var usesHaptics: Bool { hapticFeedback ?? usesAppearance }
+    private var currentSide: SwipeSide? {
+        twoSided ? (gestureSide ?? animationSide ?? openSide) : legacySide
+    }
+    private var actionsView: UIView? {
+        guard let side = currentSide else { return nil }
+        return actionsView(for: side)
+    }
+
+    private func width(for side: SwipeSide) -> CGFloat {
+        if twoSided { return side == .left ? leftActionsWidth : rightActionsWidth }
+        return side == legacySide ? actionsWidth : 0
+    }
+
+    private func actionsView(for side: SwipeSide) -> UIView? {
+        if !twoSided { return side == legacySide ? legacyActionsView : nil }
+        return side == .left ? leftActionsView : rightActionsView
+    }
+
+    private func defaultOpenSide() -> SwipeSide? {
+        if !twoSided { return legacySide }
+        if width(for: legacySide) > 0 { return legacySide }
+        return SwipeSide.allCases.first { width(for: $0) > 0 }
+    }
+
+    private func payload(_ values: [String: Any], side: SwipeSide?) -> [String: Any] {
+        guard twoSided else { return values }
+        var result = values
+        if let side = side { result["side"] = side.rawValue }
+        // Capture identity before EventDispatcher queues delivery to JavaScript.
+        if let key = recyclingKey { result["recyclingKey"] = key }
+        return result
+    }
+
+    private func persistOpenSide() {
+        if let key = recyclingKey { Self.setOpenState(for: key, side: openSide, owner: self) }
+    }
+
+    private func isCurrent(_ generation: Int, key: String?) -> Bool {
+        workGeneration == generation && recyclingKey == key
+    }
+
+    private func requestActions(on side: SwipeSide) {
+        guard !twoSided || width(for: side) > 0 else { return }
+        guard requestedSides.insert(side).inserted else { return }
+        onActionsNeeded(payload(["side": side.rawValue], side: nil))
+    }
+
+    private func scheduleReconciliation() {
+        setNeedsLayout()
+        guard !isDetached else { return }
+        guard reconciliationWorkItem == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            self?.reconciliationWorkItem = nil
+            self?.commitProps()
+        }
+        reconciliationWorkItem = item
+        DispatchQueue.main.async(execute: item)
+    }
+
+    // Called by Expo after all props, and on the next turn for direct native setters/children.
+    func commitProps() {
+        reconciliationWorkItem?.cancel()
+        reconciliationWorkItem = nil
+        guard !isDetached else { return }
+        let next = LayoutConfiguration(
+            twoSided: twoSided,
+            leftWidth: twoSided ? leftActionsWidth : 0,
+            rightWidth: twoSided ? rightActionsWidth : 0,
+            position: actionsPosition,
+            enabled: gestureEnabled, friction: friction, threshold: threshold,
+            dragOffset: dragOffsetFromEdge, autoClose: autoClose, autoCloseTimeout: autoCloseTimeout
+        )
+        let previous = appliedConfiguration
+        appliedConfiguration = next
+        if next != previous && (next.twoSided || previous.twoSided) {
+            if panGesture.state == .began || panGesture.state == .changed {
+                ignoresPanUntilNextBegin = true
+            }
+            let logicalSide = openSide
+            invalidateWork(preservePresentation: false, clearRestore: false)
+            requestedSides.removeAll()
+            if next.twoSided != previous.twoSided {
+                releaseChildRoles()
+                awaitingChildProtocol = true
+            }
+            openSide = logicalSide.flatMap { gestureEnabled && width(for: $0) > 0 ? $0 : nil }
+            currentTranslation = openSide.map { $0.sign * width(for: $0) } ?? 0
+            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+            if pendingRestoreSide == nil { persistOpenSide() }
+        }
+        panGesture.isEnabled = gestureEnabled
+        reconcileChildRoles()
+        if let cachedSide = pendingRestoreSide {
+            let side = twoSided ? cachedSide : legacySide
+            if twoSided && (width(for: side) <= 0 || !gestureEnabled) {
+                pendingRestoreSide = nil
+                openSide = nil
+                currentTranslation = 0
+                persistOpenSide()
+            } else if contentView != nil {
+                pendingRestoreSide = nil
+                snapToOpen(side: side)
+            } else if twoSided {
+                requestActions(on: side)
+            }
+        }
+        updateActionsTransform()
+        setNeedsLayout()
+    }
+
+    private func invalidateWork(
+        preservePresentation: Bool = true,
+        clearRestore: Bool = true,
+        resetAppearance: Bool = true
+    ) {
+        if twoSided && (panGesture.state == .began || panGesture.state == .changed) {
+            ignoresPanUntilNextBegin = true
+        }
+        workGeneration += 1
+        cancelAutoClose()
+        visualRestoreWorkItem?.cancel()
+        visualRestoreWorkItem = nil
+        if let animator = currentAnimator {
+            if preservePresentation {
+                animator.pauseAnimation()
+                if let presentation = contentView?.layer.presentation() {
+                    currentTranslation = presentation.transform.m41
+                }
+            }
+            animator.stopAnimation(true)
+        }
+        currentAnimator = nil
+        isAnimating = false
+        stopProgressUpdates()
+        if preservePresentation {
+            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        }
+        isGestureActivated = false
+        directGesturePending = false
+        isDragging = false
+        gestureStartTranslation = 0
+        gestureSide = nil
+        animationSide = nil
+        startOffset = 0
+        if clearRestore { pendingRestoreSide = nil }
+        if resetAppearance { resetFeedback() }
+    }
+
+    // MARK: - Appearance
+
+    private func resetFeedback() {
+        feedback.reset()
+        feedbackGenerator = nil
+        popStartedAt = nil
+        for view in [legacyActionsView, leftActionsView, rightActionsView].compactMap({ $0 }) {
+            view.transform = CGAffineTransform(translationX: view.transform.tx, y: view.transform.ty)
+        }
+    }
+
+    @objc private func reduceMotionChanged() {
+        reduceMotion = UIAccessibility.isReduceMotionEnabled
+        if reduceMotion { popStartedAt = nil }
+        updateActionsTransform()
+    }
+
+    private func beginFeedback(on side: SwipeSide) {
+        resetFeedback()
+        feedback.activate(isOpening: gestureStartedOpen)
+        if usesHaptics {
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.prepare()
+            feedbackGenerator = generator
+        }
+    }
+
+    private func updateFeedback(on side: SwipeSide, relativeTranslation: CGFloat) {
+        let sideWidth = width(for: side)
+        guard sideWidth > 0 else { return }
+        let isOpening = SwipePhysics.shouldSnapToOpen(
+            projectedTranslation: relativeTranslation * friction,
+            actionsWidth: sideWidth, threshold: threshold,
+            isLeading: side == .left, isCurrentlyOpen: gestureStartedOpen
+        )
+        guard feedback.update(isOpening: isOpening) else { return }
+        if usesHaptics { feedbackGenerator?.impactOccurred() }
+        if usesAppearance && !reduceMotion { popStartedAt = CACurrentMediaTime() }
+    }
+
+    private func railScale(progress: CGFloat) -> CGFloat {
+        guard usesAppearance else { return 1 }
+        return SwipeAnimationConfig.actionRailScale(
+            progress: progress,
+            popElapsed: popStartedAt.map { CACurrentMediaTime() - $0 },
+            hasPopped: feedback.hasCrossedThreshold,
+            reduceMotion: reduceMotion
+        )
+    }
 
     // MARK: - First Responder Helper
 
@@ -280,11 +584,17 @@ public class SwipeableView: ExpoView {
         return gesture
     }()
 
-    // MARK: - Init
+    // MARK: - Init and attachment
 
     public required init(appContext: AppContext? = nil) {
         super.init(appContext: appContext)
-        setupViews()
+        clipsToBounds = true
+        isUserInteractionEnabled = true
+        addGestureRecognizer(panGesture)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(reduceMotionChanged),
+            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -292,87 +602,51 @@ public class SwipeableView: ExpoView {
     }
 
     deinit {
+        releaseChildRoles()
         stopProgressUpdates()
         cancelAutoClose()
-        // Stop any running animations (2.2)
+        reconciliationWorkItem?.cancel()
+        visualRestoreWorkItem?.cancel()
         currentAnimator?.stopAnimation(true)
-        currentAnimator = nil
-        removeGestureRecognizer(panGesture)
-        // Thread-safe deregister from view registry
-        if let key = recyclingKey {
-            Self.unregisterView(for: key)
-        }
+        NotificationCenter.default.removeObserver(self)
+        if let key = recyclingKey { Self.unregisterView(self, for: key) }
+    }
+
+    private func suspendForDetach() {
+        commandTarget = SwipeCommandTarget(self)
+        isDetached = true
+        reconciliationWorkItem?.cancel()
+        reconciliationWorkItem = nil
+        invalidateWork(preservePresentation: false, clearRestore: false)
+        savedFirstResponder = nil
+        currentTranslation = openSide.map { $0.sign * width(for: $0) } ?? 0
+        contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        updateActionsTransform()
+        if let key = recyclingKey { Self.unregisterView(self, for: key) }
     }
 
     public override func willMove(toSuperview newSuperview: UIView?) {
-        if newSuperview == nil {
-            // Stop all timers and animations
-            stopProgressUpdates()
-            cancelAutoClose()
-            currentAnimator?.stopAnimation(true)
-            currentAnimator = nil
-            isAnimating = false
-
-            // Unregister from static registry (re-registered in didMoveToWindow)
-            if let key = recyclingKey {
-                Self.unregisterView(for: key)
-            }
-
-            // Note: transforms and zPositions are NOT reset here.
-            // Fabric may remove and re-insert views during list reorder (DELETE+INSERT),
-            // which triggers this callback. Resetting transforms would cause open
-            // swipeables to visually close even though native state (isOpen,
-            // currentTranslation) remains correct. The recyclingKey setter handles
-            // resetting transforms when the view is actually recycled for a new item.
-        }
+        if newSuperview == nil { suspendForDetach() }
         super.willMove(toSuperview: newSuperview)
-    }
-
-    private func setupViews() {
-        clipsToBounds = true
-        isUserInteractionEnabled = true
-        addGestureRecognizer(panGesture)
     }
 
     public override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard window != nil else { return }
-
-        // Re-register in the view registry after reattach (e.g. returning from navigation).
-        // willMove(toSuperview: nil) unregisters the view, but the recyclingKey prop setter
-        // short-circuits when the value hasn't changed, so the view is never re-registered
-        // unless we do it here.
-        if let key = recyclingKey {
-            Self.registerView(self, for: key)
+        guard window != nil else {
+            suspendForDetach()
+            return
         }
-
-        // Ensure gesture is attached to this view (handles view hierarchy changes)
+        isDetached = false
+        reduceMotionChanged()
+        if let key = recyclingKey { Self.registerView(self, for: key) }
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
         }
-
-        // Restore visual state after Fabric reorder (DELETE+INSERT cycle).
-        // Fabric may reset child transforms during prop reconciliation. Re-apply
-        // on next runloop tick to ensure we run after Fabric finishes mutations.
-        if isOpen && currentTranslation != 0 {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self,
-                      self.isOpen,
-                      self.currentTranslation != 0,
-                      !self.isDragging,
-                      !self.isAnimating else { return }
-                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
-                self.contentView?.layer.zPosition = 1
-                self.actionsView?.layer.zPosition = -1
-                self.updateActionsTransform()
-            }
-
-            // Restart autoClose timer if it was cancelled during detach
-            if autoClose {
-                scheduleAutoClose()
-            }
-        }
+        commitProps()
+        scheduleVisualRestore()
+        // Preserve the legacy reattachment policy, including autoClose.
+        if isOpen && autoClose { scheduleAutoClose() }
     }
 
     public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -428,6 +702,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func cancelAutoClose() {
+        autoCloseGeneration += 1
         autoCloseWorkItem?.cancel()
         autoCloseWorkItem = nil
     }
@@ -435,486 +710,538 @@ public class SwipeableView: ExpoView {
     private func scheduleAutoClose() {
         cancelAutoClose()
         let delay = autoCloseTimeout > 0 ? autoCloseTimeout / 1000.0 : 0
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.tryAutoClose()
-        }
-        autoCloseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+        enqueueAutoClose(
+            after: delay, generation: workGeneration, timerGeneration: autoCloseGeneration, key: recyclingKey
+        )
     }
 
-    private func tryAutoClose() {
-        autoCloseWorkItem = nil
-
-        // If animation is still running, keep retrying until it completes
-        if isAnimating {
-            let retryWorkItem = DispatchWorkItem { [weak self] in
-                self?.tryAutoClose()
+    private func enqueueAutoClose(after delay: TimeInterval, generation: Int, timerGeneration: Int, key: String?) {
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isCurrent(generation, key: key),
+                  self.autoCloseGeneration == timerGeneration,
+                  !self.twoSided || self.autoClose else { return }
+            self.autoCloseWorkItem = nil
+            if self.isAnimating {
+                self.enqueueAutoClose(after: 0.1, generation: generation, timerGeneration: timerGeneration, key: key)
+            } else if self.isOpen {
+                // Keep the end-open quirk local to this close; cancellation cannot leak it.
+                self.performClose(animated: true, endState: "open")
             }
-            autoCloseWorkItem = retryWorkItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: retryWorkItem)
-        } else if isOpen {
-            // Emit "open" state when autoClose completes - user's swipe intent was achieved
-            autoCloseEndEventOverride = true
-            close()
         }
+        autoCloseWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
     @objc private func emitProgressUpdate() {
-        guard actionsWidth > 0 else { return }
-
-        // During animation, read from presentation layer to get actual animated value
-        var translation = currentTranslation
-        if isAnimating, let presentationLayer = contentView?.layer.presentation() {
-            translation = presentationLayer.transform.m41 // tx component of transform
-            // Update actions to match content position
-            let progress = min(abs(translation) / actionsWidth, 1.0)
-            let offset = isLeading ? -actionsWidth : actionsWidth
-            let actionsTranslateX = offset * (1 - progress)
-            actionsView?.transform = CGAffineTransform(translationX: actionsTranslateX, y: 0)
-        }
-
-        let progress = abs(translation) / actionsWidth
-
+        guard let side = currentSide, width(for: side) > 0 else { return }
+        let translation = isAnimating
+            ? (contentView?.layer.presentation()?.transform.m41 ?? currentTranslation)
+            : currentTranslation
+        updateActionsTransform(translation: translation)
+        let rawProgress = abs(translation) / width(for: side)
+        let progress = twoSided ? min(rawProgress, 1) : rawProgress
         if abs(progress - lastEmittedProgress) > SwipeAnimationConfig.progressChangeThreshold {
             lastEmittedProgress = progress
-            onSwipeProgress([
-                "progress": progress,
-                "translationX": translation
-            ])
+            onSwipeProgress(payload(["progress": progress, "translationX": translation], side: side))
         }
     }
 
-    private func updateActionsTransform() {
-        guard let actionsView = actionsView, actionsWidth > 0 else { return }
-        let progress = min(abs(currentTranslation) / actionsWidth, 1.0)
-        let offset = isLeading ? -actionsWidth : actionsWidth
-        let actionsTranslateX = offset * (1 - progress)
-        actionsView.transform = CGAffineTransform(translationX: actionsTranslateX, y: 0)
+    private func updateActionsTransform(translation: CGFloat? = nil) {
+        let translation = translation ?? (isAnimating
+            ? (contentView?.layer.presentation()?.transform.m41 ?? currentTranslation)
+            : currentTranslation)
+        let visibleSide = currentSide
+        for side in SwipeSide.allCases {
+            guard let rail = actionsView(for: side) else { continue }
+            let sideWidth = width(for: side)
+            let active = visibleSide == side
+            let progress = active && sideWidth > 0 ? min(abs(translation) / sideWidth, 1) : 0
+            let offset = -side.sign * sideWidth * (1 - progress)
+            let scale = active && (isDragging || isAnimating || isOpen) ? railScale(progress: progress) : 1
+            // Explicit tx keeps scaling centered on the rail and never scales row translation.
+            rail.transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: offset, ty: 0)
+            if twoSided {
+                let revealed = active && sideWidth > 0 && side.sign * translation > 0
+                railVisibility.setRevealed(revealed, for: rail)
+            }
+        }
     }
 
-    // MARK: - View Lifecycle
+    // MARK: - React child roles
+
+    private func releaseChild(_ view: UIView) {
+        railVisibility.release(view)
+        view.transform = .identity
+        view.layer.zPosition = 0
+    }
+
+    private func releaseChildRoles() {
+        for view in [legacyActionsView, leftActionsView, rightActionsView, contentView].compactMap({ $0 }) {
+            releaseChild(view)
+        }
+        railVisibility.releaseAll()
+        legacyActionsView = nil
+        leftActionsView = nil
+        rightActionsView = nil
+        contentView = nil
+        slotChildren.removeAll()
+    }
+
+    private func reconcileChildRoles() {
+        if assignedTwoSided != twoSided {
+            releaseChildRoles()
+            assignedTwoSided = twoSided
+            awaitingChildProtocol = true
+        }
+        // On removal, preserve surviving identities instead of promoting a rail to content.
+        if let view = contentView, view.superview !== self { releaseChild(view); contentView = nil }
+        if let view = leftActionsView, view.superview !== self { releaseChild(view); leftActionsView = nil }
+        if let view = rightActionsView, view.superview !== self { releaseChild(view); rightActionsView = nil }
+        if let view = legacyActionsView, view.superview !== self { releaseChild(view); legacyActionsView = nil }
+        if awaitingChildProtocol && !twoSided && subviews.count > 2 { return }
+        guard let roles = SwipePhysics.childRoles(count: subviews.count, twoSided: twoSided) else { return }
+        awaitingChildProtocol = false
+        let previousLeft = leftActionsView
+        let previousRight = rightActionsView
+        let previousLegacy = legacyActionsView
+        contentView = subviews[roles.content]
+        // A complete Fabric transaction can give a previously hidden rail the content role.
+        // Restore only flags that this view owned, in both legacy and two-sided layouts.
+        if let contentView = contentView { railVisibility.release(contentView) }
+        if twoSided {
+            leftActionsView = roles.left.map { subviews[$0] }
+            rightActionsView = roles.right.map { subviews[$0] }
+            if previousLeft !== leftActionsView { requestedSides.remove(.left) }
+            if previousRight !== rightActionsView { requestedSides.remove(.right) }
+        } else {
+            legacyActionsView = roles.actions.map { subviews[$0] }
+            if previousLegacy !== legacyActionsView { requestedSides.remove(legacySide) }
+            if previousLegacy == nil && legacyActionsView != nil && (isOpen || isAnimating) {
+                legacyActionsView?.transform = .identity
+            }
+        }
+        contentView?.layer.zPosition = 1
+        for side in SwipeSide.allCases {
+            guard let rail = actionsView(for: side) else { continue }
+            rail.layer.zPosition = -1
+            if twoSided {
+                let children = rail.subviews.map { ObjectIdentifier($0) }
+                if let previous = slotChildren[side], !previous.isEmpty && previous != children {
+                    requestedSides.remove(side)
+                }
+                slotChildren[side] = children
+            }
+        }
+        if let side = currentSide, isOpen || isDragging || isAnimating {
+            requestActions(on: side)
+        }
+        if !isAnimating {
+            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        }
+    }
 
     public override func didAddSubview(_ subview: UIView) {
         super.didAddSubview(subview)
+        // Fabric inserts children individually; only commit roles for a complete protocol.
+        scheduleReconciliation()
+    }
 
-        let reactSubviews = subviews
-        let wasActionsNil = actionsView == nil
-        let wasContentNil = contentView == nil
-
-        // Validate subview count before assignment
-        switch reactSubviews.count {
-        case 0:
-            // Should not happen - we just added a subview
-            contentView = nil
-            actionsView = nil
-        case 1:
-            contentView = reactSubviews[0]
-            contentView?.layer.zPosition = 1
-            actionsView = nil
-        case 2:
-            actionsView = reactSubviews[0]
-            actionsView?.layer.zPosition = -1
-            contentView = reactSubviews[1]
-            contentView?.layer.zPosition = 1
-        default:
-            // More than 2 children - log warning but use first two
-            #if DEBUG
-            print("[SwipeableView] Warning: Expected 1-2 subviews, got \(reactSubviews.count)")
-            #endif
-            actionsView = reactSubviews[0]
-            actionsView?.layer.zPosition = -1
-            contentView = reactSubviews[1]
-            contentView?.layer.zPosition = 1
+    public override func willRemoveSubview(_ subview: UIView) {
+        // Fabric's pool also supplies descendants of legacy rows (for example Seekbar).
+        // Restore native presentation before losing the reference or returning it to that pool.
+        if subview === contentView || subview === legacyActionsView ||
+            subview === leftActionsView || subview === rightActionsView {
+            releaseChild(subview)
         }
+        super.willRemoveSubview(subview)
+        if subview === contentView { contentView = nil }
+        if subview === legacyActionsView { legacyActionsView = nil; requestedSides.remove(legacySide) }
+        if subview === leftActionsView { leftActionsView = nil; requestedSides.remove(.left) }
+        if subview === rightActionsView { rightActionsView = nil; requestedSides.remove(.right) }
+        scheduleReconciliation()
+    }
 
-        setNeedsLayout()
-
-        if wasContentNil && contentView != nil && (isOpen || currentTranslation != 0) {
-            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+    private func scheduleVisualRestore() {
+        guard visualRestoreWorkItem == nil else { return }
+        let generation = workGeneration
+        let key = recyclingKey
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.visualRestoreWorkItem = nil
+            guard self.isCurrent(generation, key: key), !self.isDragging, !self.isAnimating else { return }
+            self.reconcileChildRoles()
+            self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
+            self.updateActionsTransform()
         }
-
-        if wasActionsNil && actionsView != nil {
-            if isOpen || isAnimating {
-                actionsView?.transform = .identity
-            } else if pendingShouldOpen {
-                pendingShouldOpen = false
-                DispatchQueue.main.async { [weak self] in
-                    self?.snapToOpen()
-                }
-            }
-        }
+        visualRestoreWorkItem = item
+        DispatchQueue.main.async(execute: item)
     }
 
     public override func layoutSubviews() {
-        guard !isDragging && !isAnimating else { return }
+        guard !isDetached else { return }
+        guard !isDragging && !isAnimating else {
+            if twoSided { reconcileChildRoles(); updateActionsTransform() }
+            return
+        }
         super.layoutSubviews()
-
-        if let actionsView = actionsView {
-            var frame = actionsView.frame
-            frame.size.height = bounds.height
-            actionsView.frame = frame
-
-            if currentTranslation == 0 && actionsWidth > 0 {
-                let offset = isLeading ? -actionsWidth : actionsWidth
-                actionsView.transform = CGAffineTransform(translationX: offset, y: 0)
+        reconcileChildRoles()
+        for side in SwipeSide.allCases {
+            guard let rail = actionsView(for: side) else { continue }
+            if twoSided {
+                // React aligns the caller's actions inside full-bounds slot shells.
+                rail.bounds.size = bounds.size
+                rail.center = CGPoint(x: bounds.midX, y: bounds.midY)
+            } else {
+                var frame = rail.frame
+                frame.size.height = bounds.height
+                rail.frame = frame
             }
         }
-
-        if currentTranslation != 0 {
-            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
-            updateActionsTransform()
-
-            // Fabric may reset child transforms during prop reconciliation after a list
-            // reorder. The async dispatch ensures we run after Fabric finishes mutations.
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self,
-                      self.currentTranslation != 0,
-                      !self.isDragging,
-                      !self.isAnimating else { return }
-                self.contentView?.transform = CGAffineTransform(translationX: self.currentTranslation, y: 0)
-                self.updateActionsTransform()
-            }
-        }
+        contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        updateActionsTransform()
+        if currentTranslation != 0 { scheduleVisualRestore() }
     }
 
-    // MARK: - Gesture Handling
+    // MARK: - Gesture handling
 
     func handleGestureStart() {
-        guard gestureEnabled, actionsWidth > 0 else { return }
-
+        commitProps()
+        guard gestureEnabled, defaultOpenSide() != nil, twoSided || actionsWidth > 0 else { return }
+        if twoSided {
+            let side = currentSide
+            invalidateWork()
+            gestureSide = side
+            directGesturePending = true
+            startOffset = currentTranslation
+            gestureStartedOpen = isOpen
+            // Direct API has no direction at start. Latch when its first update arrives.
+            return
+        }
+        // Legacy direct handlers intentionally have no clamp, state callbacks or auto-close.
+        gestureSide = legacySide
         isDragging = true
         startOffset = currentTranslation
+        gestureStartedOpen = isOpen
         gestureStartTranslation = 0
         isGestureActivated = true
+        beginFeedback(on: legacySide)
+        requestActions(on: legacySide)
         onSwipeStart([:])
         startProgressUpdates()
     }
 
     func handleGestureUpdate(translationX: CGFloat, velocityX: CGFloat) {
-        guard actionsWidth > 0 && isGestureActivated else { return }
-
-        let rawTranslation = startOffset + (translationX * friction)
-        let constrainedTranslation = SwipePhysics.applyRubberBand(
-            translation: rawTranslation,
-            actionsWidth: actionsWidth,
-            isLeading: isLeading
-        )
-
-        currentTranslation = constrainedTranslation
-        contentView?.transform = CGAffineTransform(translationX: constrainedTranslation, y: 0)
-        updateActionsTransform()
+        if twoSided && directGesturePending && !isGestureActivated {
+            guard abs(translationX) >= dragOffsetFromEdge,
+                  let side = gestureSide ?? SwipePhysics.latchedSide(
+                    openSide: openSide, translation: translationX,
+                    leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+                  ) else { return }
+            gestureStartTranslation = dragOffsetFromEdge > 0 ? translationX : 0
+            activateGesture(on: side)
+        }
+        guard isGestureActivated, let side = currentSide, width(for: side) > 0 else { return }
+        let relative = twoSided ? translationX - gestureStartTranslation : translationX
+        updateGesture(translation: relative, side: side, clamp: twoSided, emitState: twoSided)
     }
 
     func handleGestureEnd(translationX: CGFloat, velocityX: CGFloat) {
-        guard isGestureActivated else { return }
-
-        isGestureActivated = false
-        gestureStartTranslation = 0
-        isDragging = false
-        stopProgressUpdates()
-
-        let projectedX = SwipePhysics.projectFinalPosition(
-            translation: translationX,
-            velocity: velocityX,
-            friction: friction
-        )
-        let willOpen = SwipePhysics.shouldSnapToOpen(
-            projectedTranslation: projectedX,
-            actionsWidth: actionsWidth,
-            threshold: threshold,
-            isLeading: isLeading,
-            isCurrentlyOpen: isOpen
-        )
-
-        if willOpen {
-            open(velocity: velocityX)
-        } else {
-            close(velocity: velocityX)
+        guard isGestureActivated, let side = currentSide else {
+            if twoSided { invalidateWork() }
+            return
         }
+        let relative = twoSided ? translationX - gestureStartTranslation : translationX
+        finishGesture(translation: relative, velocity: velocityX, side: side, emitState: twoSided, allowAutoClose: twoSided)
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard actionsWidth > 0 else { return }
-
+        guard gestureEnabled, twoSided ? defaultOpenSide() != nil : actionsWidth > 0 else { return }
+        // A command/configuration cancellation consumes the rest of this physical pan.
+        // It must not reactivate on a later changed event or switch to the opposite edge.
+        if ignoresPanUntilNextBegin && gesture.state != .began {
+            if gesture.state == .ended || gesture.state == .cancelled { savedFirstResponder = nil }
+            return
+        }
         switch gesture.state {
         case .began:
             handlePanBegan(gesture)
         case .changed:
             handlePanChanged(gesture)
-        case .ended, .cancelled:
+        case .ended:
             handlePanEnded(gesture)
+        case .cancelled:
+            if twoSided {
+                let settledSide = openSide
+                invalidateWork(preservePresentation: false)
+                openSide = settledSide
+                currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
+                contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+                updateActionsTransform()
+                savedFirstResponder = nil
+            } else {
+                // The original pan treats cancellation as release. Preserve its callbacks.
+                resetFeedback()
+                handlePanEnded(gesture)
+            }
         default:
             break
         }
     }
 
     private func handlePanBegan(_ gesture: UIPanGestureRecognizer) {
-        // Cancel RN touches immediately when pan begins to prevent press events during swipe
         cancelFabricTouches()
-
-        // Capture animation position if interrupted using UIViewPropertyAnimator (2.2)
-        if isAnimating, let animator = currentAnimator {
-            // Pause to capture current position, then stop completely
-            animator.pauseAnimation()
-            if let presentationLayer = contentView?.layer.presentation() {
-                currentTranslation = presentationLayer.transform.m41
-                contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        let interruptedSide = currentSide
+        invalidateWork()
+        ignoresPanUntilNextBegin = false
+        gestureStartTranslation = gesture.translation(in: self).x
+        if twoSided {
+            gestureSide = interruptedSide
+            if gestureSide == nil && dragOffsetFromEdge <= 0 {
+                gestureSide = SwipePhysics.latchedSide(
+                    openSide: openSide, translation: gesture.velocity(in: self).x,
+                    leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+                )
             }
-            if let actionsPresentation = actionsView?.layer.presentation() {
-                actionsView?.transform = CGAffineTransform(translationX: actionsPresentation.transform.m41, y: 0)
-            }
-            animator.stopAnimation(true)
-            currentAnimator = nil
-            isAnimating = false
+        } else {
+            gestureSide = legacySide
         }
-
-        let translation = gesture.translation(in: self).x
-        gestureStartTranslation = translation
-        isGestureActivated = (dragOffsetFromEdge <= 0)
-
-        if isGestureActivated {
-            activateGesture()
-        }
+        if dragOffsetFromEdge <= 0, let side = gestureSide { activateGesture(on: side) }
     }
 
     private func handlePanChanged(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: self).x
-
         if !isGestureActivated {
-            let dragDistance = abs(translation - gestureStartTranslation)
-            guard dragDistance >= dragOffsetFromEdge else { return }
-
-            isGestureActivated = true
+            let relative = translation - gestureStartTranslation
+            guard abs(relative) >= dragOffsetFromEdge else { return }
+            let side = gestureSide ?? (twoSided ? SwipePhysics.latchedSide(
+                openSide: openSide, translation: relative,
+                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+            ) : legacySide)
+            guard let selected = side else { return }
             gestureStartTranslation = translation
-            activateGesture()
+            activateGesture(on: selected)
         }
-
-        let effectiveTranslation = translation - gestureStartTranslation
-        let rawTranslation = startOffset + (effectiveTranslation * friction)
-        let clampedTranslation = isLeading ? max(0, rawTranslation) : min(0, rawTranslation)
-        let constrainedTranslation = SwipePhysics.applyRubberBand(
-            translation: clampedTranslation,
-            actionsWidth: actionsWidth,
-            isLeading: isLeading
-        )
-
-        currentTranslation = constrainedTranslation
-        contentView?.transform = CGAffineTransform(translationX: constrainedTranslation, y: 0)
-        updateActionsTransform()
-
-        // Emit onSwipeStateChange when threshold crossing changes intended state
-        let wouldOpen = SwipePhysics.shouldSnapToOpen(
-            projectedTranslation: constrainedTranslation,
-            actionsWidth: actionsWidth,
-            threshold: threshold,
-            isLeading: isLeading,
-            isCurrentlyOpen: isOpen
-        )
-        let intendedState = wouldOpen ? "open" : "closed"
-        if lastEmittedWillEndState != intendedState {
-            lastEmittedWillEndState = intendedState
-            onSwipeStateChange(["state": intendedState])
-        }
+        guard let side = currentSide else { return }
+        updateGesture(translation: translation - gestureStartTranslation, side: side, clamp: true, emitState: true)
     }
 
     private func handlePanEnded(_ gesture: UIPanGestureRecognizer) {
-        guard isGestureActivated else {
+        guard isGestureActivated, let side = currentSide else {
             gestureStartTranslation = 0
-            savedFirstResponder = nil  // Clear saved responder if gesture wasn't activated
+            savedFirstResponder = nil
+            resetFeedback()
             return
         }
-
-        let translation = gesture.translation(in: self).x
-        let velocity = gesture.velocity(in: self).x
-        let effectiveTranslation = translation - gestureStartTranslation
-
-        isGestureActivated = false
-        gestureStartTranslation = 0
-        isDragging = false
-        stopProgressUpdates()
-
-        let projectedX = SwipePhysics.projectFinalPosition(
-            translation: effectiveTranslation,
-            velocity: velocity,
-            friction: friction
+        finishGesture(
+            translation: gesture.translation(in: self).x - gestureStartTranslation,
+            velocity: gesture.velocity(in: self).x, side: side, emitState: true, allowAutoClose: true
         )
-        let willOpen = SwipePhysics.shouldSnapToOpen(
-            projectedTranslation: projectedX,
-            actionsWidth: actionsWidth,
-            threshold: threshold,
-            isLeading: isLeading,
-            isCurrentlyOpen: isOpen
-        )
-
-        // Only emit onSwipeStateChange if state changed from what was emitted during drag
-        // (velocity projection may result in different final state)
-        let intendedState = willOpen ? "open" : "closed"
-        if lastEmittedWillEndState != intendedState {
-            lastEmittedWillEndState = intendedState
-            onSwipeStateChange(["state": intendedState])
-        }
-
-        if willOpen {
-            open(velocity: velocity)
-            // Schedule auto-close if enabled
-            if autoClose {
-                scheduleAutoClose()
-            }
-        } else {
-            close(velocity: velocity)
-        }
     }
 
-    private func activateGesture() {
+    private func activateGesture(on side: SwipeSide) {
+        gestureSide = side
+        isGestureActivated = true
         isDragging = true
         startOffset = currentTranslation
+        gestureStartedOpen = isOpen
         lastEmittedWillEndState = isOpen ? "open" : "closed"
+        beginFeedback(on: side)
+        requestActions(on: side)
         onSwipeStart([:])
         startProgressUpdates()
     }
 
-    // MARK: - Open/Close
+    private func updateGesture(translation: CGFloat, side: SwipeSide, clamp: Bool, emitState: Bool) {
+        let raw = startOffset + translation * friction
+        let constrained: CGFloat
+        if twoSided {
+            constrained = SwipePhysics.constrainToSide(
+                translation: raw, actionsWidth: width(for: side), side: side
+            )
+        } else {
+            let translation = clamp ? (isLeading ? max(0, raw) : min(0, raw)) : raw
+            constrained = SwipePhysics.applyRubberBand(
+                translation: translation, actionsWidth: actionsWidth, isLeading: isLeading
+            )
+        }
+        currentTranslation = constrained
+        contentView?.transform = CGAffineTransform(translationX: constrained, y: 0)
+        updateFeedback(on: side, relativeTranslation: translation)
+        updateActionsTransform()
+        if emitState {
+            // Legacy pan uses absolute drag position here; do not change its event cadence.
+            let projected = twoSided ? translation * friction : constrained
+            let wouldOpen = SwipePhysics.shouldSnapToOpen(
+                projectedTranslation: projected, actionsWidth: width(for: side), threshold: threshold,
+                isLeading: side == .left, isCurrentlyOpen: twoSided ? gestureStartedOpen : isOpen
+            )
+            emitIntendedState(wouldOpen, side: side)
+        }
+    }
+
+    private func emitIntendedState(_ willOpen: Bool, side: SwipeSide) {
+        let state = willOpen ? "open" : "closed"
+        if lastEmittedWillEndState != state {
+            lastEmittedWillEndState = state
+            onSwipeStateChange(payload(["state": state], side: side))
+        }
+    }
+
+    private func finishGesture(
+        translation: CGFloat, velocity: CGFloat, side: SwipeSide, emitState: Bool, allowAutoClose: Bool
+    ) {
+        isGestureActivated = false
+        directGesturePending = false
+        gestureStartTranslation = 0
+        isDragging = false
+        stopProgressUpdates()
+        let willOpen = SwipePhysics.shouldOpenOnSide(
+            translation: translation, velocity: velocity, friction: friction,
+            actionsWidth: width(for: side), threshold: threshold, side: side,
+            isCurrentlyOpen: twoSided ? gestureStartedOpen : isOpen
+        )
+        if emitState { emitIntendedState(willOpen, side: side) }
+        if willOpen {
+            beginOpen(on: side, preserveFeedback: true)
+            if allowAutoClose && autoClose { scheduleAutoClose() }
+        } else {
+            performClose(animated: true)
+        }
+    }
+
+    // MARK: - Open/close
 
     func open(velocity: CGFloat = 0) {
-        // Cancel any existing animation
-        currentAnimator?.stopAnimation(true)
-        currentAnimator = nil
+        commitProps()
+        // gestureEnabled controls the recognizer, not imperative commands.
+        guard let side = defaultOpenSide() else { return }
+        openResolvedSide(side)
+    }
 
-        isOpen = true
+    func open(side: SwipeSide, velocity: CGFloat = 0) {
+        commitProps()
+        // Keep explicit opens available with gestureEnabled=false, just like open().
+        guard width(for: side) > 0 else { return }
+        openResolvedSide(side)
+    }
+
+    private func openResolvedSide(_ side: SwipeSide) {
+        if twoSided, let previous = currentSide, previous != side,
+           isOpen || isAnimating || currentTranslation != 0 {
+            performClose(animated: true) { [weak self] in
+                guard let self = self, self.width(for: side) > 0 else { return }
+                self.beginOpen(on: side)
+            }
+        } else {
+            beginOpen(on: side)
+        }
+    }
+
+    private func beginOpen(on side: SwipeSide, preserveFeedback: Bool = false) {
+        invalidateWork(resetAppearance: !preserveFeedback)
+        openSide = side
+        animationSide = side
         isAnimating = true
-        if let key = recyclingKey { Self.setOpenState(for: key, isOpen: true) }
-        let targetX = isLeading ? actionsWidth : -actionsWidth
-
-        // Start displayLink to sync actions with content during animation
+        persistOpenSide()
+        requestActions(on: side)
+        let targetX = side.sign * width(for: side)
+        let generation = workGeneration
+        let key = recyclingKey
         startProgressUpdates()
-
-        // Create interruptible spring animator (2.1)
         let animator = UIViewPropertyAnimator(
             duration: SwipeAnimationConfig.openDuration,
             dampingRatio: SwipeAnimationConfig.openDamping
         ) {
-            // Only animate content - actions are synced via displayLink
             self.contentView?.transform = CGAffineTransform(translationX: targetX, y: 0)
         }
-
         animator.addCompletion { [weak self] position in
-            guard let self = self, position == .end else { return }
-
+            guard let self = self, position == .end, self.isCurrent(generation, key: key) else { return }
             self.currentTranslation = targetX
             self.isAnimating = false
             self.currentAnimator = nil
+            self.animationSide = nil
             self.stopProgressUpdates()
-            // Ensure final actions position
-            self.actionsView?.transform = .identity
-            self.onSwipeProgress(["progress": 1.0, "translationX": targetX])
-            // With autoClose, let close() emit onSwipeEnd("open") instead
-            if !self.autoClose {
-                self.onSwipeEnd(["state": "open"])
-            }
-
-            // Restore first responder if it was lost during swipe (keyboard preservation)
-            if let saved = self.savedFirstResponder, !saved.isFirstResponder {
-                saved.becomeFirstResponder()
-            }
-            self.savedFirstResponder = nil
+            self.resetFeedback()
+            self.updateActionsTransform()
+            self.onSwipeProgress(self.payload(["progress": 1.0, "translationX": targetX], side: side))
+            // Programmatic opens with autoClose historically neither schedule a close nor emit end.
+            if !self.autoClose { self.onSwipeEnd(self.payload(["state": "open"], side: side)) }
+            self.restoreFirstResponder()
         }
-
-        // Store reference for interruption handling (2.2)
         currentAnimator = animator
         animator.startAnimation()
     }
 
     func snapToOpen() {
-        isOpen = true
+        commitProps()
+        guard let side = defaultOpenSide() else { return }
+        snapToOpen(side: side)
+    }
+
+    private func snapToOpen(side: SwipeSide) {
+        openSide = side
         isAnimating = false
-        let targetX = isLeading ? actionsWidth : -actionsWidth
-        currentTranslation = targetX
-
-        // Set content translation immediately
-        contentView?.transform = CGAffineTransform(translationX: targetX, y: 0)
-
-        if actionsView != nil {
-            // Actions already mounted - position them
-            actionsView?.transform = .identity
-        } else {
-            // Actions not mounted yet (React lazy rendering)
-            // Trigger onSwipeStart so React renders SwipeableActions
-            // didAddSubview will handle positioning when actions are added
+        currentTranslation = side.sign * width(for: side)
+        contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+        requestActions(on: side)
+        if !twoSided && legacyActionsView == nil {
+            // Keep the historical legacy restore start callback, including raw native users.
             onSwipeStart([:])
         }
-
-        onSwipeProgress(["progress": 1.0, "translationX": targetX])
+        updateActionsTransform()
+        onSwipeProgress(payload(["progress": 1.0, "translationX": currentTranslation], side: side))
     }
 
     func close(animated: Bool = true, velocity: CGFloat = 0) {
-        cancelAutoClose()
-        stopProgressUpdates()
+        performClose(animated: animated)
+    }
 
-        // Cancel any existing animation (2.2)
-        currentAnimator?.stopAnimation(true)
-        currentAnimator = nil
-
-        // Clear gesture state (unified from reset)
-        isDragging = false
-        isGestureActivated = false
-        gestureStartTranslation = 0
-        pendingShouldOpen = false
-
-        isOpen = false
-        // Only persist to cache when animated (user action), not when resetting (recycling)
-        if animated {
-            if let key = recyclingKey { Self.setOpenState(for: key, isOpen: false) }
-        }
-
-        let actionsOffset = isLeading ? -actionsWidth : actionsWidth
-
-        if animated {
-            // Animated close with spring physics using UIViewPropertyAnimator (2.1)
-            isAnimating = true
-            startProgressUpdates()
-
-            let animator = UIViewPropertyAnimator(
-                duration: SwipeAnimationConfig.closeDuration,
-                dampingRatio: SwipeAnimationConfig.closeDamping
-            ) {
-                self.contentView?.transform = .identity
-            }
-
-            animator.addCompletion { [weak self] position in
-                guard let self = self, position == .end else { return }
-
-                self.currentTranslation = 0
-                self.isAnimating = false
-                self.currentAnimator = nil
-                self.stopProgressUpdates()
-                self.actionsView?.transform = CGAffineTransform(translationX: actionsOffset, y: 0)
-                self.onSwipeProgress(["progress": 0.0, "translationX": 0.0])
-                // Emit "open" when autoClose completes - user's swipe intent was achieved
-                let endState = self.autoCloseEndEventOverride ? "open" : "closed"
-                self.autoCloseEndEventOverride = false
-                self.onSwipeEnd(["state": endState])
-
-                // Restore first responder if it was lost during swipe (keyboard preservation)
-                if let saved = self.savedFirstResponder, !saved.isFirstResponder {
-                    saved.becomeFirstResponder()
-                }
-                self.savedFirstResponder = nil
-            }
-
-            // Store reference for interruption handling (2.2)
-            currentAnimator = animator
-            animator.startAnimation()
-        } else {
-            // Instant close (formerly reset)
-            isAnimating = false
+    private func performClose(animated: Bool, endState: String = "closed", completion: (() -> Void)? = nil) {
+        let side = currentSide
+        invalidateWork()
+        openSide = nil
+        animationSide = side
+        // Instant legacy resets deliberately preserve cache; explicit two-sided closes clear it.
+        if animated || twoSided { persistOpenSide() }
+        if !animated {
             currentTranslation = 0
-            startOffset = 0
-            lastEmittedProgress = -1
+            animationSide = nil
             savedFirstResponder = nil
-
             contentView?.transform = .identity
-            actionsView?.transform = CGAffineTransform(translationX: actionsOffset, y: 0)
+            updateActionsTransform()
+            return
         }
+        isAnimating = true
+        let generation = workGeneration
+        let key = recyclingKey
+        startProgressUpdates()
+        let animator = UIViewPropertyAnimator(
+            duration: SwipeAnimationConfig.closeDuration,
+            dampingRatio: SwipeAnimationConfig.closeDamping
+        ) {
+            self.contentView?.transform = .identity
+        }
+        animator.addCompletion { [weak self] position in
+            guard let self = self, position == .end, self.isCurrent(generation, key: key) else { return }
+            self.currentTranslation = 0
+            self.isAnimating = false
+            self.currentAnimator = nil
+            self.stopProgressUpdates()
+            self.updateActionsTransform()
+            self.onSwipeProgress(self.payload(["progress": 0.0, "translationX": 0.0], side: side))
+            self.onSwipeEnd(self.payload(["state": endState], side: side))
+            self.animationSide = nil
+            self.resetFeedback()
+            self.restoreFirstResponder()
+            if self.isCurrent(generation, key: key) { completion?() }
+        }
+        currentAnimator = animator
+        animator.startAnimation()
+    }
+
+    private func restoreFirstResponder() {
+        if let saved = savedFirstResponder, !saved.isFirstResponder { saved.becomeFirstResponder() }
+        savedFirstResponder = nil
     }
 }
 
@@ -927,7 +1254,17 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         let velocity = pan.velocity(in: self)
         let isHorizontal = abs(velocity.x) > abs(velocity.y)
         guard isHorizontal else { return false }
-        let shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
+        let shouldBegin: Bool
+        if twoSided {
+            guard gestureEnabled else { return false }
+            let side = currentSide ?? SwipePhysics.latchedSide(
+                openSide: openSide, translation: velocity.x,
+                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+            )
+            shouldBegin = side.map { width(for: $0) > 0 } ?? false
+        } else {
+            shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
+        }
 
         if shouldBegin {
             // Prevent our pan from starting when the touch is on a RNGH-managed view.

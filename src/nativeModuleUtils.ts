@@ -1,4 +1,5 @@
 import { SwipeableModule } from './SwipeableView'
+import type { SwipeSide } from './Swipeable.types'
 
 export interface NativeModuleError {
   code: string
@@ -37,6 +38,24 @@ export function openByKey(key: string): void {
     SwipeableModule.openByKey(key)
   } catch (error) {
     handleNativeError(error, 'openByKey', key)
+  }
+}
+
+export function openByKeyOnSide(key: string, side: SwipeSide): void {
+  try {
+    SwipeableModule.openByKeyOnSide(key, side)
+  } catch (error) {
+    handleNativeError(error, 'openByKeyOnSide', key)
+  }
+}
+
+export function getOpenSideByKey(key: string): SwipeSide | null {
+  try {
+    const side = SwipeableModule.getOpenSideByKey(key)
+    return side === 'left' || side === 'right' ? side : null
+  } catch (error) {
+    handleNativeError(error, 'getOpenSideByKey', key)
+    return null
   }
 }
 

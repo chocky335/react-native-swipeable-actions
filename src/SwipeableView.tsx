@@ -1,6 +1,6 @@
 import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core'
 import { type ComponentProps, createElement, forwardRef } from 'react'
-import type { NativeSwipeableRef, SwipeableViewProps } from './Swipeable.types'
+import type { NativeSwipeableRef, SwipeableViewProps, SwipeSide } from './Swipeable.types'
 
 const NativeView = requireNativeViewManager<SwipeableViewProps>('Swipeable')
 
@@ -10,6 +10,8 @@ interface SwipeableNativeModule {
   closeByKey: (key: string, animated?: boolean) => void
   closeAll: (animated?: boolean) => void
   isOpenByKey: (key: string) => boolean
+  openByKeyOnSide: (key: string, side: SwipeSide) => void
+  getOpenSideByKey: (key: string) => SwipeSide | null
 }
 
 export const SwipeableModule = requireNativeModule<SwipeableNativeModule>('Swipeable')

@@ -65,6 +65,12 @@ class ConfigPanel extends BasePage {
     await this.tap(selectors.selectDemoList)
   }
 
+  /** Select the isolated native two-sided demo. */
+  async selectTwoSidedDemo(): Promise<void> {
+    await this.tap(selectors.selectDemoTwoSided)
+    await $(selectors.twoSidedDemo).waitForExist()
+  }
+
   /**
    * Select Native Swipeable implementation
    */

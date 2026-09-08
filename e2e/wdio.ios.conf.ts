@@ -1,23 +1,19 @@
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Options } from '@wdio/types'
 import { setPlatform } from './helpers/selectors'
+
+const appiumPort = Number(process.env.APPIUM_PORT || 4723)
 
 const defaultAppPath = path.resolve(
   process.env.HOME || '',
   'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Release-iphonesimulator/SwipeableDemo.app'
 )
 
-export const config: Options.Testrunner = {
+export const config: WebdriverIO.Config = {
   runner: 'local',
-  autoCompileOpts: {
-    autoCompile: true,
-    tsNodeOpts: {
-      transpileOnly: true,
-      project: './tsconfig.json'
-    }
-  },
-
-  specs: ['./specs/**/*.spec.ts'],
+  hostname: '127.0.0.1',
+  port: appiumPort,
+  specs: [path.resolve(__dirname, 'specs/**/*.spec.ts')],
   exclude: [],
 
   maxInstances: 1,
@@ -46,7 +42,15 @@ export const config: Options.Testrunner = {
   connectionRetryTimeout: 600000,
   connectionRetryCount: 3,
 
-  services: [['appium', { logPath: './logs' }]],
+  services: [
+    [
+      'appium',
+      {
+        logPath: path.resolve(__dirname, 'logs', `ios-${appiumPort}`),
+        args: { address: '127.0.0.1', port: appiumPort }
+      }
+    ]
+  ],
 
   framework: 'mocha',
   reporters: ['spec'],
@@ -58,5 +62,26 @@ export const config: Options.Testrunner = {
 
   before: async () => {
     setPlatform('iOS')
+  },
+
+  afterTest: async (test, _context, { passed }) => {
+    const directory = process.env.E2E_ARTIFACT_DIR
+    if (passed || !directory) return
+    const title = test.title.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 120)
+    const base = path.resolve(directory, `ios-${process.pid}-${Date.now()}-${title}`)
+    try {
+      await mkdir(path.dirname(base), { recursive: true })
+      const captures = await Promise.allSettled([
+        driver.saveScreenshot(`${base}.png`),
+        driver.getPageSource().then((source) => writeFile(`${base}.xml`, source))
+      ])
+      for (const capture of captures) {
+        if (capture.status === 'rejected') {
+          console.warn('iOS failure evidence could not be captured:', capture.reason)
+        }
+      }
+    } catch (error) {
+      console.warn('iOS failure evidence directory could not be created:', error)
+    }
   }
 }

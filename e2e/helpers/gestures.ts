@@ -150,3 +150,21 @@ export async function swipeOnElement(
 
   await driver.releaseActions()
 }
+
+/**
+ * Swipe a distance expressed in React Native layout units (dp / iOS points).
+ * Android W3C pointer coordinates are physical pixels; iOS uses points.
+ * Keep swipeOnElement's existing pixel/fraction contract unchanged.
+ */
+export async function swipeOnElementInLayoutUnits(
+  element: WebdriverIO.Element,
+  direction: 'left' | 'right',
+  duration: number,
+  distance: number
+): Promise<void> {
+  const scale = driver.isAndroid ? (await driver.getDisplayDensity()) / 160 : 1
+  if (!Number.isFinite(scale) || scale <= 0 || distance * scale <= 1) {
+    throw new Error(`Invalid layout-unit swipe: distance=${distance}, scale=${scale}`)
+  }
+  await swipeOnElement(element, direction, duration, distance * scale)
+}

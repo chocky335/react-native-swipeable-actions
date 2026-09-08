@@ -4,7 +4,7 @@ import { colors } from '../styles'
 import { ListConfigSection } from './ListConfigSection'
 import { SelectionRow } from './SelectionRow'
 
-export type DemoType = 'list' | 'chat'
+export type DemoType = 'list' | 'chat' | 'two-sided'
 
 export interface SharedConfig {
   implementation: Implementation
@@ -14,6 +14,7 @@ export interface SharedConfig {
   dragOffset: number
   gestureEnabled: boolean
   useFlatList: boolean
+  isEventLogEnabled: boolean
   isBenchmarkRunning: boolean
   benchmarkResult: string | null
 }
@@ -26,6 +27,7 @@ export interface SharedConfigCallbacks {
   onDragOffsetChange: (value: number) => void
   onGestureEnabledChange: (value: boolean) => void
   onUseFlatListChange: (value: boolean) => void
+  onEventLogEnabledChange: (value: boolean) => void
   onCloseAll: () => void
   onResetAll: () => void
   onBenchmark: () => void
@@ -43,7 +45,8 @@ interface ConfigPanelProps {
 
 const DEMO_OPTIONS: { label: string; value: DemoType; testID: string }[] = [
   { label: 'List', value: 'list', testID: 'select-demo-list' },
-  { label: 'Chat', value: 'chat', testID: 'select-demo-chat' }
+  { label: 'Chat', value: 'chat', testID: 'select-demo-chat' },
+  { label: 'Two-sided', value: 'two-sided', testID: 'select-demo-two-sided' }
 ]
 
 export function ConfigPanel({
@@ -67,7 +70,7 @@ export function ConfigPanel({
           value={activeDemo}
           onChange={onDemoChange}
         />
-        <ListConfigSection config={config} callbacks={callbacks} />
+        {activeDemo !== 'two-sided' && <ListConfigSection config={config} callbacks={callbacks} />}
       </View>
     </View>
   )

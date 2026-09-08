@@ -2,6 +2,7 @@ import { FlashList, type FlashListRef, useBenchmark } from '@shopify/flash-list'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Alert, FlatList, StyleSheet, View } from 'react-native'
 import { Swipeable, type SwipeableMethods } from 'react-native-swipeable-actions'
+import { useEventLog } from '../../contexts/EventLogContext'
 import { colors } from '../../styles'
 import { RNGHRowItem } from './RNGHRowItem'
 import { SeekbarRow } from './SeekbarRow'
@@ -44,6 +45,7 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
 
   const flashListRef = useRef<FlashListRef<ItemData>>(null)
   const rowRefs = useRef<Map<string, RowRef>>(new Map())
+  const { recordStart, recordStateChange, recordEnd, recordProgress } = useEventLog()
 
   const { startBenchmark, isBenchmarkRunning } = useBenchmark(
     flashListRef as React.RefObject<FlashListRef<ItemData>>,
@@ -144,6 +146,10 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
             threshold={threshold}
             dragOffsetFromEdge={dragOffset}
             gestureEnabled={gestureEnabled}
+            onSwipeStart={recordStart}
+            onSwipeStateChange={recordStateChange}
+            onSwipeEnd={recordEnd}
+            onProgress={recordProgress}
           />
         )
       }
@@ -169,7 +175,11 @@ export const ListDemo = forwardRef<ListDemoRef, ListDemoProps>(function ListDemo
       friction,
       threshold,
       dragOffset,
-      gestureEnabled
+      gestureEnabled,
+      recordStart,
+      recordStateChange,
+      recordEnd,
+      recordProgress
     ]
   )
 

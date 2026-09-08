@@ -12,6 +12,10 @@ class SwipeableModule : Module() {
             SwipeableView.openByKey(key)
         }
 
+        Function("openByKeyOnSide") { key: String, side: String? ->
+            SwipeableView.openByKeyOnSide(key, SwipeSide.fromValue(side))
+        }
+
         Function("closeByKey") { key: String, animated: Boolean? ->
             SwipeableView.closeByKey(key, animated ?: true)
         }
@@ -22,6 +26,10 @@ class SwipeableModule : Module() {
 
         Function("isOpenByKey") { key: String ->
             SwipeableView.isOpenByKey(key)
+        }
+
+        Function("getOpenSideByKey") { key: String ->
+            SwipeableView.getOpenSideByKey(key)
         }
 
         View(SwipeableView::class) {
@@ -52,14 +60,27 @@ class SwipeableModule : Module() {
             Prop("autoCloseTimeout") { view: SwipeableView, timeout: Float ->
                 view.autoCloseTimeout = timeout
             }
+            Prop("twoSided") { view: SwipeableView, enabled: Boolean ->
+                view.twoSided = enabled
+            }
+            Prop("leftActionsWidth") { view: SwipeableView, width: Float ->
+                view.leftActionsWidth = width
+            }
+            Prop("rightActionsWidth") { view: SwipeableView, width: Float ->
+                view.rightActionsWidth = width
+            }
 
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd")
+            OnViewDidUpdateProps { view: SwipeableView ->
+                view.applyPendingConfiguration()
+            }
+
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded")
 
             AsyncFunction("close") { view: SwipeableView, animated: Boolean? ->
-                view.post { view.close(animated ?: true) }
+                view.postCommand { view.close(animated ?: true) }
             }
             AsyncFunction("open") { view: SwipeableView ->
-                view.post { view.open() }
+                view.postCommand { view.open() }
             }
 
             AsyncFunction("handleGestureStart") { view: SwipeableView ->

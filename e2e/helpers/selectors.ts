@@ -20,7 +20,14 @@ function byTestId(id: string): string {
   if (isIOS) {
     return `//*[@name="${id}"]`
   }
-  return `//*[contains(@resource-id, "${id}")]`
+  // The driver disables resource-ID prefixing for React Native's raw testIDs.
+  // Direct IDs avoid XML dumps and cannot confuse a row with its action slots.
+  return `id=${id}`
+}
+
+// Keep the explicit exact-ID helper for the two-sided demo's named slots.
+function byExactTestId(id: string): string {
+  return byTestId(id)
 }
 
 /**
@@ -60,6 +67,31 @@ export const selectors = {
   get selectDemoList() {
     return byTestId('select-demo-list')
   },
+  get selectDemoTwoSided() {
+    return byExactTestId('select-demo-two-sided')
+  },
+  get twoSidedDemo() {
+    return byExactTestId('two-sided-demo')
+  },
+  get twoSidedControls() {
+    return byExactTestId('two-sided-controls')
+  },
+  get twoSidedList() {
+    return byExactTestId('two-sided-list')
+  },
+  twoSidedControl: (name: string) => byExactTestId(`two-sided-${name}`),
+  twoSidedControlLabel: (name: string) => byExactTestId(`two-sided-${name}-label`),
+  twoSidedRow: (id: number) => byExactTestId(`two-sided-row-${id}`),
+  twoSidedFrame: (id: number) => byExactTestId(`two-sided-frame-${id}`),
+  twoSidedAnchor: (id: number) => byExactTestId(`two-sided-anchor-${id}`),
+  twoSidedLayout: (id: number) => byExactTestId(`two-sided-layout-${id}`),
+  twoSidedActions: (id: number, side: 'left' | 'right') =>
+    byExactTestId(`two-sided-row-${id}-${side}-actions`),
+  twoSidedAction: (id: number, action: 'left' | 'right' | 'more' | 'legacy') =>
+    byExactTestId(`two-sided-action-${action}-${id}`),
+  twoSidedPresses: (id: number) => byExactTestId(`two-sided-presses-${id}`),
+  twoSidedEvents: (id: number) => byExactTestId(`two-sided-events-${id}`),
+  twoSidedLastEnd: (id: number) => byExactTestId(`two-sided-last-end-${id}`),
   get selectSwipeable() {
     return byTestId('select-swipeable')
   },

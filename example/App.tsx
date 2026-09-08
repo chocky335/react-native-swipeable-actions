@@ -12,16 +12,20 @@ import {
   type SharedConfig,
   type SharedConfigCallbacks
 } from './components/ConfigPanel'
+import { EventLogOverlay } from './components/EventLogOverlay'
 import { type ConfigContextValue, ConfigProvider } from './contexts/ConfigContext'
+import { EventLogProvider } from './contexts/EventLogContext'
 import type { Implementation } from './features/list-demo'
 import { BenchmarkHUD } from './PerformanceHUD'
 import { ChatScreen, type ChatScreenRef } from './screens/ChatScreen'
 import { ListScreen, type ListScreenRef } from './screens/ListScreen'
+import { TwoSidedScreen } from './screens/TwoSidedScreen'
 import { colors } from './styles'
 
 type RootStackParamList = {
   List: undefined
   Chat: undefined
+  TwoSided: undefined
 }
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -43,6 +47,7 @@ function AppContent() {
   const [dragOffset, setDragOffset] = useState(0)
   const [gestureEnabled, setGestureEnabled] = useState(true)
   const [useFlatList, setUseFlatList] = useState(false)
+  const [isEventLogEnabled, setIsEventLogEnabled] = useState(false)
   const [isBenchmarkRunning, setIsBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<string | null>(null)
   const showBenchmarkHUD = isBenchmarkRunning || Boolean(benchmarkResult)
@@ -90,6 +95,7 @@ function AppContent() {
       dragOffset,
       gestureEnabled,
       useFlatList,
+      isEventLogEnabled,
       isBenchmarkRunning,
       benchmarkResult
     }),
@@ -101,6 +107,7 @@ function AppContent() {
       dragOffset,
       gestureEnabled,
       useFlatList,
+      isEventLogEnabled,
       isBenchmarkRunning,
       benchmarkResult
     ]
@@ -146,6 +153,7 @@ function AppContent() {
       onDragOffsetChange: setDragOffset,
       onGestureEnabledChange: setGestureEnabled,
       onUseFlatListChange: setUseFlatList,
+      onEventLogEnabledChange: setIsEventLogEnabled,
       onCloseAll: handleCloseAll,
       onResetAll: handleResetAll,
       onBenchmark: handleBenchmark,
@@ -156,7 +164,8 @@ function AppContent() {
 
   const handleDemoChange = useCallback((demo: DemoType) => {
     setActiveDemo(demo)
-    navigationRef.current?.navigate(demo === 'list' ? 'List' : 'Chat')
+    const routes = { list: 'List', chat: 'Chat', 'two-sided': 'TwoSided' } as const
+    navigationRef.current?.navigate(routes[demo])
   }, [])
 
   const handleConfigToggle = useCallback(() => {
@@ -172,7 +181,10 @@ function AppContent() {
     [insets.top]
   )
 
-  const subtitle = `${activeDemo === 'list' ? 'List' : 'Chat'} • ${implementation === 'swipeable' ? 'Swipeable' : 'RNGH'}`
+  const subtitle =
+    activeDemo === 'two-sided'
+      ? 'Two-sided / Native Swipeable'
+      : `${activeDemo === 'list' ? 'List' : 'Chat'} • ${implementation === 'swipeable' ? 'Swipeable' : 'RNGH'}`
 
   return (
     <GestureHandlerRootView key={implementation} style={styles.container}>
@@ -191,12 +203,16 @@ function AppContent() {
       {/* Main content area — NavigationContainer with native stack */}
       <View style={styles.flex}>
         <ConfigProvider value={configValue}>
-          <NavigationContainer ref={navigationRef}>
-            <Stack.Navigator initialRouteName='List' screenOptions={{ headerShown: false }}>
-              <Stack.Screen name='List'>{() => <ListScreen ref={listScreenRef} />}</Stack.Screen>
-              <Stack.Screen name='Chat'>{() => <ChatScreen ref={chatScreenRef} />}</Stack.Screen>
-            </Stack.Navigator>
-          </NavigationContainer>
+          <EventLogProvider enabled={isEventLogEnabled}>
+            <NavigationContainer ref={navigationRef}>
+              <Stack.Navigator initialRouteName='List' screenOptions={{ headerShown: false }}>
+                <Stack.Screen name='List'>{() => <ListScreen ref={listScreenRef} />}</Stack.Screen>
+                <Stack.Screen name='Chat'>{() => <ChatScreen ref={chatScreenRef} />}</Stack.Screen>
+                <Stack.Screen name='TwoSided' component={TwoSidedScreen} />
+              </Stack.Navigator>
+            </NavigationContainer>
+            <EventLogOverlay topOffset={insets.top + HEADER_HEIGHT + 8} />
+          </EventLogProvider>
         </ConfigProvider>
       </View>
 

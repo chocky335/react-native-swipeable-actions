@@ -4,7 +4,12 @@ export type { NativeModuleError, SwipeableErrorHandler } from './nativeModuleUti
 export { setGlobalErrorHandler } from './nativeModuleUtils'
 export { default as Swipeable } from './Swipeable'
 export type {
+  ActionsNeededEvent,
   NativeSwipeableRef,
+  SwipeAppearance,
+  SwipeSide,
+  SwipeableComponentProps,
+  TwoSidedSwipeableProps,
   SwipeableMethods,
   SwipeableProps,
   SwipeableStatic,

@@ -5,7 +5,10 @@ jest.mock('./src/SwipeableView.tsx', () => {
   const SwipeableModule = {
     openByKey: jest.fn(),
     closeByKey: jest.fn(),
-    closeAll: jest.fn()
+    closeAll: jest.fn(),
+    isOpenByKey: jest.fn(() => false),
+    openByKeyOnSide: jest.fn(),
+    getOpenSideByKey: jest.fn(() => null)
   }
 
   const SwipeableView = React.forwardRef((props, ref) => {

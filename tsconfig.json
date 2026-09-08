@@ -18,5 +18,5 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "build", "ios", "android", "src/__tests__", "src/__mocks__"]
+  "exclude": ["node_modules", "build", "ios", "android", "src/__tests__", "src/__mocks__", "src/__type_tests__"]
 }

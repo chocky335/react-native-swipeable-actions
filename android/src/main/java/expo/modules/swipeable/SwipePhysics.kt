@@ -4,7 +4,49 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sign
 
+enum class SwipeSide(val value: String, val sign: Float) {
+    LEFT("left", 1f), RIGHT("right", -1f);
+
+    companion object {
+        fun fromValue(value: String?): SwipeSide? = values().firstOrNull { it.value == value }
+    }
+}
+
 object SwipePhysics {
+    private fun enabled(width: Float): Boolean = width.isFinite() && width > 0f
+
+    fun defaultOpenSide(preferred: SwipeSide, leftWidth: Float, rightWidth: Float): SwipeSide? {
+        val preferredWidth = if (preferred == SwipeSide.LEFT) leftWidth else rightWidth
+        if (enabled(preferredWidth)) return preferred
+        return when {
+            enabled(leftWidth) -> SwipeSide.LEFT
+            enabled(rightWidth) -> SwipeSide.RIGHT
+            else -> null
+        }
+    }
+
+    /** Physical edge selection; an existing latch cannot change until the next gesture. */
+    fun selectSide(
+        translation: Float,
+        openSide: SwipeSide?,
+        latchedSide: SwipeSide?,
+        leftWidth: Float,
+        rightWidth: Float
+    ): SwipeSide? {
+        val side = latchedSide ?: openSide ?: when {
+            translation > 0f -> SwipeSide.LEFT
+            translation < 0f -> SwipeSide.RIGHT
+            else -> return null
+        }
+        return side.takeIf { enabled(if (it == SwipeSide.LEFT) leftWidth else rightWidth) }
+    }
+
+    fun applyLatchedTranslation(startOffset: Float, translation: Float, friction: Float, width: Float, side: SwipeSide): Float {
+        val raw = startOffset + translation * friction
+        val clamped = if (side == SwipeSide.LEFT) maxOf(0f, raw) else minOf(0f, raw)
+        return applyRubberBand(clamped, width, side == SwipeSide.LEFT)
+    }
+
 
     fun applyRubberBand(
         translation: Float,
