@@ -13,6 +13,7 @@ import {
 import { Platform, StyleSheet, View } from 'react-native'
 import { SWIPE_DEFAULTS } from './constants'
 import {
+  cancelByKey,
   closeAll,
   closeByKey,
   getOpenSideByKey,
@@ -181,6 +182,18 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
           else openByKeyOnSide(key, side)
         } else if (__DEV__) {
           console.warn('[Swipeable] open() called without recyclingKey - method has no effect')
+        }
+      },
+      cancel: () => {
+        const key = recyclingKeyRef.current
+        if (key) {
+          cancelByKey(key)
+          // Native cancelGesture() short-circuits handlePanEnded so onSwipeEnd
+          // is never emitted. Reset the JS-side gate so the next gesture fires
+          // onSwipeStart to our consumer again.
+          swipeStartedRef.current = false
+        } else if (__DEV__) {
+          console.warn('[Swipeable] cancel() called without recyclingKey - method has no effect')
         }
       }
     }),
@@ -363,6 +376,14 @@ SwipeableExport.close = (recyclingKey: string, animated?: boolean) => {
     return
   }
   closeByKey(recyclingKey, animated)
+}
+
+SwipeableExport.cancel = (recyclingKey: string) => {
+  if (__DEV__ && (!recyclingKey || typeof recyclingKey !== 'string')) {
+    console.warn('[Swipeable.cancel] recyclingKey must be a non-empty string')
+    return
+  }
+  cancelByKey(recyclingKey)
 }
 
 SwipeableExport.closeAll = (animated?: boolean) => {

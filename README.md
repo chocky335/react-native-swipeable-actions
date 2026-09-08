@@ -312,6 +312,12 @@ swipeableRef.current?.close(false)    // instant
 swipeableRef.current?.open()
 swipeableRef.current?.open('left')
 swipeableRef.current?.open('right')
+
+// Cancel an in-flight gesture and snap back to closed.
+// Use from `onSwipeStart` to abort a swipe before it can complete,
+// e.g. when the parent screen has unsaved state and wants to show a
+// confirm dialog instead of letting the swipe-to-pop proceed.
+swipeableRef.current?.cancel()
 ```
 
 ## Static Methods
@@ -333,6 +339,9 @@ Swipeable.close('row-1', false)    // instant
 // Close all open rows
 Swipeable.closeAll()               // animated
 Swipeable.closeAll(false)          // instant
+
+// Cancel an in-flight gesture on a specific row
+Swipeable.cancel('row-1')
 ```
 
 ## AutoClose Pattern (Swipe-to-Reply)
@@ -471,8 +480,15 @@ slot 0 from key 0 to 100 and back, swap the first two rows, and detach/attach th
 Commands target the current first row. Each row shows action counters and aggregate/side
 completion counts plus the last side/state. Hide controls to leave more space for rows.
 
-After rebuilding the native application, run the new spec explicitly from `e2e/` (the
-existing platform-specific npm scripts select the older spec):
+After rebuilding the native application, run a complete platform suite from `e2e/`.
+Both platform scripts run all legacy, two-sided, and benchmark specs without filters:
+
+```sh
+npm run test:android
+npm run test:ios
+```
+
+For focused diagnostics only, the two-sided spec can be selected explicitly:
 
 ```sh
 npx wdio run wdio.conf.ts --spec specs/two-sided.spec.ts

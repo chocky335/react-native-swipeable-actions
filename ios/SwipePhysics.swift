@@ -101,6 +101,23 @@ struct SwipeOpenStateCache {
 
     func side(for key: String) -> SwipeSide? { sides[key] }
 
+    // Call while holding the registry queue: capture and cache clearing must be atomic.
+    // An unbound close has no delayed work that could affect a future binding.
+    mutating func captureCloseTarget<View: AnyObject>(
+        for key: String, current: SwipeCommandTarget<View>?
+    ) -> SwipeCommandTarget<View>? {
+        guard current?.value != nil else {
+            set(nil, for: key)
+            return nil
+        }
+        return current
+    }
+
+    mutating func clearIfUnbound(for key: String, hasCurrentBinding: Bool) {
+        guard !hasCurrentBinding else { return }
+        set(nil, for: key)
+    }
+
     mutating func set(_ side: SwipeSide?, for key: String) {
         guard let side = side else {
             sides.removeValue(forKey: key)
@@ -111,6 +128,24 @@ struct SwipeOpenStateCache {
         sides[key] = side
         while order.count > max(0, capacity) {
             sides.removeValue(forKey: order.removeFirst())
+        }
+    }
+}
+
+/// Only Fabric's mount/unmount hooks participate in role assignment.
+struct SwipeReactChildren<Child: AnyObject> {
+    private(set) var views: [Child] = []
+
+    mutating func mount(_ child: Child, at index: Int) {
+        views.removeAll { $0 === child }
+        views.insert(child, at: min(max(index, 0), views.count))
+    }
+
+    mutating func unmount(_ child: Child, at index: Int) {
+        if views.indices.contains(index), views[index] === child {
+            views.remove(at: index)
+        } else {
+            views.removeAll { $0 === child }
         }
     }
 }
@@ -210,6 +245,16 @@ struct SwipeFeedbackState {
 }
 
 extension SwipePhysics {
+    static func shouldSyncOpenWidth(
+        oldWidth: CGFloat, newWidth: CGFloat, isOpen: Bool, isInteracting: Bool
+    ) -> Bool {
+        oldWidth != newWidth && newWidth > 0 && isOpen && !isInteracting
+    }
+
+    static func shouldRestoreAfterDetach(twoSided: Bool, hasPendingInteraction: Bool) -> Bool {
+        twoSided && !hasPendingInteraction
+    }
+
     static func shouldCloseForCloseAll(
         isOpen: Bool, twoSided: Bool, isAnimating: Bool, hasPendingInteraction: Bool
     ) -> Bool {

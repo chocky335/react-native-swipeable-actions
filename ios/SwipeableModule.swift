@@ -13,6 +13,10 @@ public class SwipeableModule: Module {
             SwipeableView.closeByKey(key, animated: animated ?? true)
         }
 
+        Function("cancelByKey") { (key: String) in
+            SwipeableView.cancelByKey(key)
+        }
+
         Function("closeAll") { (animated: Bool?) in
             SwipeableView.closeAll(animated: animated ?? true)
         }
@@ -104,6 +108,12 @@ public class SwipeableModule: Module {
             AsyncFunction("open") { (view: SwipeableView) in
                 view.enqueueCommand {
                     $0.open()
+                }
+            }
+
+            AsyncFunction("cancel") { (view: SwipeableView) in
+                view.enqueueCommand {
+                    $0.cancelGesture()
                 }
             }
 

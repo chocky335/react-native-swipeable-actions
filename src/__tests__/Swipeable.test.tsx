@@ -204,10 +204,12 @@ describe('Swipeable', () => {
       act(() => {
         ref.current?.open()
         ref.current?.close(true)
+        ref.current?.cancel()
       })
 
       expect(mock.SwipeableModule.openByKey).toHaveBeenCalledWith('8')
       expect(mock.SwipeableModule.closeByKey).toHaveBeenCalledWith('8', true)
+      expect(mock.SwipeableModule.cancelByKey).toHaveBeenCalledWith('8')
     })
 
     it('warns for ref commands without a valid recyclingKey', () => {
@@ -277,13 +279,73 @@ describe('Swipeable', () => {
   })
 
   describe('SwipeableMethods interface', () => {
-    it('exposes close and open methods', () => {
+    it('exposes close, open, and cancel methods', () => {
       const methods: SwipeableMethods = {
         close: jest.fn(),
-        open: jest.fn()
+        open: jest.fn(),
+        cancel: jest.fn()
       }
       expect(typeof methods.close).toBe('function')
       expect(typeof methods.open).toBe('function')
+      expect(typeof methods.cancel).toBe('function')
+    })
+  })
+
+  describe('cancel()', () => {
+    beforeEach(() => {
+      jest.clearAllMocks()
+    })
+
+    it('calls native cancelByKey when invoked via ref', () => {
+      const ref = createRef<SwipeableMethods>()
+      tree = createRow({ ref, recyclingKey: 'cancel-test' })
+      act(() => ref.current?.cancel())
+      expect(mock.SwipeableModule.cancelByKey).toHaveBeenCalledWith('cancel-test')
+    })
+
+    it('warns and no-ops when called without recyclingKey', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+      const ref = createRef<SwipeableMethods>()
+      tree = createRow({ ref })
+      act(() => ref.current?.cancel())
+      expect(mock.SwipeableModule.cancelByKey).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('cancel() called without recyclingKey')
+      )
+      warn.mockRestore()
+    })
+
+    it('static Swipeable.cancel(key) calls native cancelByKey', () => {
+      Swipeable.cancel('static-cancel-test')
+      expect(mock.SwipeableModule.cancelByKey).toHaveBeenCalledWith('static-cancel-test')
+    })
+
+    it.each([false, true])('allows a new gesture after ref cancel with twoSided=%s', (twoSided) => {
+      const ref = createRef<SwipeableMethods>()
+      const onSwipeStart = jest.fn()
+      const onSwipeEnd = jest.fn()
+      tree = createRow({
+        ref,
+        recyclingKey: 'cancel-gate',
+        onSwipeStart,
+        onSwipeEnd,
+        ...(twoSided ? { leftActions: mockActions, leftActionsWidth: 80 } : {})
+      })
+      const instance = mock.getLastInstance()
+
+      act(() => {
+        instance?.triggerSwipeStart()
+        instance?.triggerSwipeStart()
+      })
+      expect(onSwipeStart).toHaveBeenCalledTimes(1)
+
+      act(() => ref.current?.cancel())
+      expect(mock.SwipeableModule.cancelByKey).toHaveBeenCalledWith('cancel-gate')
+      expect(onSwipeEnd).not.toHaveBeenCalled()
+
+      act(() => instance?.triggerSwipeStart())
+      expect(onSwipeStart).toHaveBeenCalledTimes(2)
+      expect(onSwipeEnd).not.toHaveBeenCalled()
     })
   })
 })

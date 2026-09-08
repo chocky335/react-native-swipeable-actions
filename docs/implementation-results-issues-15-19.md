@@ -1,11 +1,47 @@
 # Implementation results: issues 15 and 19
 
-## Current validation status (2026-09-08)
+## Current validation status (2026-09-09)
 
-**Current physical-device acceptance is not 100%: Xiaomi finished at 44/45.
-The iOS simulator and Android emulator passed; the Pixel run remains incomplete.**
+**Latest-main integration has passed local unit/native checks; fresh CI and
+integrated-device acceptance are still pending.**
 
-This acceptance record supersedes the earlier failed-run status retained below.
+## Latest-main integration
+
+The PR incorporates `main` at `ded435dc8f87cf300f2d632646e23d368592758e` with a
+normal merge, retaining upstream release metadata and fixes rather than replacing
+conflicting files wholesale. The new side-aware API retains main's existing
+ref/static/raw cancellation methods and public test mock behavior.
+
+- JavaScript: **62/62**, all six maintained suites. The local invocation used
+  `--roots src` because the isolated baseline checkout under ignored `e2e/logs/`
+  otherwise appeared as a second project to Jest. No maintained tests were omitted.
+- Swift: **76/76**, including new integration and cached-close ordering tests.
+  These package tests do not compile or exercise the UIKit view/module.
+- Android native: **115/115 Debug and 115/115 Release**, retaining all prior tests
+  and adding cancellation, stale-command, touch suppression, and width checks.
+- TypeScript, legacy/two-sided compatibility fixtures, and formatting of the
+  changed TypeScript files passed. These results total **368/368 unit/native test
+  executions**, not full E2E acceptance or a code-coverage claim.
+- Upstream iOS child mounting, transform cleanup, width resynchronization,
+  recycled-row closing, interrupted-work handling, and gesture priority are
+  integrated with two-sided restoration and binding guards. Parent review caught
+  and corrected an unbound-close/remount ordering issue before commit.
+- Upstream example Reanimated pin, updated Appium/XCUITest dependency versions,
+  and prebuilt WebDriverAgent CI support are retained.
+- The pre-integration branch's [CI run 34277897167](https://github.com/chocky335/react-native-swipeable-actions/actions/runs/34277897167)
+  passed lint but failed installing example dependencies before unit/native or
+  E2E execution. Its broad Reanimated range selected 4.6.0, incompatible with
+  React Native 0.81.5. Main's existing `~4.3.0` pin addresses that resolution
+  failure; no force-install or peer-dependency bypass was added.
+
+Fresh CI must run on the merge commit with both E2E platforms enabled. The
+parallel same-Xiaomi comparison remains pinned to the passing baseline
+`60078b953a629f998fb4a3615d7015ca6c4e171e` and pre-integration `7197fb0`; its
+results must not be represented as validation of the newly integrated native code.
+
+## Pre-integration validation (commit `7197fb0`)
+
+The following results describe the pre-integration branch, not the newly merged code.
 The final maintained suites passed **403/403 test executions, with zero failures
 and zero skipped tests**. This is a test pass rate, not a claim of 100% branch
 coverage. Historical failed attempts and focused diagnostic runs are not included

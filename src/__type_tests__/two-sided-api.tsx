@@ -51,8 +51,10 @@ export const allInputs: SwipeableComponentProps = input
 
 ref.current?.open()
 ref.current?.open('left')
+ref.current?.cancel()
 Swipeable.open('row')
 Swipeable.open('row', 'right')
+Swipeable.cancel('row')
 
 // @ts-expect-error Explicit action content needs its matching width.
 export const missingWidth = <Swipeable leftActions={action}>{row}</Swipeable>

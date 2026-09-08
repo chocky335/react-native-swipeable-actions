@@ -35,6 +35,7 @@ class SwipeableViewTest {
     private lateinit var activity: Activity
     private lateinit var root: FrameLayout
     private val events = mutableListOf<Pair<String, Map<String, Any>>>()
+    private var eventObserver: ((String, Map<String, Any>) -> Unit)? = null
 
     @Before fun setUp() {
         // AndroidX retains its Choreographer in a thread-local across Robolectric
@@ -48,7 +49,10 @@ class SwipeableViewTest {
         mockkConstructor(ViewEventDelegate::class)
         every { anyConstructed<ViewEventDelegate<Map<String, Any>>>().getValue(any(), any()) } answers {
             val name = secondArg<KProperty<*>>().name
-            ViewEventCallback<Map<String, Any>> { body -> events += name to body.toMap() }
+            ViewEventCallback<Map<String, Any>> { body ->
+                events += name to body.toMap()
+                eventObserver?.invoke(name, body)
+            }
         }
         SwipeableView.clearCache()
         controller = Robolectric.buildActivity(Activity::class.java).setup()
@@ -822,6 +826,349 @@ class SwipeableViewTest {
         settle()
         assertEquals(PointerEvents.AUTO, right.pointerEvents)
         assertEquals(right.getChildAt(0).id, TouchTargetHelper.findTargetTagForTouch(280f, 32f, row))
+    }
+
+    @Test fun cancelPendingDirectGestureCannotActivateUntilAnotherStart() {
+        val row = row()
+        row.handleGestureStart()
+        row.cancelGesture()
+        row.handleGestureUpdate(120f, 0f)
+        row.handleGestureUpdate(-120f, 0f)
+        row.handleGestureEnd(-120f, 0f)
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertTrue(events.isEmpty())
+        row.handleGestureStart()
+        row.handleGestureUpdate(-120f, 0f)
+        // Fulfill the lazy request before release, as React would.
+        (row.getChildAt(1) as FrameLayout).addView(View(activity))
+        row.handleGestureEnd(-120f, 0f)
+        settle()
+        assertEquals(listOf("open:right"), ends())
+        assertEquals(listOf("right"), named("onActionsNeeded").map { it["side"] })
+    }
+
+    @Test fun cancelActiveDirectGestureSuppressesUpdatesAndCompletionInBothModes() {
+        for (twoSided in listOf(false, true)) {
+            val row = row(twoSided = twoSided, key = "cancel-$twoSided")
+            row.handleGestureStart()
+            row.handleGestureUpdate(-120f, 0f)
+            assertEquals(-120f, row.getChildAt(row.childCount - 1).translationX, .01f)
+            events.clear()
+            row.cancelGesture()
+            row.handleGestureUpdate(240f, 0f)
+            row.handleGestureEnd(240f, 1000f)
+            settle()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+            assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+            assertFalse(SwipeableView.isOpenByKey("cancel-$twoSided"))
+            assertTrue(events.isEmpty())
+        }
+    }
+
+    @Test fun cancelBeforeActivationSuppressesAllTouchEntryPointsUntilFreshDown() {
+        for (twoSided in listOf(false, true)) {
+            val row = row(twoSided = twoSided, key = "touch-$twoSided")
+            events.clear()
+            motion(MotionEvent.ACTION_DOWN, 200f, 10f).useEvent { row.onTouchEvent(it) }
+            row.cancelGesture()
+            motion(MotionEvent.ACTION_MOVE, 100f, 10f).useEvent {
+                assertFalse(row.onInterceptTouchEvent(it))
+                assertTrue(row.onTouchEvent(it))
+                assertTrue(row.dispatchTouchEvent(it))
+            }
+            motion(MotionEvent.ACTION_UP, 100f, 10f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+            motion(MotionEvent.ACTION_MOVE, 50f, 10f).useEvent { assertTrue(row.onTouchEvent(it)) }
+            settle()
+            assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+            assertTrue(events.isEmpty())
+            motion(MotionEvent.ACTION_DOWN, 200f, 10f).useEvent { row.onTouchEvent(it) }
+            motion(MotionEvent.ACTION_MOVE, 150f, 10f).useEvent { row.onTouchEvent(it) }
+            motion(MotionEvent.ACTION_MOVE, 50f, 10f).useEvent { row.onTouchEvent(it) }
+            assertEquals(-100f, row.getChildAt(row.childCount - 1).translationX, .01f)
+            assertEquals(1, named("onSwipeStart").size)
+            row.cancelGesture()
+        }
+    }
+
+    @Test fun cancelAfterTouchActivationCannotReactivateAcrossZeroOrComplete() {
+        val row = row()
+        motion(MotionEvent.ACTION_DOWN, 10f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 50f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 150f, 10f).useEvent { row.onTouchEvent(it) }
+        assertEquals(100f, content(row).translationX, .01f)
+        events.clear()
+        row.cancelGesture()
+        motion(MotionEvent.ACTION_MOVE, -200f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_UP, -200f, 10f).useEvent { row.onTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun cancelFromSwipeStartDoesNotScheduleMoreGestureWork() {
+        for (twoSided in listOf(false, true)) {
+            val row = row(twoSided = twoSided, key = "start-$twoSided")
+            events.clear()
+            eventObserver = { name, _ -> if (name == "onSwipeStart") row.cancelGesture() }
+            row.handleGestureStart()
+            row.handleGestureUpdate(-120f, 0f)
+            row.handleGestureEnd(-120f, 0f)
+            settle()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+            assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+            assertEquals(1, named("onSwipeStart").size)
+            assertTrue(named("onSwipeProgress").isEmpty())
+            assertTrue(named("onSwipeStateChange").isEmpty())
+            assertTrue(ends().isEmpty())
+            eventObserver = null
+        }
+    }
+
+    @Test fun cancelFromActionsNeededDoesNotRestartOpening() {
+        val row = row()
+        eventObserver = { name, _ -> if (name == "onActionsNeeded") row.cancelGesture() }
+        row.open(SwipeSide.LEFT)
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("row"))
+        assertEquals(listOf("onActionsNeeded"), events.map { it.first })
+    }
+
+    @Test fun cancelFromReleaseStateChangeDoesNotOpenOrAutoClose() {
+        val row = row()
+        row.autoClose = true
+        row.handleGestureStart()
+        row.handleGestureUpdate(40f, 0f)
+        events.clear()
+        eventObserver = { name, _ -> if (name == "onSwipeStateChange") row.cancelGesture() }
+        row.handleGestureEnd(120f, 0f)
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("row"))
+        assertEquals(listOf("onSwipeStateChange"), events.map { it.first })
+    }
+
+    @Test fun cancelAtZeroTranslationStopsOpeningSpringInBothModes() {
+        for (twoSided in listOf(false, true)) {
+            val key = "spring-$twoSided"
+            val row = row(twoSided = twoSided, key = key)
+            row.open()
+            assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+            events.clear()
+            row.cancelGesture()
+            settle()
+            assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+            assertEquals(!twoSided, SwipeableView.isOpenByKey(key))
+            assertTrue(events.isEmpty())
+        }
+    }
+
+    @Test fun cancelOppositeSideTransitionDropsContinuationAndCompletion() {
+        val row = row()
+        row.open(SwipeSide.LEFT)
+        settle()
+        events.clear()
+        row.open(SwipeSide.RIGHT)
+        row.cancelGesture()
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("row"))
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun cancelDropsPendingAutoCloseWithoutOpenIntentCompletion() {
+        val row = row()
+        row.autoClose = true
+        row.autoCloseTimeout = 1000f
+        row.handleGestureStart()
+        row.handleGestureUpdate(120f, 0f)
+        row.handleGestureEnd(120f, 0f)
+        events.clear()
+        row.cancelGesture()
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("row"))
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun cancelPendingKeyRestoreDoesNotMountActionsOrEmitRestorationProgress() {
+        val original = row(key = "cached")
+        original.open(SwipeSide.LEFT)
+        settle()
+        root.removeView(original)
+        events.clear()
+        val restored = SwipeableView(activity, mockk<AppContext>(relaxed = true))
+        restored.recyclingKey = "cached"
+        restored.twoSided = true
+        restored.leftActionsWidth = 95f
+        restored.rightActionsWidth = 130f
+        restored.cancelGesture()
+        repeat(3) { restored.addView(FrameLayout(activity)) }
+        root.addView(restored)
+        restored.layout(0, 0, 400, 64)
+        settle()
+        assertEquals(0f, content(restored).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("cached"))
+        assertTrue(events.isEmpty())
+    }
+
+    @Test fun staticAndRawCancelExecuteAfterQueuedOpenInBothModes() {
+        for (twoSided in listOf(false, true)) {
+            for (raw in listOf(false, true)) {
+                val key = "fifo-$twoSided-$raw"
+                val row = row(twoSided = twoSided, key = key)
+                events.clear()
+                if (raw) {
+                    row.postCommand { row.open() }
+                    row.postCommand { row.cancelGesture() }
+                } else {
+                    SwipeableView.openByKey(key)
+                    SwipeableView.cancelByKey(key)
+                }
+                settle()
+                assertEquals(0f, row.getChildAt(row.childCount - 1).translationX, 0f)
+                assertEquals(!twoSided, SwipeableView.isOpenByKey(key))
+                assertTrue(ends().isEmpty())
+            }
+        }
+    }
+
+    @Test fun staticAndRawCancelDoNotInvalidateFollowingOpenInBothModes() {
+        for (twoSided in listOf(false, true)) {
+            for (raw in listOf(false, true)) {
+                val key = "fifo-$twoSided-$raw"
+                val row = row(twoSided = twoSided, key = key)
+                events.clear()
+                if (raw) {
+                    row.postCommand { row.cancelGesture() }
+                    row.postCommand { row.open() }
+                } else {
+                    SwipeableView.cancelByKey(key)
+                    SwipeableView.openByKey(key)
+                }
+                settle()
+                assertEquals(if (twoSided) -240f else -160f, row.getChildAt(row.childCount - 1).translationX, .01f)
+                assertTrue(SwipeableView.isOpenByKey(key))
+                assertEquals(listOf(if (twoSided) "open:right" else "open:null"), ends())
+            }
+        }
+    }
+
+    @Test fun queuedCancelCannotAffectReboundOrRoundTripReboundItem() {
+        for (roundTrip in listOf(false, true)) {
+            val row = row(key = "a")
+            SwipeableView.cancelByKey("a")
+            row.postCommand { row.cancelGesture() }
+            row.recyclingKey = "b"
+            if (roundTrip) row.recyclingKey = "a"
+            row.applyPendingConfiguration()
+            events.clear()
+            row.open(SwipeSide.RIGHT)
+            settle()
+            assertEquals(-240f, content(row).translationX, .01f)
+            assertEquals("right", SwipeableView.getOpenSideByKey(if (roundTrip) "a" else "b"))
+            assertEquals(listOf("open:right"), ends())
+            root.removeView(row)
+            SwipeableView.clearCache()
+        }
+    }
+
+    @Test fun queuedCancelCannotAffectSupersededRegistryOwner() {
+        val old = row(key = "shared")
+        old.open(SwipeSide.LEFT)
+        settle()
+        SwipeableView.cancelByKey("shared")
+        old.postCommand { old.cancelGesture() }
+        val replacement = row(key = "shared")
+        replacement.open(SwipeSide.RIGHT)
+        settle()
+        assertEquals(160f, content(old).translationX, .01f)
+        assertEquals(-240f, content(replacement).translationX, .01f)
+        assertEquals("right", SwipeableView.getOpenSideByKey("shared"))
+    }
+
+    @Test fun queuedCancelCannotSurviveDetachAndReattach() {
+        val row = row()
+        row.open(SwipeSide.LEFT)
+        settle()
+        events.clear()
+        SwipeableView.cancelByKey("row")
+        row.postCommand { row.cancelGesture() }
+        root.removeView(row)
+        root.addView(row)
+        settle()
+        assertEquals(160f, content(row).translationX, .01f)
+        assertEquals("left", SwipeableView.getOpenSideByKey("row"))
+        assertTrue(ends().isEmpty())
+    }
+
+    @Test fun rawCancelWithoutKeyPreservesCommandOrdering() {
+        val row = row()
+        row.recyclingKey = null
+        row.applyPendingConfiguration()
+        row.postCommand { row.open(SwipeSide.LEFT) }
+        row.postCommand { row.cancelGesture() }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertTrue(ends().isEmpty())
+        row.postCommand { row.cancelGesture() }
+        row.postCommand { row.open(SwipeSide.RIGHT) }
+        settle()
+        assertEquals(-240f, content(row).translationX, .01f)
+        assertEquals(listOf("open:right"), ends())
+    }
+
+    @Test fun cancelHidesReactRailsAndFreshDownStillAllowsActionPress() {
+        val row = reactRow()
+        row.open(SwipeSide.LEFT)
+        settle()
+        events.clear()
+        row.cancelGesture()
+        val left = row.getChildAt(0) as ReactViewGroup
+        val right = row.getChildAt(1) as ReactViewGroup
+        assertHidden(left)
+        assertHidden(right)
+        assertEquals(PointerEvents.NONE, left.pointerEvents)
+        assertEquals(PointerEvents.NONE, right.pointerEvents)
+        assertTrue(events.isEmpty())
+        row.open(SwipeSide.RIGHT)
+        settle()
+        var presses = 0
+        right.getChildAt(0).setOnClickListener { presses++ }
+        tapReactTarget(row, right.getChildAt(0), 280f)
+        assertEquals(1, presses)
+        assertEquals(PointerEvents.AUTO, right.pointerEvents)
+        assertEquals(PointerEvents.NONE, left.pointerEvents)
+    }
+
+    @Test fun legacySettledWidthChangeKeepsOpenSideAndCallbackContract() {
+        for (position in listOf("left", "right")) {
+            val row = row(twoSided = false, key = "width-$position")
+            row.actionsPosition = position
+            row.open()
+            settle()
+            events.clear()
+            row.actionsWidth = 95f
+            val target = if (position == "left") 190f else -190f
+            assertEquals(target, row.getChildAt(1).translationX, .01f)
+            assertEquals(0f, row.getChildAt(0).translationX, 0f)
+            assertEquals(listOf(mapOf("progress" to 1.0, "translationX" to target.toDouble())), named("onSwipeProgress"))
+            assertTrue(named("onSwipeStart").isEmpty())
+            assertTrue(ends().isEmpty())
+            assertTrue(SwipeableView.isOpenByKey("width-$position"))
+        }
+    }
+
+    @Test fun legacySettledWidthChangeRequestsMissingActionsWithLegacyPayload() {
+        val row = row(twoSided = false, children = false)
+        row.open()
+        settle()
+        events.clear()
+        row.actionsWidth = 95f
+        assertEquals(listOf(emptyMap<String, Any>()), named("onSwipeStart"))
+        assertEquals(listOf(mapOf("progress" to 1.0, "translationX" to -190.0)), named("onSwipeProgress"))
+        assertTrue(ends().isEmpty())
     }
 
     private fun reactRow(): SwipeableView {

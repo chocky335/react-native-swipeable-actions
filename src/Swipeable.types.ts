@@ -28,6 +28,7 @@ export interface SwipeStateEvent {
 export interface NativeSwipeableRef {
   close: (animated?: boolean) => Promise<void>
   open: () => Promise<void>
+  cancel: () => Promise<void>
 }
 
 export interface SwipeableViewProps extends ViewProps {
@@ -88,11 +89,13 @@ export interface SwipeableProps {
 export interface SwipeableMethods {
   close: (animated?: boolean) => void
   open: (side?: SwipeSide) => void
+  cancel: () => void
 }
 
 export interface SwipeableStatic {
   open: (recyclingKey: string, side?: SwipeSide) => void
   close: (recyclingKey: string, animated?: boolean) => void
+  cancel: (recyclingKey: string) => void
   closeAll: (animated?: boolean) => void
 }
 

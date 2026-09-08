@@ -7,7 +7,7 @@ import {
   type RefAttributes
 } from 'react'
 import { View } from 'react-native'
-import type { SwipeableViewProps, SwipeSide } from '../../Swipeable.types'
+import type { NativeSwipeableRef, SwipeableViewProps, SwipeSide } from '../../Swipeable.types'
 
 type SwipeState = 'open' | 'closed'
 
@@ -23,6 +23,7 @@ interface SwipeableViewMock {
   SwipeableModule: {
     openByKey: jest.Mock
     closeByKey: jest.Mock
+    cancelByKey: jest.Mock
     closeAll: jest.Mock
     isOpenByKey: jest.Mock<boolean, [string]>
     openByKeyOnSide: jest.Mock
@@ -35,17 +36,13 @@ interface SwipeableViewMock {
   reset: () => void
 }
 
-type NativeSwipeableRef = {
-  close: (animated?: boolean) => Promise<void>
-  open: () => Promise<void>
-}
-
 export function createControlledNativeMock(): SwipeableViewMock {
   const instances: ControlledSwipeableInstance[] = []
 
   const SwipeableModule = {
     openByKey: jest.fn(),
     closeByKey: jest.fn(),
+    cancelByKey: jest.fn(),
     closeAll: jest.fn(),
     isOpenByKey: jest.fn((_key: string) => false) as jest.Mock<boolean, [string]>,
     openByKeyOnSide: jest.fn(),
@@ -111,7 +108,8 @@ export function createControlledNativeMock(): SwipeableViewMock {
         ref,
         () => ({
           close: jest.fn(),
-          open: jest.fn()
+          open: jest.fn(),
+          cancel: jest.fn()
         }),
         []
       )
@@ -131,6 +129,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
     reset: () => {
       SwipeableModule.openByKey.mockReset()
       SwipeableModule.closeByKey.mockReset()
+      SwipeableModule.cancelByKey.mockReset()
       SwipeableModule.closeAll.mockReset()
       SwipeableModule.isOpenByKey.mockReset().mockReturnValue(false)
       SwipeableModule.openByKeyOnSide.mockReset()

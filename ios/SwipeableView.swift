@@ -26,25 +26,12 @@ public class SwipeableView: ExpoView {
         return typeName.contains("SurfaceTouchHandler") || typeName.contains("RCTTouchHandler")
     }
 
-    /// Check if a gesture recognizer belongs to react-native-gesture-handler.
-    /// RNGH uses custom recognizer classes prefixed with "RNBetter" (e.g. RNBetterPanGestureRecognizer)
-    /// and "RNManualActivation" for manual activation recognizers.
-    private static func isRNGHGestureHandler(_ recognizer: UIGestureRecognizer) -> Bool {
-        let typeName = String(describing: type(of: recognizer))
-        return typeName.hasPrefix("RNBetter") || typeName.hasPrefix("RNManualActivation")
-    }
-
-    /// Walk from a hit-tested view up to (but not including) self, checking for RNGH recognizers.
-    /// Used to prevent our pan gesture from beginning when the touch landed on a RNGH-managed view.
-    private func hasRNGHGesture(from view: UIView) -> Bool {
+    /// Child recognizers (RNGH or otherwise) take priority over the row pan.
+    private func hasChildGesture(from view: UIView) -> Bool {
         var current: UIView? = view
-        while let v = current, v !== self {
-            for recognizer in v.gestureRecognizers ?? [] {
-                if Self.isRNGHGestureHandler(recognizer) {
-                    return true
-                }
-            }
-            current = v.superview
+        while let child = current, child !== self {
+            if !(child.gestureRecognizers ?? []).isEmpty { return true }
+            current = child.superview
         }
         return false
     }
@@ -137,7 +124,25 @@ public class SwipeableView: ExpoView {
     }
 
     static func closeByKey(_ key: String, animated: Bool = true) {
-        enqueueCommand(for: key) { $0.close(animated: animated) }
+        let target = registryQueue.sync {
+            // Consume unbound intent before a remount can read the cached side.
+            _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+        }
+        guard let target = target else { return }
+        DispatchQueue.main.async {
+            performCommand({ $0.close(animated: animated) }, for: key, target: target)
+            // A close for an unmounted row must also cancel its cached restore.
+            // Never clear a replacement/reattached binding rejected by performCommand.
+            registryQueue.sync {
+                _openStateCache.clearIfUnbound(
+                    for: key, hasCurrentBinding: _viewRegistry[key]?.value != nil
+                )
+            }
+        }
+    }
+
+    static func cancelByKey(_ key: String) {
+        enqueueCommand(for: key) { $0.cancelGesture() }
     }
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
@@ -165,6 +170,8 @@ public class SwipeableView: ExpoView {
     private var rightActionsView: UIView?
     private var contentView: UIView?
     private let railVisibility = SwipeRailVisibility()
+    // Fabric mount order, not UIView.subviews (which can contain UIKit/Expo helpers).
+    private var reactChildren = SwipeReactChildren<UIView>()
     private var assignedTwoSided = false
     private var awaitingChildProtocol = false
     private var isDetached = false
@@ -194,6 +201,7 @@ public class SwipeableView: ExpoView {
 
     private struct LayoutConfiguration: Equatable {
         var twoSided: Bool
+        var legacyWidth: CGFloat
         var leftWidth: CGFloat
         var rightWidth: CGFloat
         var position: String
@@ -205,7 +213,7 @@ public class SwipeableView: ExpoView {
         var autoCloseTimeout: CGFloat
     }
     private var appliedConfiguration = LayoutConfiguration(
-        twoSided: false, leftWidth: 0, rightWidth: 0, position: "right", enabled: true,
+        twoSided: false, legacyWidth: 0, leftWidth: 0, rightWidth: 0, position: "right", enabled: true,
         friction: 1, threshold: 0.4, dragOffset: 0, autoClose: false, autoCloseTimeout: 0
     )
 
@@ -272,9 +280,7 @@ public class SwipeableView: ExpoView {
             if !twoSided {
                 // Preserve legacy immediate disabling and its nonanimated cache behavior.
                 if !gestureEnabled {
-                    isGestureActivated = false
-                    isDragging = false
-                    gestureStartTranslation = 0
+                    abortActiveGesture()
                     panGesture.isEnabled = false
                     if isOpen || currentTranslation != 0 { close(animated: false) }
                     else { invalidateWork() }
@@ -285,6 +291,25 @@ public class SwipeableView: ExpoView {
             scheduleReconciliation()
         }
     }
+    /// Explicit cancellation consumes the rest of the pan and any pending reopen,
+    /// but leaves the binding identity intact for later commands in the same JS turn.
+    func cancelGesture() {
+        ignoresPanUntilNextBegin = true
+        abortActiveGesture()
+        performClose(animated: false)
+        persistOpenSide()
+        panGesture.isEnabled = false
+        panGesture.isEnabled = gestureEnabled
+    }
+
+    private func abortActiveGesture() {
+        isGestureActivated = false
+        directGesturePending = false
+        isDragging = false
+        gestureStartTranslation = 0
+        stopProgressUpdates()
+    }
+
     var dragOffsetFromEdge: CGFloat = 0 {
         didSet {
             dragOffsetFromEdge = max(0, dragOffsetFromEdge)
@@ -330,7 +355,8 @@ public class SwipeableView: ExpoView {
             let restored = recyclingKey.flatMap { Self.getOpenSide(for: $0) }
                 .flatMap { SwipeSide(rawValue: $0) }
             if let old = oldValue {
-                Self.setOpenState(for: old, side: openSide, owner: self)
+                // Commands own cached intent. Rebinding must not resurrect the old
+                // view's stale state while a queued close is waiting to execute.
                 Self.unregisterView(self, for: old)
             }
             invalidateWork(preservePresentation: false)
@@ -404,7 +430,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func isCurrent(_ generation: Int, key: String?) -> Bool {
-        workGeneration == generation && recyclingKey == key
+        !isDetached && workGeneration == generation && recyclingKey == key
     }
 
     private func requestActions(on side: SwipeSide) {
@@ -432,6 +458,7 @@ public class SwipeableView: ExpoView {
         guard !isDetached else { return }
         let next = LayoutConfiguration(
             twoSided: twoSided,
+            legacyWidth: twoSided ? 0 : actionsWidth,
             leftWidth: twoSided ? leftActionsWidth : 0,
             rightWidth: twoSided ? rightActionsWidth : 0,
             position: actionsPosition,
@@ -458,6 +485,12 @@ public class SwipeableView: ExpoView {
         }
         panGesture.isEnabled = gestureEnabled
         reconcileChildRoles()
+        if !next.twoSided && !previous.twoSided && SwipePhysics.shouldSyncOpenWidth(
+            oldWidth: previous.legacyWidth, newWidth: next.legacyWidth, isOpen: isOpen,
+            isInteracting: isDragging || isAnimating || isGestureActivated
+        ) {
+            syncOpenStateToCurrentWidth()
+        }
         if let cachedSide = pendingRestoreSide {
             let side = twoSided ? cachedSide : legacySide
             if twoSided && (width(for: side) <= 0 || !gestureEnabled) {
@@ -612,17 +645,32 @@ public class SwipeableView: ExpoView {
         if let key = recyclingKey { Self.unregisterView(self, for: key) }
     }
 
+    private var hasPendingInteraction: Bool {
+        isAnimating || isDragging || isGestureActivated || directGesturePending || autoCloseWorkItem != nil
+    }
+
     private func suspendForDetach() {
+        guard !isDetached else { return }
+        let preservesCachedSide = SwipePhysics.shouldRestoreAfterDetach(
+            twoSided: twoSided, hasPendingInteraction: hasPendingInteraction
+        )
         commandTarget = SwipeCommandTarget(self)
         isDetached = true
         reconciliationWorkItem?.cancel()
         reconciliationWorkItem = nil
-        invalidateWork(preservePresentation: false, clearRestore: false)
+        invalidateWork(preservePresentation: false)
         savedFirstResponder = nil
-        currentTranslation = openSide.map { $0.sign * width(for: $0) } ?? 0
-        contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
-        updateActionsTransform()
-        if let key = recyclingKey { Self.unregisterView(self, for: key) }
+        openSide = nil
+        currentTranslation = 0
+        lastEmittedWillEndState = nil
+        requestedSides.removeAll()
+        releaseChildRoles()
+        if let key = recyclingKey {
+            // Legacy detach follows main's closed reset. New-mode restoration is
+            // cache-driven and only preserves settled intent, never unfinished work.
+            if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self) }
+            Self.unregisterView(self, for: key)
+        }
     }
 
     public override func willMove(toSuperview newSuperview: UIView?) {
@@ -636,17 +684,23 @@ public class SwipeableView: ExpoView {
             suspendForDetach()
             return
         }
+        let wasDetached = isDetached
         isDetached = false
         reduceMotionChanged()
-        if let key = recyclingKey { Self.registerView(self, for: key) }
+        if let key = recyclingKey {
+            Self.registerView(self, for: key)
+            if wasDetached && twoSided {
+                // Read again: a closeByKey while detached may have cleared the cache.
+                pendingRestoreSide = Self.getOpenSide(for: key).flatMap { SwipeSide(rawValue: $0) }
+            }
+        }
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
         }
         commitProps()
-        scheduleVisualRestore()
-        // Preserve the legacy reattachment policy, including autoClose.
-        if isOpen && autoClose { scheduleAutoClose() }
+        if twoSided { scheduleVisualRestore() }
+        // A detached timer/animation must not restart and fabricate an end-open event.
     }
 
     public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -767,6 +821,18 @@ public class SwipeableView: ExpoView {
         }
     }
 
+    private func syncOpenStateToCurrentWidth() {
+        let targetX = legacySide.sign * actionsWidth
+        currentTranslation = targetX
+        contentView?.transform = CGAffineTransform(translationX: targetX, y: 0)
+        if let actions = legacyActionsView {
+            actions.transform = .identity
+        } else {
+            onSwipeStart([:])
+        }
+        onSwipeProgress(["progress": 1.0, "translationX": targetX])
+    }
+
     // MARK: - React child roles
 
     private func releaseChild(_ view: UIView) {
@@ -788,33 +854,35 @@ public class SwipeableView: ExpoView {
     }
 
     private func reconcileChildRoles() {
+        guard !isDetached else { return }
+        let children = reactChildren.views
         if assignedTwoSided != twoSided {
             releaseChildRoles()
             assignedTwoSided = twoSided
             awaitingChildProtocol = true
         }
         // On removal, preserve surviving identities instead of promoting a rail to content.
-        if let view = contentView, view.superview !== self { releaseChild(view); contentView = nil }
-        if let view = leftActionsView, view.superview !== self { releaseChild(view); leftActionsView = nil }
-        if let view = rightActionsView, view.superview !== self { releaseChild(view); rightActionsView = nil }
-        if let view = legacyActionsView, view.superview !== self { releaseChild(view); legacyActionsView = nil }
-        if awaitingChildProtocol && !twoSided && subviews.count > 2 { return }
-        guard let roles = SwipePhysics.childRoles(count: subviews.count, twoSided: twoSided) else { return }
+        if let view = contentView, !children.contains(where: { $0 === view }) { releaseChild(view); contentView = nil }
+        if let view = leftActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); leftActionsView = nil }
+        if let view = rightActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); rightActionsView = nil }
+        if let view = legacyActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); legacyActionsView = nil }
+        if awaitingChildProtocol && !twoSided && children.count > 2 { return }
+        guard let roles = SwipePhysics.childRoles(count: children.count, twoSided: twoSided) else { return }
         awaitingChildProtocol = false
         let previousLeft = leftActionsView
         let previousRight = rightActionsView
         let previousLegacy = legacyActionsView
-        contentView = subviews[roles.content]
+        contentView = children[roles.content]
         // A complete Fabric transaction can give a previously hidden rail the content role.
         // Restore only flags that this view owned, in both legacy and two-sided layouts.
         if let contentView = contentView { railVisibility.release(contentView) }
         if twoSided {
-            leftActionsView = roles.left.map { subviews[$0] }
-            rightActionsView = roles.right.map { subviews[$0] }
+            leftActionsView = roles.left.map { children[$0] }
+            rightActionsView = roles.right.map { children[$0] }
             if previousLeft !== leftActionsView { requestedSides.remove(.left) }
             if previousRight !== rightActionsView { requestedSides.remove(.right) }
         } else {
-            legacyActionsView = roles.actions.map { subviews[$0] }
+            legacyActionsView = roles.actions.map { children[$0] }
             if previousLegacy !== legacyActionsView { requestedSides.remove(legacySide) }
             if previousLegacy == nil && legacyActionsView != nil && (isOpen || isAnimating) {
                 legacyActionsView?.transform = .identity
@@ -840,29 +908,43 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    public override func didAddSubview(_ subview: UIView) {
-        super.didAddSubview(subview)
-        // Fabric inserts children individually; only commit roles for a complete protocol.
+    public override func mountChildComponentView(_ childComponentView: UIView, index: Int) {
+        super.mountChildComponentView(childComponentView, index: index)
+        releaseChild(childComponentView)
+        reactChildren.mount(childComponentView, at: index)
+        // Fabric mounts slots individually; commit only a complete child protocol.
+        reconcileChildRoles()
         scheduleReconciliation()
     }
 
-    public override func willRemoveSubview(_ subview: UIView) {
-        // Fabric's pool also supplies descendants of legacy rows (for example Seekbar).
-        // Restore native presentation before losing the reference or returning it to that pool.
-        if subview === contentView || subview === legacyActionsView ||
-            subview === leftActionsView || subview === rightActionsView {
-            releaseChild(subview)
+    public override func unmountChildComponentView(_ childComponentView: UIView, index: Int) {
+        if childComponentView === contentView {
+            let interrupted = hasPendingInteraction
+            // Invalidate completion/timer generations before returning the child to
+            // Fabric's pool, not merely the animator's reference to that child.
+            invalidateWork(preservePresentation: false, clearRestore: false)
+            savedFirstResponder = nil
+            if interrupted {
+                openSide = nil
+                pendingRestoreSide = nil
+                persistOpenSide()
+            }
+            currentTranslation = openSide.map { $0.sign * width(for: $0) } ?? 0
         }
-        super.willRemoveSubview(subview)
-        if subview === contentView { contentView = nil }
-        if subview === legacyActionsView { legacyActionsView = nil; requestedSides.remove(legacySide) }
-        if subview === leftActionsView { leftActionsView = nil; requestedSides.remove(.left) }
-        if subview === rightActionsView { rightActionsView = nil; requestedSides.remove(.right) }
+        // Return both transforms and weakly-owned visibility/accessibility flags.
+        releaseChild(childComponentView)
+        reactChildren.unmount(childComponentView, at: index)
+        if childComponentView === contentView { contentView = nil }
+        if childComponentView === legacyActionsView { legacyActionsView = nil; requestedSides.remove(legacySide) }
+        if childComponentView === leftActionsView { leftActionsView = nil; requestedSides.remove(.left) }
+        if childComponentView === rightActionsView { rightActionsView = nil; requestedSides.remove(.right) }
+        super.unmountChildComponentView(childComponentView, index: index)
+        reconcileChildRoles()
         scheduleReconciliation()
     }
 
     private func scheduleVisualRestore() {
-        guard visualRestoreWorkItem == nil else { return }
+        guard twoSided, !isDetached, visualRestoreWorkItem == nil else { return }
         let generation = workGeneration
         let key = recyclingKey
         let item = DispatchWorkItem { [weak self] in
@@ -1267,11 +1349,10 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         }
 
         if shouldBegin {
-            // Prevent our pan from starting when the touch is on a RNGH-managed view.
-            // Delegate-based conflict resolution is broken with RNGH (it overrides delegates),
-            // so we use hit-test prevention instead.
+            // Yield to any child-owned recognizer, including RNGH recognizers
+            // whose delegates cannot participate in our failure ordering.
             let touchPoint = pan.location(in: self)
-            if let hitView = super.hitTest(touchPoint, with: nil), hasRNGHGesture(from: hitView) {
+            if let hitView = super.hitTest(touchPoint, with: nil), hasChildGesture(from: hitView) {
                 return false
             }
             cancelFabricTouches()

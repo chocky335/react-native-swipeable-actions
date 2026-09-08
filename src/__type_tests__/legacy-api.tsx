@@ -33,12 +33,14 @@ const legacyConsumerProps: LegacyConsumerPropsInferred = {
 
 const methods: SwipeableMethods = {
   close: () => undefined,
-  open: () => undefined
+  open: () => undefined,
+  cancel: () => undefined
 }
 
 const staticFacade: SwipeableStatic = {
   open: (_recyclingKey: string) => undefined,
   close: (_recyclingKey: string, _animated?: boolean) => undefined,
+  cancel: (_recyclingKey: string) => undefined,
   closeAll: (_animated?: boolean) => undefined
 }
 

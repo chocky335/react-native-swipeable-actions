@@ -5,8 +5,9 @@ jest.mock('./src/SwipeableView.tsx', () => {
   const SwipeableModule = {
     openByKey: jest.fn(),
     closeByKey: jest.fn(),
+    cancelByKey: jest.fn(),
     closeAll: jest.fn(),
-    isOpenByKey: jest.fn(() => false),
+    isOpenByKey: jest.fn().mockReturnValue(true),
     openByKeyOnSide: jest.fn(),
     getOpenSideByKey: jest.fn(() => null)
   }
@@ -21,7 +22,8 @@ jest.mock('./src/SwipeableView.tsx', () => {
 
     React.useImperativeHandle(ref, () => ({
       close: jest.fn(),
-      open: jest.fn()
+      open: jest.fn(),
+      cancel: jest.fn()
     }), [])
 
     React.useEffect(() => {
