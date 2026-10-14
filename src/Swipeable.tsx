@@ -59,6 +59,8 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     rightActionsWidth,
     onLeftSwipeEnd,
     onRightSwipeEnd,
+    appearance = 'default',
+    hapticFeedback,
     actionsPosition = SWIPE_DEFAULTS.ACTIONS_POSITION,
     friction = SWIPE_DEFAULTS.FRICTION,
     threshold = SWIPE_DEFAULTS.THRESHOLD,
@@ -282,6 +284,9 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       leftActionsWidth={twoSided ? resolved.left.width : 0}
       rightActionsWidth={twoSided ? resolved.right.width : 0}
       onActionsNeeded={handleActionsNeeded}
+      {...(Platform.OS === 'ios'
+        ? { appearance, hapticFeedback: hapticFeedback ?? appearance === 'ios26' }
+        : {})}
       friction={friction}
       threshold={threshold}
       gestureEnabled={gestureEnabled}

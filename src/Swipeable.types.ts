@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from 'react'
 import type { StyleProp, ViewProps, ViewStyle } from 'react-native'
 
 export type SwipeSide = 'left' | 'right'
+export type SwipeAppearance = 'default' | 'ios26'
 
 export interface ActionsNeededEvent {
   nativeEvent: { side: SwipeSide; recyclingKey?: string }
@@ -36,6 +37,8 @@ export interface SwipeableViewProps extends ViewProps {
   leftActionsWidth?: number
   rightActionsWidth?: number
   onActionsNeeded?: (event: ActionsNeededEvent) => void
+  appearance?: SwipeAppearance
+  hapticFeedback?: boolean
   actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number
@@ -64,6 +67,8 @@ export interface SwipeableProps {
   rightActionsWidth?: number
   onLeftSwipeEnd?: (state: 'open' | 'closed') => void
   onRightSwipeEnd?: (state: 'open' | 'closed') => void
+  appearance?: SwipeAppearance
+  hapticFeedback?: boolean
   actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number

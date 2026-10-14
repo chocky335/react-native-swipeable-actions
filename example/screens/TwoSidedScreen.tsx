@@ -4,6 +4,7 @@ import {
   FlatList,
   I18nManager,
   type LayoutChangeEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -163,6 +164,8 @@ function DemoRow({
     rounded: boolean
     multiple: boolean
     light: boolean
+    appearance: 'default' | 'ios26'
+    haptics: 'auto' | 'on' | 'off'
   }
   rowRefs: React.RefObject<Map<number, SwipeableMethods>>
   onAction: (id: number, action: Action) => void
@@ -225,6 +228,7 @@ function DemoRow({
         actionsPosition: 'right' as const
       }
     : {}
+  const feedback = options.haptics === 'auto' ? {} : { hapticFeedback: options.haptics === 'on' }
   const sideProps = {
     leftActions: options.leftEnabled ? (
       <View style={leftRailStyle}>
@@ -267,6 +271,8 @@ function DemoRow({
   >
 
   const commonProps = {
+    ...feedback,
+    appearance: options.appearance,
     ref: attachRef,
     testID: `two-sided-row-${id}`,
     recyclingKey: recyclingKey(id),
@@ -349,7 +355,9 @@ export function TwoSidedScreen() {
     mixed: false,
     rounded: false,
     multiple: false,
-    light: false
+    light: false,
+    appearance: 'default' as 'default' | 'ios26',
+    haptics: 'auto' as 'auto' | 'on' | 'off'
   })
   const rowRefs = useRef(new Map<number, SwipeableMethods>())
   const controlsRef = useRef<ScrollView>(null)
@@ -403,6 +411,16 @@ export function TwoSidedScreen() {
     setOptions((value) => ({ ...value, leftWidth: value.leftWidth === 80 ? 112 : 80 }))
   const resizeRight = () =>
     setOptions((value) => ({ ...value, rightWidth: value.rightWidth === 120 ? 160 : 120 }))
+  const toggleAppearance = () =>
+    setOptions((value) => ({
+      ...value,
+      appearance: value.appearance === 'default' ? 'ios26' : 'default'
+    }))
+  const toggleHaptics = () =>
+    setOptions((value) => {
+      const next = { auto: 'on', on: 'off', off: 'auto' } as const
+      return { ...value, haptics: next[value.haptics] }
+    })
   const toggleRounded = () => setOptions((value) => ({ ...value, rounded: !value.rounded }))
   const toggleMultiple = () => setOptions((value) => ({ ...value, multiple: !value.multiple }))
   const toggleLight = () => setOptions((value) => ({ ...value, light: !value.light }))
@@ -548,6 +566,16 @@ export function TwoSidedScreen() {
                   onPress={resizeRight}
                 />
                 <Control
+                  name='appearance'
+                  label={`Appearance: ${options.appearance}`}
+                  onPress={toggleAppearance}
+                />
+                <Control
+                  name='haptics'
+                  label={`Haptics: ${options.haptics}`}
+                  onPress={toggleHaptics}
+                />
+                <Control
                   name='rounded'
                   label={`Rounded / inset: ${options.rounded ? 'on' : 'off'}`}
                   onPress={toggleRounded}
@@ -563,6 +591,9 @@ export function TwoSidedScreen() {
                   onPress={toggleLight}
                 />
                 <Text style={styles.readout}>
+                  {Platform.OS === 'ios'
+                    ? 'Native iOS feedback. Reduce Motion suppresses the optional pop; haptics keep your preference.'
+                    : 'Android keeps its normal native motion. The iOS preset and native haptics have no added effect.'}{' '}
                   Rounded buttons are caller styling. Widths include all padding and gaps.
                 </Text>
               </View>
