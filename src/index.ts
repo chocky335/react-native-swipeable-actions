@@ -6,7 +6,6 @@ export { default as Swipeable } from './Swipeable'
 export type {
   ActionsNeededEvent,
   NativeSwipeableRef,
-  SwipeAppearance,
   SwipeSide,
   SwipeableComponentProps,
   TwoSidedSwipeableProps,

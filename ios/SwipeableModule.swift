@@ -46,14 +46,6 @@ public class SwipeableModule: Module {
                 view.rightActionsWidth = width
             }
 
-            Prop("appearance") { (view: SwipeableView, value: String) in
-                view.appearance = value
-            }
-
-            Prop("hapticFeedback") { (view: SwipeableView, value: Bool?) in
-                view.hapticFeedback = value
-            }
-
             OnViewDidUpdateProps { (view: SwipeableView) in
                 view.commitProps()
             }

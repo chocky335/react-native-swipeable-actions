@@ -489,9 +489,7 @@ describe('Two-sided native demo', () => {
     }
   }
 
-  it('opt-in appearance preserves both reveal widths and caller-owned inset action targets on either platform', async () => {
-    await option('appearance', 'Appearance: ios26')
-    await option('haptics', 'Haptics: on')
+  it('caller-owned rounded and inset multiple actions preserve both reveal widths and tappable targets', async () => {
     await option('rounded', 'Rounded / inset: on')
     await option('multiple', 'Multiple actions: on')
     await option('light', 'Row surroundings: light')
@@ -512,11 +510,7 @@ describe('Two-sided native demo', () => {
       await button.click()
     }
     await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 1; more 1; legacy 0')
-    await option('haptics', 'Haptics: off')
-    await option('appearance', 'Appearance: default')
     await waitOffset(0, -120)
-    // This checks functional Android fallback too. Physical haptic feel and
-    // Reduce Motion / scale composition still require the parent's device run.
     await command('close-all')
     await waitOffset(0, 0)
   })

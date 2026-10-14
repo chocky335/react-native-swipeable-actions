@@ -1,5 +1,5 @@
 import { createRef } from 'react'
-import { Platform, Text } from 'react-native'
+import { Text } from 'react-native'
 import { act, create } from 'react-test-renderer'
 import type { SwipeableMethods, TwoSidedSwipeableProps } from '../Swipeable.types'
 import { SwipeableActions } from '../SwipeableActions'
@@ -154,22 +154,4 @@ it('warns once for an unchanged invalid configuration', () => {
   render({ ...base, leftActionsWidth: Number.NaN })
   act(() => tree?.update(<Swipeable {...base} leftActionsWidth={Number.NaN} />))
   expect(warn).toHaveBeenCalledTimes(1)
-})
-
-it('keeps default presentation and opts into iOS feedback explicitly', () => {
-  jest.replaceProperty(Platform, 'OS', 'ios')
-  render()
-  expect(tree?.root.findByType(mock.SwipeableView).props.appearance).toBe('default')
-  expect(tree?.root.findByType(mock.SwipeableView).props.hapticFeedback).toBe(false)
-  act(() => tree?.update(<Swipeable {...base} appearance='ios26' />))
-  expect(tree?.root.findByType(mock.SwipeableView).props.hapticFeedback).toBe(true)
-  act(() => tree?.update(<Swipeable {...base} appearance='ios26' hapticFeedback={false} />))
-  expect(tree?.root.findByType(mock.SwipeableView).props.hapticFeedback).toBe(false)
-})
-
-it('does not send iOS-only presentation props to Android', () => {
-  jest.replaceProperty(Platform, 'OS', 'android')
-  render({ ...base, appearance: 'ios26', hapticFeedback: true })
-  expect(tree?.root.findByType(mock.SwipeableView).props).not.toHaveProperty('appearance')
-  expect(tree?.root.findByType(mock.SwipeableView).props).not.toHaveProperty('hapticFeedback')
 })

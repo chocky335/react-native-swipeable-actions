@@ -252,7 +252,8 @@ jobs:
           IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
-          IOS_PREBUILT_WDA: ${{ github.workspace }}/wda-build/Build/Products/Debug-iphonesimulator/WebDriverAgentRunner-Runner.app
+          # Run the build-for-testing output through XCTest, not as a standalone app.
+          IOS_WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-build
         run: cd e2e && npm run test:ios
 
       - name: Install Maestro
@@ -273,7 +274,9 @@ jobs:
       - name: Capture simulator logs
         if: always()
         run: |
-          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --predicate 'subsystem == "com.swipeabledemo.app"' > /tmp/simulator-log.txt 2>&1 || true
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --style compact \
+            --predicate 'subsystem == "com.swipeabledemo.app" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
+            > /tmp/simulator-log.txt 2>&1 || true
 
       - name: Upload simulator logs
         if: always()

@@ -26,8 +26,8 @@ export function SwipeableActions({
   testID,
   slot
 }: SwipeableActionsProps) {
-  const leading =
-    slot && I18nManager.isRTL ? actionsPosition === 'right' : actionsPosition === 'left'
+  // Both APIs name physical edges; flex row start/end reverse in RTL.
+  const leading = I18nManager.isRTL ? actionsPosition === 'right' : actionsPosition === 'left'
   return (
     <View
       style={leading ? styles.actionsLeading : styles.actionsTrailing}

@@ -331,23 +331,6 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    var appearance = "default" {
-        didSet {
-            if appearance != oldValue {
-                resetFeedback()
-                updateActionsTransform()
-            }
-        }
-    }
-    var hapticFeedback: Bool? {
-        didSet {
-            if hapticFeedback != oldValue {
-                resetFeedback()
-                updateActionsTransform()
-            }
-        }
-    }
-
     var recyclingKey: String? {
         didSet {
             guard oldValue != recyclingKey else { return }
@@ -386,12 +369,6 @@ public class SwipeableView: ExpoView {
     private var autoCloseWorkItem: DispatchWorkItem?
     private var autoCloseGeneration = 0
     private var currentAnimator: UIViewPropertyAnimator?
-    private var feedback = SwipeFeedbackState()
-    private var feedbackGenerator: UIImpactFeedbackGenerator?
-    private var popStartedAt: CFTimeInterval?
-    private var reduceMotion = UIAccessibility.isReduceMotionEnabled
-    private var usesAppearance: Bool { appearance == "ios26" }
-    private var usesHaptics: Bool { hapticFeedback ?? usesAppearance }
     private var currentSide: SwipeSide? {
         twoSided ? (gestureSide ?? animationSide ?? openSide) : legacySide
     }
@@ -511,8 +488,7 @@ public class SwipeableView: ExpoView {
 
     private func invalidateWork(
         preservePresentation: Bool = true,
-        clearRestore: Bool = true,
-        resetAppearance: Bool = true
+        clearRestore: Bool = true
     ) {
         if twoSided && (panGesture.state == .began || panGesture.state == .changed) {
             ignoresPanUntilNextBegin = true
@@ -544,57 +520,14 @@ public class SwipeableView: ExpoView {
         animationSide = nil
         startOffset = 0
         if clearRestore { pendingRestoreSide = nil }
-        if resetAppearance { resetFeedback() }
+        resetActionTransforms()
     }
 
-    // MARK: - Appearance
-
-    private func resetFeedback() {
-        feedback.reset()
-        feedbackGenerator = nil
-        popStartedAt = nil
+    // Release native-owned presentation without changing the rail's position.
+    private func resetActionTransforms() {
         for view in [legacyActionsView, leftActionsView, rightActionsView].compactMap({ $0 }) {
             view.transform = CGAffineTransform(translationX: view.transform.tx, y: view.transform.ty)
         }
-    }
-
-    @objc private func reduceMotionChanged() {
-        reduceMotion = UIAccessibility.isReduceMotionEnabled
-        if reduceMotion { popStartedAt = nil }
-        updateActionsTransform()
-    }
-
-    private func beginFeedback(on side: SwipeSide) {
-        resetFeedback()
-        feedback.activate(isOpening: gestureStartedOpen)
-        if usesHaptics {
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.prepare()
-            feedbackGenerator = generator
-        }
-    }
-
-    private func updateFeedback(on side: SwipeSide, relativeTranslation: CGFloat) {
-        let sideWidth = width(for: side)
-        guard sideWidth > 0 else { return }
-        let isOpening = SwipePhysics.shouldSnapToOpen(
-            projectedTranslation: relativeTranslation * friction,
-            actionsWidth: sideWidth, threshold: threshold,
-            isLeading: side == .left, isCurrentlyOpen: gestureStartedOpen
-        )
-        guard feedback.update(isOpening: isOpening) else { return }
-        if usesHaptics { feedbackGenerator?.impactOccurred() }
-        if usesAppearance && !reduceMotion { popStartedAt = CACurrentMediaTime() }
-    }
-
-    private func railScale(progress: CGFloat) -> CGFloat {
-        guard usesAppearance else { return 1 }
-        return SwipeAnimationConfig.actionRailScale(
-            progress: progress,
-            popElapsed: popStartedAt.map { CACurrentMediaTime() - $0 },
-            hasPopped: feedback.hasCrossedThreshold,
-            reduceMotion: reduceMotion
-        )
     }
 
     // MARK: - First Responder Helper
@@ -624,10 +557,6 @@ public class SwipeableView: ExpoView {
         clipsToBounds = true
         isUserInteractionEnabled = true
         addGestureRecognizer(panGesture)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(reduceMotionChanged),
-            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil
-        )
     }
 
     required init?(coder: NSCoder) {
@@ -641,7 +570,6 @@ public class SwipeableView: ExpoView {
         reconciliationWorkItem?.cancel()
         visualRestoreWorkItem?.cancel()
         currentAnimator?.stopAnimation(true)
-        NotificationCenter.default.removeObserver(self)
         if let key = recyclingKey { Self.unregisterView(self, for: key) }
     }
 
@@ -686,7 +614,6 @@ public class SwipeableView: ExpoView {
         }
         let wasDetached = isDetached
         isDetached = false
-        reduceMotionChanged()
         if let key = recyclingKey {
             Self.registerView(self, for: key)
             if wasDetached && twoSided {
@@ -811,9 +738,7 @@ public class SwipeableView: ExpoView {
             let active = visibleSide == side
             let progress = active && sideWidth > 0 ? min(abs(translation) / sideWidth, 1) : 0
             let offset = -side.sign * sideWidth * (1 - progress)
-            let scale = active && (isDragging || isAnimating || isOpen) ? railScale(progress: progress) : 1
-            // Explicit tx keeps scaling centered on the rail and never scales row translation.
-            rail.transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: offset, ty: 0)
+            rail.transform = CGAffineTransform(translationX: offset, y: 0)
             if twoSided {
                 let revealed = active && sideWidth > 0 && side.sign * translation > 0
                 railVisibility.setRevealed(revealed, for: rail)
@@ -1006,7 +931,7 @@ public class SwipeableView: ExpoView {
         gestureStartedOpen = isOpen
         gestureStartTranslation = 0
         isGestureActivated = true
-        beginFeedback(on: legacySide)
+
         requestActions(on: legacySide)
         onSwipeStart([:])
         startProgressUpdates()
@@ -1062,7 +987,7 @@ public class SwipeableView: ExpoView {
                 savedFirstResponder = nil
             } else {
                 // The original pan treats cancellation as release. Preserve its callbacks.
-                resetFeedback()
+                resetActionTransforms()
                 handlePanEnded(gesture)
             }
         default:
@@ -1111,7 +1036,7 @@ public class SwipeableView: ExpoView {
         guard isGestureActivated, let side = currentSide else {
             gestureStartTranslation = 0
             savedFirstResponder = nil
-            resetFeedback()
+            resetActionTransforms()
             return
         }
         finishGesture(
@@ -1127,7 +1052,7 @@ public class SwipeableView: ExpoView {
         startOffset = currentTranslation
         gestureStartedOpen = isOpen
         lastEmittedWillEndState = isOpen ? "open" : "closed"
-        beginFeedback(on: side)
+
         requestActions(on: side)
         onSwipeStart([:])
         startProgressUpdates()
@@ -1148,7 +1073,7 @@ public class SwipeableView: ExpoView {
         }
         currentTranslation = constrained
         contentView?.transform = CGAffineTransform(translationX: constrained, y: 0)
-        updateFeedback(on: side, relativeTranslation: translation)
+
         updateActionsTransform()
         if emitState {
             // Legacy pan uses absolute drag position here; do not change its event cadence.
@@ -1184,7 +1109,7 @@ public class SwipeableView: ExpoView {
         )
         if emitState { emitIntendedState(willOpen, side: side) }
         if willOpen {
-            beginOpen(on: side, preserveFeedback: true)
+            beginOpen(on: side)
             if allowAutoClose && autoClose { scheduleAutoClose() }
         } else {
             performClose(animated: true)
@@ -1219,8 +1144,8 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    private func beginOpen(on side: SwipeSide, preserveFeedback: Bool = false) {
-        invalidateWork(resetAppearance: !preserveFeedback)
+    private func beginOpen(on side: SwipeSide) {
+        invalidateWork()
         openSide = side
         animationSide = side
         isAnimating = true
@@ -1243,7 +1168,7 @@ public class SwipeableView: ExpoView {
             self.currentAnimator = nil
             self.animationSide = nil
             self.stopProgressUpdates()
-            self.resetFeedback()
+            self.resetActionTransforms()
             self.updateActionsTransform()
             self.onSwipeProgress(self.payload(["progress": 1.0, "translationX": targetX], side: side))
             // Programmatic opens with autoClose historically neither schedule a close nor emit end.
@@ -1313,7 +1238,7 @@ public class SwipeableView: ExpoView {
             self.onSwipeProgress(self.payload(["progress": 0.0, "translationX": 0.0], side: side))
             self.onSwipeEnd(self.payload(["state": endState], side: side))
             self.animationSide = nil
-            self.resetFeedback()
+            self.resetActionTransforms()
             self.restoreFirstResponder()
             if self.isCurrent(generation, key: key) { completion?() }
         }

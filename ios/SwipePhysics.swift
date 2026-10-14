@@ -208,42 +208,6 @@ final class SwipeRailVisibility {
     }
 }
 
-/// Threshold state is independent of the feedback preference and the animation clock.
-struct SwipeFeedbackState {
-    private(set) var isActive = false
-    private(set) var hasCrossedThreshold = false
-    private var wasAboveThreshold = false
-
-    mutating func activate(progress: CGFloat, threshold: CGFloat) {
-        activate(isOpening: progress > threshold)
-    }
-
-    mutating func activate(isOpening: Bool) {
-        isActive = true
-        hasCrossedThreshold = false
-        wasAboveThreshold = isOpening
-    }
-
-    mutating func update(progress: CGFloat, threshold: CGFloat) -> Bool {
-        update(isOpening: progress > threshold)
-    }
-
-    mutating func update(isOpening: Bool) -> Bool {
-        guard isActive else { return false }
-        let above = isOpening
-        let firstCrossing = above && !wasAboveThreshold && !hasCrossedThreshold
-        wasAboveThreshold = above
-        if firstCrossing { hasCrossedThreshold = true }
-        return firstCrossing
-    }
-
-    mutating func reset() {
-        isActive = false
-        hasCrossedThreshold = false
-        wasAboveThreshold = false
-    }
-}
-
 extension SwipePhysics {
     static func shouldSyncOpenWidth(
         oldWidth: CGFloat, newWidth: CGFloat, isOpen: Bool, isInteracting: Bool

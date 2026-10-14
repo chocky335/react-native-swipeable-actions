@@ -27,7 +27,6 @@ export const both = (
     rightActions={action}
     rightActionsWidth={120}
     onLeftSwipeEnd={(state) => state}
-    appearance='ios26'
   >
     {row}
   </Swipeable>

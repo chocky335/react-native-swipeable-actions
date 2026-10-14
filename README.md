@@ -11,7 +11,6 @@ A high-performance native swipeable row component for React Native. Native alter
 - AutoClose pattern for chat-style swipe-to-reply
 - Lazy action rendering for optimal performance
 - Independent physical left/right actions, widths, and completion callbacks
-- Opt-in iOS-inspired action motion and native haptics
 
 ## Performance
 
@@ -52,7 +51,7 @@ npm install react-native-swipeable-actions
 ```
 
 This package includes native code. Rebuild the application's iOS and Android targets after
-installing or updating it, including when adopting two-sided actions or the appearance preset.
+installing or updating it, including when adopting two-sided actions.
 Reloading JavaScript or sending an OTA update cannot add the new native implementation to an
 old binary. Use an Expo development build or your application's native build workflow.
 
@@ -190,29 +189,9 @@ For `open()` / `Swipeable.open(key)` without a side, the enabled `actionsPositio
 If it is unavailable, the only enabled edge wins. With both enabled and no position supplied,
 the existing right default wins.
 
-## Optional iOS-Inspired Appearance and Feedback
+## Styling Actions
 
-`appearance="ios26"` explicitly opts into native iOS action-rail entry/pop motion. It does
-not automatically activate based on the OS version. The default appearance preserves the
-existing presentation. This is an iOS-inspired preset, not Apple's Mail/Notes control,
-exact system-control parity, or Liquid Glass. It adds no blur/material dependency and
-does not require the iOS 26 SDK.
-
-`hapticFeedback` controls native iOS threshold feedback:
-
-| Value | Behavior |
-| --- | --- |
-| Omitted | Enabled with the explicit `ios26` preset; disabled with `default` |
-| `true` | Enables threshold feedback on iOS with either appearance |
-| `false` | Disables feedback with either appearance |
-
-Feedback is one light impact at the first opening-threshold crossing per physical gesture,
-not repeated crossings, programmatic commands, recycling, or auto-close. No JavaScript
-haptics call is needed. iOS Reduce Motion suppresses nonessential scale/pop, including
-when the setting changes while mounted, while retaining swiping and the user's haptic
-preference. On Android, both props retain the existing native motion and add no haptics.
-
-The preset animates the action rail; rounded corners, colors, and inset buttons remain
+Rounded corners, colors, and inset buttons remain
 caller-owned React content. For example, this recipe gives the right edge two 48-unit-wide
 targets inside a total 120-unit reveal (`8 + 48 + 8 + 48 + 8`):
 
@@ -230,7 +209,6 @@ const button = {
 
 <Swipeable
   recyclingKey="rounded-message"
-  appearance="ios26"
   leftActions={
     <View style={leftRail}>
       <Pressable style={button} accessibilityLabel="Pin message" onPress={pin}>
@@ -262,8 +240,7 @@ so they divide the space inside the explicitly sized rail. The 120-unit right ra
 two 48-unit targets, 16 units of outer padding, and an 8-unit gap.
 
 Keep labels short or increase widths for larger text; allow row height to grow. The example
-offers one/multiple actions, optional rounded/inset styling, light/dark row surroundings,
-and separate appearance/haptic controls. These visual choices do not change the legacy demos.
+offers one/multiple actions, optional rounded/inset styling, and light/dark row surroundings. These visual choices do not change the legacy demos.
 
 ## Props
 
@@ -281,8 +258,6 @@ and separate appearance/haptic controls. These visual choices do not change the 
 | `dragOffsetFromEdge` | `number` | `0` | Minimum drag distance before gesture starts |
 | `autoClose` | `boolean` | `false` | Auto-close after swipe release (for swipe-to-reply) |
 | `autoCloseTimeout` | `number` | `0` | Delay in ms before auto-closing |
-| `appearance` | `'default' \| 'ios26'` | `'default'` | Opt-in native iOS action motion; existing presentation on Android |
-| `hapticFeedback` | `boolean` | preset-dependent | Native iOS threshold feedback; no added feedback on Android |
 | `recyclingKey` | `string \| number` | - | Unique key for FlashList/recycling support |
 | `style` | `StyleProp<ViewStyle>` | - | Container style |
 | `testID` | `string` | - | Test ID for e2e testing |
@@ -435,6 +410,23 @@ function MessageList({ messages }) {
 | iOS | 13.4+ |
 | Android | API 23+ |
 
+## RTL and Language Changes
+
+`leftActions` and `rightActions` always name physical edges, including in RTL:
+dragging right reveals the left actions, and dragging left reveals the right actions.
+The two-sided action slots compensate for the app's `I18nManager.isRTL` alignment.
+The library does not automatically exchange action content, widths, or callbacks.
+
+When only the translation language changes, rerender the action content and update its
+explicit width if the translated label needs more space. The row's recycling key should
+continue to identify the same item, not the language. If your application maps logical
+start/end actions to different physical edges, close rows before changing that mapping.
+
+Changing React Native's global RTL settings requires an application restart; toggling
+translated strings alone does not change native layout direction. See
+[React Native I18nManager](https://reactnative.dev/docs/i18nmanager).
+Per-row direction overrides are not part of the physical-edge API contract.
+
 ## TypeScript
 
 Full TypeScript support with exported types:
@@ -446,7 +438,6 @@ import {
   TwoSidedSwipeableProps,
   SwipeableComponentProps,
   SwipeSide,
-  SwipeAppearance,
   SwipeableMethods,
   SwipeableStatic,
   SwipeProgressEvent,
@@ -457,7 +448,7 @@ import {
 `SwipeableProps` remains an extendable legacy interface with required `actions` and
 `actionsWidth`; existing wrappers and mocks need no migration. Use `TwoSidedSwipeableProps`
 for explicit-side usage without legacy actions, or `SwipeableComponentProps` for the full
-accepted union. `SwipeSide` is `'left' | 'right'`; `SwipeAppearance` is `'default' | 'ios26'`.
+accepted union. `SwipeSide` is `'left' | 'right'`.
 Legacy inferred component props keep the legacy signature; choose the exported union
 explicitly when writing a wrapper that supports both forms.
 
@@ -475,7 +466,7 @@ import 'react-native-swipeable-actions/jestSetup.js'
 In the example app's config panel, select **Two-sided**. Its own scrollable controls start
 with ref/static left/right opens, no-argument open, animated/instant close, and closeAll.
 Options include each edge, gestures, auto-close, independent 80/120 widths, legacy precedence,
-appearance, haptics, and caller styling. Recycling controls switch FlatList/FlashList, rebind
+and caller styling. Recycling controls switch FlatList/FlashList, rebind
 slot 0 from key 0 to 100 and back, swap the first two rows, and detach/attach the list.
 Commands target the current first row. Each row shows action counters and aggregate/side
 completion counts plus the last side/state. Hide controls to leave more space for rows.
@@ -503,11 +494,9 @@ Optionally set `ANDROID_APP_PATH` to another APK and `ANDROID_UDID` to select a 
 device or emulator; omit them to use the configuration's defaults.
 The spec observes rendered action presses, native position, and callback counters for first
 programmatic opens, disabled-edge precedence, cross-zero latching, auto-close, width changes,
-rebind/reorder, and closeAll after attachment with both lists. It also checks that the opt-in
-appearance keeps functional action targets and geometry on either platform. These are test
-scenarios, not a claim that native/device tests have been run. Run the existing regression
-spec as well; manually check larger text, RTL, reduced motion, interruption, and iOS visuals.
-Judge haptic feel on a physical iPhone; simulator/type checks cannot establish it.
+rebind/reorder, and closeAll after attachment with both lists. These are test scenarios,
+not a claim that native/device tests have been run. Run the existing regression spec as
+well; manually check larger text, interruption, and action styling.
 
 ## License
 

@@ -2,8 +2,8 @@ import { FlashList } from '@shopify/flash-list'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   FlatList,
+  I18nManager,
   type LayoutChangeEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,8 +19,29 @@ import {
 } from 'react-native-swipeable-actions'
 import { colors } from '../styles'
 
-type Tab = 'commands' | 'options' | 'recycling'
+type Tab = 'commands' | 'options' | 'recycling' | 'localization'
 type Action = SwipeSide | 'more' | 'legacy'
+type Language = 'en' | 'ar'
+const ACTION_LABELS = {
+  en: { left: 'Pin', right: 'Del', more: '...', legacy: 'Old' },
+  ar: {
+    left: '\u062a\u062b\u0628\u064a\u062a',
+    right: '\u062d\u0630\u0641',
+    more: '\u0627\u0644\u0645\u0632\u064a\u062f',
+    legacy: '\u0642\u062f\u064a\u0645'
+  }
+}
+let nextContentInstance = 0
+
+// This lives inside Swipeable, so its identity also detects wrapper remounts.
+function ContentIdentity({ id }: { id: number }) {
+  const [instance] = useState(() => ++nextContentInstance)
+  return (
+    <Text testID={`two-sided-instance-${id}`} style={styles.readout}>
+      Content instance {instance}
+    </Text>
+  )
+}
 type Item = { slot: number; id: number }
 type Counters = {
   starts: number
@@ -84,11 +105,13 @@ function Control({
 function ActionButton({
   id,
   action,
+  language,
   rounded,
   onAction
 }: {
   id: number
   action: Action
+  language: Language
   rounded: boolean
   onAction: (id: number, action: Action) => void
 }) {
@@ -101,7 +124,7 @@ function ActionButton({
     ],
     [action, rounded]
   )
-  const labels = { left: 'Pin', right: 'Del', more: '...', legacy: 'Old' }
+  const labels = ACTION_LABELS[language]
   return (
     <Pressable
       testID={`two-sided-action-${action}-${id}`}
@@ -110,7 +133,9 @@ function ActionButton({
       onPress={press}
       style={style}
     >
-      <Text style={styles.actionText}>{labels[action]}</Text>
+      <Text testID={`two-sided-action-label-${action}-${id}`} style={styles.actionText}>
+        {labels[action]}
+      </Text>
     </Pressable>
   )
 }
@@ -126,6 +151,8 @@ function DemoRow({
   item: Item
   counters: Counters
   options: {
+    language: Language
+    legacyOnly: boolean
     leftEnabled: boolean
     rightEnabled: boolean
     leftWidth: number
@@ -136,8 +163,6 @@ function DemoRow({
     rounded: boolean
     multiple: boolean
     light: boolean
-    appearance: 'default' | 'ios26'
-    haptics: 'auto' | 'on' | 'off'
   }
   rowRefs: React.RefObject<Map<number, SwipeableMethods>>
   onAction: (id: number, action: Action) => void
@@ -187,26 +212,49 @@ function DemoRow({
     ? {
         actions: (
           <View style={styles.legacyRail}>
-            <ActionButton id={id} action='legacy' rounded={false} onAction={onAction} />
+            <ActionButton
+              id={id}
+              action='legacy'
+              language={options.language}
+              rounded={false}
+              onAction={onAction}
+            />
           </View>
         ),
         actionsWidth: 96,
         actionsPosition: 'right' as const
       }
     : {}
-  const feedback = options.haptics === 'auto' ? {} : { hapticFeedback: options.haptics === 'on' }
   const sideProps = {
     leftActions: options.leftEnabled ? (
       <View style={leftRailStyle}>
-        <ActionButton id={id} action='left' rounded={options.rounded} onAction={onAction} />
+        <ActionButton
+          id={id}
+          action='left'
+          language={options.language}
+          rounded={options.rounded}
+          onAction={onAction}
+        />
       </View>
     ) : null,
     leftActionsWidth: options.leftWidth,
     rightActions: options.rightEnabled ? (
       <View style={rightRailStyle}>
-        <ActionButton id={id} action='right' rounded={options.rounded} onAction={onAction} />
+        <ActionButton
+          id={id}
+          action='right'
+          language={options.language}
+          rounded={options.rounded}
+          onAction={onAction}
+        />
         {options.multiple && (
-          <ActionButton id={id} action='more' rounded={options.rounded} onAction={onAction} />
+          <ActionButton
+            id={id}
+            action='more'
+            language={options.language}
+            rounded={options.rounded}
+            onAction={onAction}
+          />
         )}
       </View>
     ) : (
@@ -218,34 +266,47 @@ function DemoRow({
     'leftActions' | 'leftActionsWidth' | 'rightActions' | 'rightActionsWidth'
   >
 
+  const commonProps = {
+    ref: attachRef,
+    testID: `two-sided-row-${id}`,
+    recyclingKey: recyclingKey(id),
+    gestureEnabled: options.gestureEnabled,
+    autoClose: options.autoClose,
+    autoCloseTimeout: 250,
+    onSwipeStart: recordStart,
+    onSwipeEnd: recordEnd,
+    onLeftSwipeEnd: recordLeftEnd,
+    onRightSwipeEnd: recordRightEnd
+  }
+  const content = (
+    <View style={contentStyle} collapsable={false}>
+      <Text style={titleStyle}>Row {id}</Text>
+      <Text style={titleStyle}>
+        Left {options.leftWidth} / Right {options.rightWidth}
+      </Text>
+      <ContentIdentity id={id} />
+      {/* A centered, unclipped marker exposes actual native translation to E2E. */}
+      <View testID={`two-sided-anchor-${id}`} collapsable={false} style={styles.anchor} />
+    </View>
+  )
+
   return (
     <View style={cardStyle}>
       <View testID={`two-sided-frame-${id}`} collapsable={false} onLayout={recordLayout}>
-        <Swipeable
-          {...legacy}
-          {...sideProps}
-          {...feedback}
-          ref={attachRef}
-          testID={`two-sided-row-${id}`}
-          recyclingKey={recyclingKey(id)}
-          gestureEnabled={options.gestureEnabled}
-          autoClose={options.autoClose}
-          autoCloseTimeout={250}
-          appearance={options.appearance}
-          onSwipeStart={recordStart}
-          onSwipeEnd={recordEnd}
-          onLeftSwipeEnd={recordLeftEnd}
-          onRightSwipeEnd={recordRightEnd}
-        >
-          <View style={contentStyle} collapsable={false}>
-            <Text style={titleStyle}>Row {id}</Text>
-            <Text style={titleStyle}>
-              Left {options.leftWidth} / Right {options.rightWidth}
-            </Text>
-            {/* A centered, unclipped marker exposes actual native translation to E2E. */}
-            <View testID={`two-sided-anchor-${id}`} collapsable={false} style={styles.anchor} />
-          </View>
-        </Swipeable>
+        {options.legacyOnly ? (
+          <Swipeable
+            {...commonProps}
+            actions={sideProps.rightActions}
+            actionsWidth={options.rightWidth}
+            actionsPosition='right'
+          >
+            {content}
+          </Swipeable>
+        ) : (
+          <Swipeable {...commonProps} {...legacy} {...sideProps}>
+            {content}
+          </Swipeable>
+        )}
       </View>
       <View style={styles.rowReadout}>
         <Text testID={`two-sided-presses-${id}`} style={readoutStyle}>
@@ -275,7 +336,10 @@ export function TwoSidedScreen() {
   const [counters, setCounters] = useState<Record<number, Counters>>({})
   const [useFlatList, setUseFlatList] = useState(false)
   const [attached, setAttached] = useState(true)
+  const [requestedDirection, setRequestedDirection] = useState<'LTR' | 'RTL' | null>(null)
   const [options, setOptions] = useState({
+    language: 'en' as Language,
+    legacyOnly: false,
     leftEnabled: true,
     rightEnabled: true,
     leftWidth: 80,
@@ -285,9 +349,7 @@ export function TwoSidedScreen() {
     mixed: false,
     rounded: false,
     multiple: false,
-    light: false,
-    appearance: 'default' as 'default' | 'ios26',
-    haptics: 'auto' as 'auto' | 'on' | 'off'
+    light: false
   })
   const rowRefs = useRef(new Map<number, SwipeableMethods>())
   const controlsRef = useRef<ScrollView>(null)
@@ -304,6 +366,24 @@ export function TwoSidedScreen() {
   const showCommands = () => selectTab('commands')
   const showOptions = () => selectTab('options')
   const showRecycling = () => selectTab('recycling')
+  const showLocalization = () => selectTab('localization')
+  const requestDirection = (rtl: boolean) => {
+    // Persist native preferences only. Changing labels is a separate live operation.
+    // A full app termination/relaunch is required to apply the global direction.
+    I18nManager.allowRTL(rtl)
+    I18nManager.forceRTL(rtl)
+    setRequestedDirection(rtl ? 'RTL' : 'LTR')
+  }
+  const requestLTR = () => requestDirection(false)
+  const requestRTL = () => requestDirection(true)
+  const toggleLanguage = () =>
+    setOptions((value) => ({
+      ...value,
+      language: value.language === 'en' ? 'ar' : 'en',
+      leftWidth: value.language === 'en' ? 112 : 80,
+      rightWidth: value.language === 'en' ? 160 : 120
+    }))
+  const toggleLegacy = () => setOptions((value) => ({ ...value, legacyOnly: !value.legacyOnly }))
   const toggleControls = () => setControlsVisible((value) => !value)
   const openLeft = () => rowRefs.current.get(first.slot)?.open('left')
   const openRight = () => rowRefs.current.get(first.slot)?.open('right')
@@ -323,16 +403,6 @@ export function TwoSidedScreen() {
     setOptions((value) => ({ ...value, leftWidth: value.leftWidth === 80 ? 112 : 80 }))
   const resizeRight = () =>
     setOptions((value) => ({ ...value, rightWidth: value.rightWidth === 120 ? 160 : 120 }))
-  const toggleAppearance = () =>
-    setOptions((value) => ({
-      ...value,
-      appearance: value.appearance === 'default' ? 'ios26' : 'default'
-    }))
-  const toggleHaptics = () =>
-    setOptions((value) => {
-      const next = { auto: 'on', on: 'off', off: 'auto' } as const
-      return { ...value, haptics: next[value.haptics] }
-    })
   const toggleRounded = () => setOptions((value) => ({ ...value, rounded: !value.rounded }))
   const toggleMultiple = () => setOptions((value) => ({ ...value, multiple: !value.multiple }))
   const toggleLight = () => setOptions((value) => ({ ...value, light: !value.light }))
@@ -410,6 +480,12 @@ export function TwoSidedScreen() {
               selected={tab === 'recycling'}
               onPress={showRecycling}
             />
+            <Control
+              name='tab-localization'
+              label='Language / RTL'
+              selected={tab === 'localization'}
+              onPress={showLocalization}
+            />
           </View>
           <ScrollView
             ref={controlsRef}
@@ -472,16 +548,6 @@ export function TwoSidedScreen() {
                   onPress={resizeRight}
                 />
                 <Control
-                  name='appearance'
-                  label={`Appearance: ${options.appearance}`}
-                  onPress={toggleAppearance}
-                />
-                <Control
-                  name='haptics'
-                  label={`Haptics: ${options.haptics}`}
-                  onPress={toggleHaptics}
-                />
-                <Control
                   name='rounded'
                   label={`Rounded / inset: ${options.rounded ? 'on' : 'off'}`}
                   onPress={toggleRounded}
@@ -497,9 +563,6 @@ export function TwoSidedScreen() {
                   onPress={toggleLight}
                 />
                 <Text style={styles.readout}>
-                  {Platform.OS === 'ios'
-                    ? 'Native iOS feedback. Reduce Motion suppresses the optional pop; haptics keep your preference.'
-                    : 'Android keeps its normal native motion. The iOS preset and native haptics have no added effect.'}{' '}
                   Rounded buttons are caller styling. Widths include all padding and gaps.
                 </Text>
               </View>
@@ -525,6 +588,56 @@ export function TwoSidedScreen() {
                 <Text style={styles.readout}>
                   Rebind keeps the cell mounted. Reorder keeps item keys. Detach and attach preserve
                   cached sides; then try Close all.
+                </Text>
+              </View>
+            )}
+            {tab === 'localization' && (
+              <View>
+                <Text testID='two-sided-direction-active' style={styles.readout}>
+                  {I18nManager.isRTL ? 'RTL' : 'LTR'}
+                </Text>
+                <Text testID='two-sided-direction-request' style={styles.readout}>
+                  {requestedDirection
+                    ? `Restart required: ${requestedDirection}`
+                    : 'No direction change requested'}
+                </Text>
+                <View style={styles.directionProbe} collapsable={false}>
+                  <View
+                    testID='two-sided-direction-first'
+                    style={styles.directionMarker}
+                    collapsable={false}
+                  />
+                  <View
+                    testID='two-sided-direction-second'
+                    style={styles.directionMarker}
+                    collapsable={false}
+                  />
+                </View>
+                <View style={styles.controlRow}>
+                  <Control
+                    name='direction-ltr'
+                    label='Request LTR (restart)'
+                    onPress={requestLTR}
+                  />
+                  <Control
+                    name='direction-rtl'
+                    label='Request RTL (restart)'
+                    onPress={requestRTL}
+                  />
+                  <Control
+                    name='language'
+                    label={`Labels: ${options.language}`}
+                    onPress={toggleLanguage}
+                  />
+                  <Control
+                    name='legacy-only'
+                    label={`Legacy only: ${options.legacyOnly ? 'on' : 'off'}`}
+                    onPress={toggleLegacy}
+                  />
+                </View>
+                <Text style={styles.readout}>
+                  Language changes labels and explicit widths without remounting rows. Left and
+                  right stay physical edges.
                 </Text>
               </View>
             )}
@@ -571,6 +684,8 @@ const controlBase = {
 const contentBase = { minHeight: 100, padding: 16, justifyContent: 'center' as const }
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.backgroundDark },
+  directionProbe: { flexDirection: 'row', height: 8 },
+  directionMarker: { width: 8, height: 8, backgroundColor: colors.primary },
   controlsPane: { maxHeight: '42%', backgroundColor: colors.backgroundSurface },
   controlRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   controlsContent: { padding: 12, gap: 8 },

@@ -34,13 +34,20 @@ export const config: WebdriverIO.Config = {
       'appium:showXcodeLog': true,
       'appium:noReset': false,
       'appium:isHeadless': true,
-      ...(process.env.IOS_PREBUILT_WDA
+      // CI supplies the full build-for-testing output so Xcode launches XCTest.
+      // Keep the existing standalone package option for local callers.
+      ...(process.env.IOS_WDA_DERIVED_DATA_PATH
         ? {
-            'appium:usePreinstalledWDA': true,
-            'appium:prebuiltWDAPath': process.env.IOS_PREBUILT_WDA,
-            'appium:updatedWDABundleId': 'com.facebook.WebDriverAgentRunner'
+            'appium:usePrebuiltWDA': true,
+            'appium:derivedDataPath': process.env.IOS_WDA_DERIVED_DATA_PATH
           }
-        : {})
+        : process.env.IOS_PREBUILT_WDA
+          ? {
+              'appium:usePreinstalledWDA': true,
+              'appium:prebuiltWDAPath': process.env.IOS_PREBUILT_WDA,
+              'appium:updatedWDABundleId': 'com.facebook.WebDriverAgentRunner'
+            }
+          : {})
     }
   ],
 
