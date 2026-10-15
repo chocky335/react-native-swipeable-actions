@@ -2,7 +2,12 @@ import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core
 import { type ComponentProps, createElement, forwardRef } from 'react'
 import type { NativeSwipeableRef, SwipeableViewProps, SwipeSide } from './Swipeable.types'
 
-const NativeView = requireNativeViewManager<SwipeableViewProps>('Swipeable')
+type NativeViewProps = SwipeableViewProps & {
+  /** Internal lifecycle notification; never forwarded as a consumer completion. */
+  onGestureCancelled?: (event: { nativeEvent: { recyclingKey?: string } }) => void
+}
+
+const NativeView = requireNativeViewManager<NativeViewProps>('Swipeable')
 
 // Module-level functions interface
 interface SwipeableNativeModule {
@@ -17,7 +22,7 @@ interface SwipeableNativeModule {
 
 export const SwipeableModule = requireNativeModule<SwipeableNativeModule>('Swipeable')
 
-export const SwipeableView = forwardRef<NativeSwipeableRef, SwipeableViewProps>(
+export const SwipeableView = forwardRef<NativeSwipeableRef, NativeViewProps>(
   function SwipeableView(props, ref) {
     return createElement(NativeView, { ...props, ref } as ComponentProps<typeof NativeView>)
   }

@@ -78,7 +78,7 @@ class SwipeableModule : Module() {
                 view.applyPendingConfiguration()
             }
 
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded")
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded", "onGestureCancelled")
 
             AsyncFunction("close") { view: SwipeableView, animated: Boolean? ->
                 view.postCommand { view.close(animated ?: true) }

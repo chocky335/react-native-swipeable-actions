@@ -72,6 +72,45 @@ enum SwipeSide: String, CaseIterable {
     var sign: CGFloat { self == .left ? 1 : -1 }
 }
 
+/// Gesture-owned completion survives width reconciliation, but not commands or rebinding.
+enum SwipeAutoCloseState: Equatable {
+    case waiting(side: SwipeSide, deadline: TimeInterval)
+    case closing(side: SwipeSide)
+
+    var side: SwipeSide {
+        switch self {
+        case .waiting(let side, _), .closing(let side): return side
+        }
+    }
+
+    func remainingDelay(at now: TimeInterval) -> TimeInterval {
+        guard case .waiting(_, let deadline) = self else { return 0 }
+        return max(0, deadline - now)
+    }
+}
+
+struct SwipeReconciledState {
+    let openSide: SwipeSide?
+    let autoClose: SwipeAutoCloseState?
+}
+
+/// A released gesture retains its callback ownership until completion or cancellation.
+/// Touch activation is deliberately independent: settling and auto-close have no active touch.
+struct SwipeGestureCompletion {
+    private(set) var isPending = false
+
+    mutating func begin() { isPending = true }
+    mutating func complete() { isPending = false }
+
+    @discardableResult
+    mutating func invalidate(preserving: Bool = false) -> Bool {
+        guard !preserving else { return false }
+        let cancelled = isPending
+        isPending = false
+        return cancelled
+    }
+}
+
 /// An immutable registry binding. Its identity changes only when a view is
 /// registered again, never when an earlier command interrupts animation work.
 final class SwipeCommandTarget<View: AnyObject> {
@@ -209,6 +248,29 @@ final class SwipeRailVisibility {
 }
 
 extension SwipePhysics {
+    static func reconcileTwoSidedState(
+        openSide: SwipeSide?, autoCloseState: SwipeAutoCloseState?,
+        leftWidth: CGFloat, rightWidth: CGFloat,
+        wasGestureEnabled: Bool, gestureEnabled: Bool, autoClose: Bool
+    ) -> SwipeReconciledState {
+        // Disabling is a transition. A subsequent imperative open remains valid while disabled.
+        guard !wasGestureEnabled || gestureEnabled else {
+            return SwipeReconciledState(openSide: nil, autoClose: nil)
+        }
+        func enabled(_ side: SwipeSide) -> Bool {
+            validWidth(side == .left ? leftWidth : rightWidth) > 0
+        }
+        let restored = openSide.flatMap { enabled($0) ? $0 : nil }
+        let pending = autoCloseState.flatMap { state -> SwipeAutoCloseState? in
+            guard autoClose, enabled(state.side) else { return nil }
+            switch state {
+            case .waiting: return restored == state.side ? state : nil
+            case .closing: return restored == nil ? state : nil
+            }
+        }
+        return SwipeReconciledState(openSide: restored, autoClose: pending)
+    }
+
     static func shouldSyncOpenWidth(
         oldWidth: CGFloat, newWidth: CGFloat, isOpen: Bool, isInteracting: Bool
     ) -> Bool {

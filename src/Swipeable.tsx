@@ -209,6 +209,18 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     }
   }, [hasActionsRendered, onSwipeStart, twoSided])
 
+  const handleGestureCancelled = useCallback(
+    (event: { nativeEvent: { recyclingKey?: string } }) => {
+      if (
+        event.nativeEvent.recyclingKey !== undefined &&
+        event.nativeEvent.recyclingKey !== normalizedKey
+      )
+        return
+      swipeStartedRef.current = false
+    },
+    [normalizedKey]
+  )
+
   const handleActionsNeeded = useCallback(
     (event: ActionsNeededEvent) => {
       const side = event.nativeEvent.side
@@ -291,6 +303,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       {...(normalizedKey ? { recyclingKey: normalizedKey } : {})}
       {...(testID ? { testID } : {})}
       onSwipeStart={handleSwipeStart}
+      onGestureCancelled={handleGestureCancelled}
       onSwipeProgress={handleSwipeProgress}
       onSwipeStateChange={handleSwipeStateChange}
       onSwipeEnd={handleSwipeEnd}

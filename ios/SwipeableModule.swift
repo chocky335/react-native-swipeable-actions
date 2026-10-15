@@ -88,7 +88,7 @@ public class SwipeableModule: Module {
             }
 
             // Events
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded")
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded", "onGestureCancelled")
 
             // Imperative methods
             AsyncFunction("close") { (view: SwipeableView, animated: Bool?) in
