@@ -6,6 +6,8 @@ This is the first delivery for
 [issue 15](https://github.com/chocky335/react-native-swipeable-actions/issues/15).
 It adds independent physical-edge action content and widths, side completion callbacks,
 side-aware ref/static opens, lazy mounting, and keyed restoration for two-sided rows.
+This is PR21; the reviewed issue-15 revision is `a92045c`. PR22 stacks the optional
+issue-19 appearance work on top of it.
 
 The existing legacy props, callback arity, ref/static/raw commands (including cancel),
 defaults, and native bridge entry points remain supported. The change incorporates
@@ -41,6 +43,25 @@ The iOS CI runner now uses the prebuilt WDA test products through Xcode's
 test-without-building path. Its earlier direct-launch path never established a session
 and exhausted the job deadline. A successful fresh run is required before calling the
 runner fix or this delivery accepted; the 45-minute timeout is unchanged.
+
+## Reported acceptance snapshot for PR21
+
+- CI run `38623464130` completed with overall status cancelled. Lint, test, and
+  Android jobs succeeded. WDA started successfully, but iOS exceeded the 45-minute
+  job limit after three test timeouts in the RTL suite's translated-width/rebind/detach
+  cases: LTR FlatList left, LTR FlatList right, and RTL FlatList left.
+- Only the benchmark spec completed before the interrupted RTL spec; legacy and
+  two-sided specs did not start. Cancellation prevented an aggregate test report,
+  so exact iOS pass/skip totals are unknown. Maestro was skipped. This is not a
+  zero-failure result and must not be attributed to the earlier WDA startup failure.
+- Android CI is verified at 59/59 passed, including 14 RTL cases, with zero skips.
+- The Xiaomi `M2101K9AG` was identified through the authorized helper. The new
+  `a92045c` build and harness with the correct CI dependencies are prepared, but
+  physical-device acceptance is 0 started, 0 passed, 0 failed, and 59 not run.
+  The helper provides ADB/video forwarding, not the required UiAutomator2 HTTP route.
+  No new tunnel was created and no Pixel interaction occurred.
+- Full iOS acceptance and the Xiaomi run remain incomplete. Android CI success does
+  not establish either gate, and historical results below do not replace them.
 
 ## Historical evidence, not acceptance of the split
 

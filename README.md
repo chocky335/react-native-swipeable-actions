@@ -11,7 +11,7 @@ A high-performance native swipeable row component for React Native. Native alter
 - AutoClose pattern for chat-style swipe-to-reply
 - Lazy action rendering for optimal performance
 - Independent physical left/right actions, widths, and completion callbacks
-- Opt-in iOS-inspired action motion and native haptics
+- Opt-in iOS-inspired action motion and native iOS haptics
 
 ## Performance
 
@@ -70,34 +70,34 @@ old binary. Use an Expo development build or your application's native build wor
 ## Basic Usage
 
 ```tsx
-import { Swipeable, SwipeableMethods } from 'react-native-swipeable-actions'
-import { useRef } from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { Swipeable, SwipeableMethods } from "react-native-swipeable-actions";
+import { useRef } from "react";
+import { View, Text, TouchableOpacity } from "react-native";
 
 function DeleteAction({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} style={styles.deleteAction}>
       <Text style={styles.actionText}>Delete</Text>
     </TouchableOpacity>
-  )
+  );
 }
 
 function MyRow() {
-  const swipeableRef = useRef<SwipeableMethods>(null)
+  const swipeableRef = useRef<SwipeableMethods>(null);
 
   return (
     <Swipeable
       ref={swipeableRef}
       recyclingKey="my-row"
-      actions={<DeleteAction onPress={() => console.log('Delete!')} />}
+      actions={<DeleteAction onPress={() => console.log("Delete!")} />}
       actionsWidth={80}
-      onSwipeEnd={(state) => console.log('Swipe ended:', state)}
+      onSwipeEnd={(state) => console.log("Swipe ended:", state)}
     >
       <View style={styles.row}>
         <Text>Swipe me left</Text>
       </View>
     </Swipeable>
-  )
+  );
 }
 ```
 
@@ -107,27 +107,40 @@ existing ref/static call forms remain supported.
 ## Independent Left and Right Actions
 
 ```tsx
-import { useRef } from 'react'
-import { Pressable, Text, View } from 'react-native'
-import { Swipeable, type SwipeableMethods } from 'react-native-swipeable-actions'
+import { useRef } from "react";
+import { Pressable, Text, View } from "react-native";
+import {
+  Swipeable,
+  type SwipeableMethods,
+} from "react-native-swipeable-actions";
 
 function TwoSidedRow() {
-  const row = useRef<SwipeableMethods>(null)
+  const row = useRef<SwipeableMethods>(null);
 
   return (
     <Swipeable
       ref={row}
       recyclingKey="message-1"
-      leftActions={<Pressable onPress={() => console.log('Pin')}><Text>Pin</Text></Pressable>}
+      leftActions={
+        <Pressable onPress={() => console.log("Pin")}>
+          <Text>Pin</Text>
+        </Pressable>
+      }
       leftActionsWidth={80}
-      rightActions={<Pressable onPress={() => console.log('Delete')}><Text>Delete</Text></Pressable>}
+      rightActions={
+        <Pressable onPress={() => console.log("Delete")}>
+          <Text>Delete</Text>
+        </Pressable>
+      }
       rightActionsWidth={120}
-      onLeftSwipeEnd={(state) => console.log('Left completed:', state)}
-      onRightSwipeEnd={(state) => console.log('Right completed:', state)}
+      onLeftSwipeEnd={(state) => console.log("Left completed:", state)}
+      onRightSwipeEnd={(state) => console.log("Right completed:", state)}
     >
-      <View><Text>Swipe either way</Text></View>
+      <View>
+        <Text>Swipe either way</Text>
+      </View>
     </Swipeable>
-  )
+  );
 }
 ```
 
@@ -145,13 +158,13 @@ a programmatic open, or restored state. An explicit first open works before any 
 Legacy content maps to `actionsPosition` (right by default). Resolution happens separately
 for each edge:
 
-| Explicit input on an edge | Resolution |
-| --- | --- |
-| Complete content and width pair | Overrides legacy content and width on that edge |
-| Content omitted or `undefined` | Uses legacy content only if legacy maps to that edge |
-| Content `null` or `false` | Disables the edge, including legacy fallback |
-| Content with missing, nonfinite, zero, or negative width | Warns in development and disables the edge; no fallback |
-| Width without explicit content | Warns and ignores that width; does not change the legacy width |
+| Explicit input on an edge                                | Resolution                                                                    |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Complete content and width pair                          | Overrides legacy content and width on that edge                               |
+| Content omitted or `undefined`                           | Uses legacy content only if legacy maps to that edge                          |
+| Content `null` or `false`                                | Disables the edge, including legacy fallback                                  |
+| Content with missing, nonfinite, zero, or negative width | Warns in development and disables the edge; no fallback                       |
+| Width without explicit content                           | Warns in development and ignores that width; does not change the legacy width |
 
 Legacy props plus a complete opposite-edge pair enable both sides. Numeric `0` is valid
 React action content; it is not an explicit disabling value. With neither edge enabled,
@@ -175,14 +188,15 @@ reports the completed swipe intent, not the final resting position. Use action `
 for button taps, or the appropriate side callback for swipe-to-reply behavior.
 
 ```tsx
-row.current?.open('left')
-row.current?.open('right')
-Swipeable.open('message-1', 'left')
-Swipeable.open('message-1', 'right')
+row.current?.open("left");
+row.current?.open("right");
+Swipeable.open("message-1", "left");
+Swipeable.open("message-1", "right");
 ```
 
-All ref commands also require a `recyclingKey`; static commands target its string value.
-Without one, ref commands warn and have no effect. An explicit disabled-edge open is a
+All ref commands also require a nonempty `recyclingKey`; finite numeric keys are normalized
+to strings, so static commands use that string (for example, `42` becomes `'42'`).
+Without a usable key, ref commands have no effect and warn in development. An explicit disabled-edge open is a
 no-op and never opens the other edge. Opening the opposite enabled edge programmatically
 first closes the current edge, then opens the requested edge, reporting each side's completion.
 
@@ -200,17 +214,22 @@ does not require the iOS 26 SDK.
 
 `hapticFeedback` controls native iOS threshold feedback:
 
-| Value | Behavior |
-| --- | --- |
+| Value   | Behavior                                                          |
+| ------- | ----------------------------------------------------------------- |
 | Omitted | Enabled with the explicit `ios26` preset; disabled with `default` |
-| `true` | Enables threshold feedback on iOS with either appearance |
-| `false` | Disables feedback with either appearance |
+| `true`  | Enables threshold feedback on iOS with either appearance          |
+| `false` | Disables feedback with either appearance                          |
+
+The effective iOS value is `hapticFeedback ?? (appearance === 'ios26')`. The example's
+**Auto** setting omits the prop; `'auto'` is not a public API value. These props also work
+with legacy `actions` / `actionsWidth`; two-sided actions are not required.
 
 Feedback is one light impact at the first opening-threshold crossing per physical gesture,
 not repeated crossings, programmatic commands, recycling, or auto-close. No JavaScript
 haptics call is needed. iOS Reduce Motion suppresses nonessential scale/pop, including
 when the setting changes while mounted, while retaining swiping and the user's haptic
-preference. On Android, both props retain the existing native motion and add no haptics.
+preference. It does not disable the row's normal translation or open/close animations.
+On Android, both props retain the existing native motion and add no haptics.
 
 The preset animates the action rail; rounded corners, colors, and inset buttons remain
 caller-owned React content. For example, this recipe gives the right edge two 48-unit-wide
@@ -267,57 +286,57 @@ and separate appearance/haptic controls. These visual choices do not change the 
 
 ## Props
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `children` | `ReactNode` | required | Row content |
-| `actions` | `ReactNode` | required for legacy props | Legacy action content |
-| `actionsWidth` | `number` | required for legacy props | Total legacy reveal width in React Native layout units |
-| `leftActions` / `rightActions` | `ReactNode` | - | Explicit physical-edge content; `null`/`false` disables the edge |
-| `leftActionsWidth` / `rightActionsWidth` | `number` | - | Finite positive total reveal width for the corresponding explicit content |
-| `actionsPosition` | `'left' \| 'right'` | `'right'` | Position of actions (`'left'` = swipe right to reveal) |
-| `friction` | `number` | `1` | Drag damping factor (0-1). Lower = more resistance |
-| `threshold` | `number` | `0.4` | Snap-to threshold as percentage of actionsWidth (0-1) |
-| `gestureEnabled` | `boolean` | `true` | Enables or disables the swipe gesture |
-| `dragOffsetFromEdge` | `number` | `0` | Minimum drag distance before gesture starts |
-| `autoClose` | `boolean` | `false` | Auto-close after swipe release (for swipe-to-reply) |
-| `autoCloseTimeout` | `number` | `0` | Delay in ms before auto-closing |
-| `appearance` | `'default' \| 'ios26'` | `'default'` | Opt-in native iOS action motion; existing presentation on Android |
-| `hapticFeedback` | `boolean` | preset-dependent | Native iOS threshold feedback; no added feedback on Android |
-| `recyclingKey` | `string \| number` | - | Unique key for FlashList/recycling support |
-| `style` | `StyleProp<ViewStyle>` | - | Container style |
-| `testID` | `string` | - | Test ID for e2e testing |
+| Prop                                     | Type                   | Default                   | Description                                                                                                  |
+| ---------------------------------------- | ---------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `children`                               | `ReactNode`            | required                  | Row content                                                                                                  |
+| `actions`                                | `ReactNode`            | required for legacy props | Legacy action content                                                                                        |
+| `actionsWidth`                           | `number`               | required for legacy props | Total legacy reveal width in React Native layout units                                                       |
+| `leftActions` / `rightActions`           | `ReactNode`            | -                         | Explicit physical-edge content; `null`/`false` disables the edge                                             |
+| `leftActionsWidth` / `rightActionsWidth` | `number`               | -                         | Finite positive total reveal width for the corresponding explicit content                                    |
+| `actionsPosition`                        | `'left' \| 'right'`    | `'right'`                 | Position of actions (`'left'` = swipe right to reveal)                                                       |
+| `friction`                               | `number`               | `1`                       | Drag damping factor (0-1). Lower = more resistance                                                           |
+| `threshold`                              | `number`               | `0.4`                     | Snap threshold as a fraction (0-1) of the active edge's resolved width; `actionsWidth` for legacy-only usage |
+| `gestureEnabled`                         | `boolean`              | `true`                    | Enables or disables the swipe gesture                                                                        |
+| `dragOffsetFromEdge`                     | `number`               | `0`                       | Minimum drag distance before gesture starts                                                                  |
+| `autoClose`                              | `boolean`              | `false`                   | Auto-close after swipe release (for swipe-to-reply)                                                          |
+| `autoCloseTimeout`                       | `number`               | `0`                       | Delay in ms before auto-closing                                                                              |
+| `appearance`                             | `'default' \| 'ios26'` | `'default'`               | Opt-in native iOS action motion; existing presentation on Android                                            |
+| `hapticFeedback`                         | `boolean`              | preset-dependent          | Native iOS threshold feedback; no added feedback on Android                                                  |
+| `recyclingKey`                           | `string \| number`     | -                         | Unique key for FlashList/recycling support                                                                   |
+| `style`                                  | `StyleProp<ViewStyle>` | -                         | Container style                                                                                              |
+| `testID`                                 | `string`               | -                         | Test ID for e2e testing                                                                                      |
 
 ## Callbacks
 
-| Callback | Type | Description |
-|----------|------|-------------|
-| `onSwipeStart` | `() => void` | Called when swipe gesture begins |
-| `onSwipeStateChange` | `(state: 'open' \| 'closed') => void` | State/threshold transitions before completion; may occur during dragging |
-| `onSwipeEnd` | `(state: 'open' \| 'closed') => void` | Called when animation completes |
-| `onLeftSwipeEnd` / `onRightSwipeEnd` | `(state: 'open' \| 'closed') => void` | Matching physical edge's completion, after the aggregate end callback |
-| `onProgress` | `(progress: number) => void` | Called on each frame (0 = closed, 1 = fully open) |
+| Callback                             | Type                                  | Description                                                              |
+| ------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------ |
+| `onSwipeStart`                       | `() => void`                          | Called when swipe gesture begins                                         |
+| `onSwipeStateChange`                 | `(state: 'open' \| 'closed') => void` | State/threshold transitions before completion; may occur during dragging |
+| `onSwipeEnd`                         | `(state: 'open' \| 'closed') => void` | Called when animation completes                                          |
+| `onLeftSwipeEnd` / `onRightSwipeEnd` | `(state: 'open' \| 'closed') => void` | Matching physical edge's completion, after the aggregate end callback    |
+| `onProgress`                         | `(progress: number) => void`          | Called on each frame (0 = closed, 1 = fully open)                        |
 
 ## Ref Methods
 
 Access via ref:
 
 ```tsx
-const swipeableRef = useRef<SwipeableMethods>(null)
+const swipeableRef = useRef<SwipeableMethods>(null);
 
 // Close the row (with optional animation)
-swipeableRef.current?.close()         // animated
-swipeableRef.current?.close(false)    // instant
+swipeableRef.current?.close(); // animated
+swipeableRef.current?.close(false); // instant
 
 // Open the row
-swipeableRef.current?.open()
-swipeableRef.current?.open('left')
-swipeableRef.current?.open('right')
+swipeableRef.current?.open();
+swipeableRef.current?.open("left");
+swipeableRef.current?.open("right");
 
 // Cancel an in-flight gesture and snap back to closed.
 // Use from `onSwipeStart` to abort a swipe before it can complete,
 // e.g. when the parent screen has unsaved state and wants to show a
 // confirm dialog instead of letting the swipe-to-pop proceed.
-swipeableRef.current?.cancel()
+swipeableRef.current?.cancel();
 ```
 
 ## Static Methods
@@ -325,23 +344,23 @@ swipeableRef.current?.cancel()
 Control swipeables globally by their `recyclingKey`:
 
 ```tsx
-import { Swipeable } from 'react-native-swipeable-actions'
+import { Swipeable } from "react-native-swipeable-actions";
 
 // Open a specific row
-Swipeable.open('row-1')
-Swipeable.open('row-1', 'left')
-Swipeable.open('row-1', 'right')
+Swipeable.open("row-1");
+Swipeable.open("row-1", "left");
+Swipeable.open("row-1", "right");
 
 // Close a specific row
-Swipeable.close('row-1')           // animated
-Swipeable.close('row-1', false)    // instant
+Swipeable.close("row-1"); // animated
+Swipeable.close("row-1", false); // instant
 
 // Close all open rows
-Swipeable.closeAll()               // animated
-Swipeable.closeAll(false)          // instant
+Swipeable.closeAll(); // animated
+Swipeable.closeAll(false); // instant
 
 // Cancel an in-flight gesture on a specific row
-Swipeable.cancel('row-1')
+Swipeable.cancel("row-1");
 ```
 
 ## AutoClose Pattern (Swipe-to-Reply)
@@ -356,9 +375,9 @@ For chat-style swipe-to-reply where the row should automatically close:
   autoClose={true}
   threshold={0.6}
   onSwipeEnd={(state) => {
-    if (state === 'open') {
+    if (state === "open") {
       // Trigger reply action
-      onReply(message)
+      onReply(message);
     }
   }}
 >
@@ -376,7 +395,7 @@ edge restores closed rather than opening its opposite. Changing an enabled edge'
 width updates its open reveal distance. Use stable, unique item keys in FlatList and FlashList.
 
 ```tsx
-import { FlashList } from '@shopify/flash-list'
+import { FlashList } from "@shopify/flash-list";
 
 function MessageList({ messages }) {
   return (
@@ -393,7 +412,7 @@ function MessageList({ messages }) {
       )}
       estimatedItemSize={60}
     />
-  )
+  );
 }
 ```
 
@@ -424,22 +443,23 @@ function MessageList({ messages }) {
 **Key design decisions:**
 
 - Gestures handled entirely in native code for 60fps performance
-- Actions rendered lazily on first swipe gesture (performance optimization)
+- Actions rendered lazily on demand, including two-sided programmatic opens and keyed restoration
 - Recycling key enables state persistence in virtualized lists
 - No SharedValue dependency - progress synced via native events
 
 ## Platform Support
 
 | Platform | Version |
-|----------|---------|
-| iOS | 13.4+ |
-| Android | API 23+ |
+| -------- | ------- |
+| iOS      | 13.4+   |
+| Android  | API 23+ |
 
 ## RTL and Language Changes
 
 `leftActions` and `rightActions` always name physical edges, including in RTL:
 dragging right reveals the left actions, and dragging left reveals the right actions.
-The two-sided action slots compensate for the app's `I18nManager.isRTL` alignment.
+Both legacy action containers and two-sided action slots compensate for the app's
+`I18nManager.isRTL` alignment.
 The library does not automatically exchange action content, widths, or callbacks.
 
 When only the translation language changes, rerender the action content and update its
@@ -468,7 +488,7 @@ import {
   SwipeableStatic,
   SwipeProgressEvent,
   SwipeStateEvent,
-} from 'react-native-swipeable-actions'
+} from "react-native-swipeable-actions";
 ```
 
 `SwipeableProps` remains an extendable legacy interface with required `actions` and
@@ -484,7 +504,7 @@ Jest mock is included for testing components that use Swipeable:
 
 ```js
 // jest.config.js
-import 'react-native-swipeable-actions/jestSetup.js'
+import "react-native-swipeable-actions/jestSetup.js";
 ```
 
 ### Two-sided example and device tests

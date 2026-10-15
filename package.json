@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "types": "build/index.d.ts",
   "files": [
+    "CHANGELOG.md",
     "build",
     "src",
     "!src/__tests__",
