@@ -165,12 +165,19 @@ jobs:
           name: logcat-android
           path: /tmp/logcat.txt
 
-  e2e-ios:
+  build-ios:
     if: inputs.enable-e2e-ios == true
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check pinned iOS toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
 
       - uses: actions/setup-node@v4
         with:
@@ -179,9 +186,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install E2E dependencies
-        run: cd e2e && npm ci
 
       - name: Install example dependencies
         run: cd example && npm i --ignore-scripts
@@ -200,8 +204,63 @@ jobs:
             -scheme SwipeableDemo \
             -configuration Release \
             -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ./build \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
             -quiet
+
+      - name: Package release app and toolchain identity
+        run: |
+          mkdir -p ios-build-artifact
+          xcodebuild -version > ios-build-artifact/xcode-version.txt
+          uname -m > ios-build-artifact/architecture.txt
+          ditto -c -k --sequesterRsrc --keepParent \
+            example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app \
+            ios-build-artifact/SwipeableDemo.zip
+
+      - name: Upload release app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-${{ github.sha }}
+          path: ios-build-artifact/
+          if-no-files-found: error
+
+  e2e-ios:
+    if: inputs.enable-e2e-ios == true
+    needs: build-ios
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install E2E dependencies
+        run: cd e2e && npm ci
+
+      - name: Download release app
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-${{ github.sha }}
+          path: ios-build-artifact/
+
+      - name: Check toolchain and unpack release app
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(cat ios-build-artifact/architecture.txt)" = "$(uname -m)"
+          test "$(cat ios-build-artifact/xcode-version.txt)" = "$(xcodebuild -version)"
+          APP_DIR=example/ios/build/Build/Products/Release-iphonesimulator
+          mkdir -p "$APP_DIR"
+          ditto -x -k ios-build-artifact/SwipeableDemo.zip "$APP_DIR"
+          test -d "$APP_DIR/SwipeableDemo.app"
 
       - name: Detect simulator
         id: sim
@@ -249,6 +308,7 @@ jobs:
 
       - name: Run E2E tests
         env:
+          E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/ios-evidence
           IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
