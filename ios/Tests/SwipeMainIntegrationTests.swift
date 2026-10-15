@@ -4,6 +4,145 @@ import XCTest
 final class SwipeMainIntegrationTests: XCTestCase {
     private final class Child {}
 
+    func testReleasedGestureOwnershipSurvivesSettleAndCancelsExactlyOnceOnWidthChange() {
+        for side in SwipeSide.allCases {
+            for opening in [true, false] {
+                var completion = SwipeGestureCompletion()
+                completion.begin()
+                // finishGesture -> beginOpen/performClose invalidates animation work,
+                // but transfers this ownership after touch activation has ended.
+                XCTAssertFalse(completion.invalidate(preserving: true))
+                XCTAssertTrue(completion.isPending)
+                let result = SwipePhysics.reconcileTwoSidedState(
+                    openSide: opening ? side : nil, autoCloseState: nil,
+                    leftWidth: 95, rightWidth: 140,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: false
+                )
+                XCTAssertTrue(completion.invalidate(preserving: result.autoClose != nil))
+                XCTAssertFalse(completion.isPending)
+                XCTAssertFalse(completion.invalidate(), "Repeated reconciliation must not cancel twice")
+                completion.begin()
+                XCTAssertTrue(completion.isPending, "A fresh gesture owns a fresh completion")
+                completion.complete()
+                XCTAssertFalse(completion.invalidate(), "A completed gesture must not be cancelled")
+            }
+        }
+    }
+
+    func testProgrammaticAnimationNeverOwnsGestureCancellation() {
+        var completion = SwipeGestureCompletion()
+        XCTAssertFalse(completion.invalidate())
+        XCTAssertFalse(completion.invalidate(preserving: true))
+        completion.complete()
+        XCTAssertFalse(completion.invalidate())
+    }
+
+    func testAutoCloseRetainsOwnershipAcrossWidthChangesButNotRemovedSide() {
+        for side in SwipeSide.allCases {
+            for pending in [SwipeAutoCloseState.waiting(side: side, deadline: 10), .closing(side: side)] {
+                var completion = SwipeGestureCompletion()
+                completion.begin()
+                let openSide: SwipeSide? = pending == .closing(side: side) ? nil : side
+                let retained = SwipePhysics.reconcileTwoSidedState(
+                    openSide: openSide, autoCloseState: pending,
+                    leftWidth: 95, rightWidth: 140,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+                )
+                XCTAssertFalse(completion.invalidate(preserving: retained.autoClose != nil))
+                XCTAssertTrue(completion.isPending)
+                let removed = SwipePhysics.reconcileTwoSidedState(
+                    openSide: openSide, autoCloseState: pending,
+                    leftWidth: side == .left ? 0 : 95, rightWidth: side == .right ? 0 : 140,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+                )
+                XCTAssertTrue(completion.invalidate(preserving: removed.autoClose != nil))
+                XCTAssertFalse(completion.isPending)
+            }
+        }
+    }
+
+    func testCommandAndRebindDropOwnershipWithoutSyntheticCompletion() {
+        var completion = SwipeGestureCompletion()
+        completion.begin()
+        completion.invalidate(preserving: true)
+        XCTAssertTrue(completion.invalidate())
+        XCTAssertFalse(completion.isPending)
+        XCTAssertFalse(completion.invalidate())
+    }
+
+    func testDisabledImperativeOpenSurvivesPositiveWidthUpdatesOnEitherSide() {
+        for side in SwipeSide.allCases {
+            for width: CGFloat in [95, 140] {
+                let result = SwipePhysics.reconcileTwoSidedState(
+                    openSide: side, autoCloseState: nil, leftWidth: width, rightWidth: width,
+                    wasGestureEnabled: false, gestureEnabled: false, autoClose: false
+                )
+                XCTAssertEqual(result.openSide, side)
+                XCTAssertEqual(result.openSide.map { $0.sign * width }, side.sign * width)
+                XCTAssertNil(result.autoClose)
+            }
+        }
+    }
+
+    func testActualGestureDisableStillClosesAndDropsPendingCompletion() {
+        let result = SwipePhysics.reconcileTwoSidedState(
+            openSide: .left, autoCloseState: .waiting(side: .left, deadline: 10),
+            leftWidth: 80, rightWidth: 120,
+            wasGestureEnabled: true, gestureEnabled: false, autoClose: true
+        )
+        XCTAssertNil(result.openSide)
+        XCTAssertNil(result.autoClose)
+    }
+
+    func testWidthChangesPreserveOriginalAutoCloseDeadlineWithoutPostponingCompletion() {
+        for side in SwipeSide.allCases {
+            var pending: SwipeAutoCloseState? = .waiting(side: side, deadline: 10)
+            for now: TimeInterval in [0, 3, 6, 10, 12] {
+                let result = SwipePhysics.reconcileTwoSidedState(
+                    openSide: side, autoCloseState: pending,
+                    leftWidth: 80 + now, rightWidth: 120 + now,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+                )
+                XCTAssertEqual(result.openSide, side)
+                XCTAssertEqual(result.autoClose, .waiting(side: side, deadline: 10))
+                XCTAssertEqual(result.autoClose?.remainingDelay(at: now), max(0, 10 - now))
+                pending = result.autoClose
+            }
+        }
+    }
+
+    func testWidthChangeDuringAutoCloseKeepsClosingIntentWithoutReopening() {
+        for side in SwipeSide.allCases {
+            let result = SwipePhysics.reconcileTwoSidedState(
+                openSide: nil, autoCloseState: .closing(side: side),
+                leftWidth: 95, rightWidth: 150,
+                wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+            )
+            XCTAssertNil(result.openSide)
+            XCTAssertEqual(result.autoClose, .closing(side: side))
+        }
+    }
+
+    func testRemovedEdgeAndCancelledAutoCloseNeverResumeCompletion() {
+        for side in SwipeSide.allCases {
+            for pending in [SwipeAutoCloseState.waiting(side: side, deadline: 10), .closing(side: side)] {
+                let result = SwipePhysics.reconcileTwoSidedState(
+                    openSide: side, autoCloseState: pending,
+                    leftWidth: side == .left ? 0 : 80, rightWidth: side == .right ? 0 : 120,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+                )
+                XCTAssertNil(result.openSide)
+                XCTAssertNil(result.autoClose)
+            }
+            let cancelled = SwipePhysics.reconcileTwoSidedState(
+                openSide: side, autoCloseState: nil, leftWidth: 95, rightWidth: 150,
+                wasGestureEnabled: true, gestureEnabled: true, autoClose: true
+            )
+            XCTAssertEqual(cancelled.openSide, side)
+            XCTAssertNil(cancelled.autoClose, "Width updates cannot invent a completion for an imperative open")
+        }
+    }
+
     func testRoleAssignmentUsesFabricMountOrderNotHelperSubviews() {
         let helper = Child()
         let left = Child()

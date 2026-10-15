@@ -1,8 +1,34 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setPlatform } from './helpers/selectors'
 
 const appiumPort = Number(process.env.APPIUM_PORT || 4723)
+
+const resultsDirectory = path.resolve(__dirname, 'logs', 'ios-results')
+const resultsFile = path.join(resultsDirectory, `worker-${process.pid}-${Date.now()}.ndjson`)
+
+function failureDetails(error: unknown) {
+  if (error == null) return
+  const details = error as { name?: string; message?: string; stack?: string }
+  return {
+    name: details.name,
+    message: details.message ?? String(error),
+    stack: details.stack
+  }
+}
+
+async function recordResult(record: Record<string, unknown>) {
+  await mkdir(resultsDirectory, { recursive: true })
+  await appendFile(
+    resultsFile,
+    `${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      worker: process.env.WDIO_WORKER_ID,
+      ...record
+    })}\n`
+  )
+}
 
 const defaultAppPath = path.resolve(
   process.env.HOME || '',
@@ -75,13 +101,67 @@ export const config: WebdriverIO.Config = {
     timeout: 120000
   },
 
-  before: async () => {
+  before: async (_capabilities, specs) => {
     setPlatform('iOS')
+    await recordResult({ event: 'worker-start', specs })
   },
 
-  afterTest: async (test, _context, { passed }) => {
+  beforeTest: async (test) => {
+    await recordResult({
+      event: 'test-start',
+      file: test.file,
+      title: test.title,
+      parent: test.parent,
+      fullTitle: test.fullTitle,
+      attempt: test._currentRetry ?? 0
+    })
+  },
+
+  afterHook: async (test, _context, result, hookName) => {
+    const { error, duration, passed } = result
+    // WDIO's Mocha adapter supplies skipped at runtime, but its shared type omits it.
+    const skipped = (result as typeof result & { skipped?: boolean }).skipped === true
+    if (passed && !error && !skipped) return
+    await recordResult({
+      // A skipped hook is evidence about that hook, not a count of skipped tests.
+      // An actual error always wins, even if the adapter also marks it skipped.
+      event: skipped && !error ? 'hook-skipped' : 'hook-failure',
+      hook: hookName,
+      file: test?.file,
+      title: test?.title,
+      parent: test?.parent,
+      duration,
+      error: failureDetails(error)
+    })
+  },
+
+  after: async (result, _capabilities, specs) => {
+    await recordResult({ event: 'worker-end', result, specs })
+  },
+
+  afterTest: async (test, _context, { passed, error, duration, retries }) => {
+    let status = 'failed'
+    if (!error && test.pending) {
+      status = 'skipped'
+    } else if (!error && passed) {
+      status = 'passed'
+    }
+    // Persist the outcome before screenshots/XML, even if evidence capture hangs.
+    // A start without a result remains unfinished; never synthesize a pass.
+    await recordResult({
+      event: 'test-result',
+      file: test.file,
+      title: test.title,
+      parent: test.parent,
+      fullTitle: test.fullTitle,
+      attempt: test._currentRetry ?? 0,
+      status,
+      duration,
+      retries,
+      error: failureDetails(error)
+    })
     const directory = process.env.E2E_ARTIFACT_DIR
-    if (passed || !directory) return
+    if (passed || test.pending || !directory) return
     const title = test.title.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 120)
     const base = path.resolve(directory, `ios-${process.pid}-${Date.now()}-${title}`)
     try {

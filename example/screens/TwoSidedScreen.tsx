@@ -478,9 +478,7 @@ export function TwoSidedScreen() {
   const listExtraData = useMemo(() => ({ counters, options }), [counters, options])
   const autoHapticsEnabled = Platform.OS === 'ios' && options.appearance === 'ios26'
   const hapticsLabel =
-    options.haptics === 'auto'
-      ? `Auto (${autoHapticsEnabled ? 'on' : 'off'})`
-      : options.haptics
+    options.haptics === 'auto' ? `Auto (${autoHapticsEnabled ? 'on' : 'off'})` : options.haptics
 
   return (
     <View testID='two-sided-demo' style={containerStyle}>

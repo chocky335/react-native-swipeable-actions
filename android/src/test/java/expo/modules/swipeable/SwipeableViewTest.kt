@@ -1171,6 +1171,178 @@ class SwipeableViewTest {
         assertTrue(ends().isEmpty())
     }
 
+    @Test fun systemCancelNotifiesInternalGateAndNextGestureStartsNormally() {
+        val row = row()
+        motion(MotionEvent.ACTION_DOWN, 100f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 140f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 240f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_CANCEL, 240f, 10f).useEvent { row.onTouchEvent(it) }
+        assertEquals(listOf(mapOf("side" to "left", "recyclingKey" to "row")), named("onGestureCancelled"))
+        assertTrue(ends().isEmpty())
+        assertEquals(0f, content(row).translationX, 0f)
+        motion(MotionEvent.ACTION_DOWN, 300f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 250f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 100f, 10f).useEvent { row.onTouchEvent(it) }
+        assertEquals(2, named("onSwipeStart").size)
+        assertTrue(named("onSwipeStart").all { it.isEmpty() })
+        motion(MotionEvent.ACTION_UP, 100f, 10f).useEvent { row.onTouchEvent(it) }
+        settle()
+        assertEquals(listOf("open:right"), ends())
+    }
+
+    @Test fun widthChangeConsumesTouchUntilFreshDownInsteadOfRelatchingAcrossZero() {
+        val row = row()
+        motion(MotionEvent.ACTION_DOWN, 200f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 240f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 340f, 10f).useEvent { row.onTouchEvent(it) }
+        row.leftActionsWidth = 100f
+        row.applyPendingConfiguration()
+        assertEquals(1, named("onGestureCancelled").size)
+        motion(MotionEvent.ACTION_MOVE, 50f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_UP, 50f, 10f).useEvent { row.onTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("row"))
+        assertEquals(1, named("onSwipeStart").size)
+        assertTrue(ends().isEmpty())
+        motion(MotionEvent.ACTION_DOWN, 300f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 250f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 100f, 10f).useEvent { row.onTouchEvent(it) }
+        motion(MotionEvent.ACTION_UP, 100f, 10f).useEvent { row.onTouchEvent(it) }
+        settle()
+        assertEquals("right", SwipeableView.getOpenSideByKey("row"))
+        assertEquals(listOf("open:right"), ends())
+    }
+
+    @Test fun argumentlessStaticAndRawOpensUseConfiguredDefaultDuringOppositeGesture() {
+        for (side in SwipeSide.values()) for (raw in listOf(false, true)) {
+            val key = "default-${side.value}-$raw"
+            val row = row(key = key)
+            row.actionsPosition = side.value
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(-side.sign * 120f, 0f)
+            if (raw) row.postCommand { row.open() } else SwipeableView.openByKey(key)
+            settle()
+            assertEquals(side.value, SwipeableView.getOpenSideByKey(key))
+            assertEquals(side.sign * if (side == SwipeSide.LEFT) 160f else 240f, content(row).translationX, .01f)
+            assertEquals("open:${side.value}", ends().last())
+            row.close(false)
+        }
+    }
+
+    @Test fun widthUpdatesPreserveAutoCloseDeadlineAndExactlyOneCompletion() {
+        for (side in SwipeSide.values()) {
+            val row = row(key = "deadline-${side.value}")
+            row.autoClose = true
+            row.autoCloseTimeout = 10000f
+            row.handleGestureStart()
+            row.handleGestureUpdate(side.sign * 160f, 0f)
+            row.handleGestureEnd(side.sign * 160f, 0f)
+            // Reconcile once before the opening spring advances, then while waiting.
+            row.leftActionsWidth = 100f
+            row.rightActionsWidth = 150f
+            row.applyPendingConfiguration()
+            settle() // 3.2 seconds
+            row.leftActionsWidth = 110f
+            row.rightActionsWidth = 160f
+            row.applyPendingConfiguration()
+            settle() // 6.4 seconds
+            assertTrue(ends().isEmpty())
+            assertEquals(side.value, SwipeableView.getOpenSideByKey("deadline-${side.value}"))
+            repeat(300) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
+            // 11.2 seconds: a restarted 10-second timer would still be waiting.
+            assertEquals(listOf("open:${side.value}"), ends())
+            assertEquals(0f, content(row).translationX, 0f)
+            assertNull(SwipeableView.getOpenSideByKey("deadline-${side.value}"))
+            events.clear()
+            root.removeView(row)
+        }
+    }
+
+    @Test fun widthChangeDuringAutoCloseAnimationKeepsOriginalCompletionSide() {
+        val row = row()
+        row.autoClose = true
+        row.autoCloseTimeout = 4000f
+        row.handleGestureStart()
+        row.handleGestureUpdate(120f, 0f)
+        row.handleGestureEnd(120f, 0f)
+        repeat(252) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) }
+        assertFalse(SwipeableView.isOpenByKey("row"))
+        assertTrue(ends().isEmpty())
+        row.leftActionsWidth = 95f
+        row.applyPendingConfiguration()
+        settle()
+        assertEquals(listOf("open:left"), ends())
+        assertEquals(0f, content(row).translationX, 0f)
+    }
+
+    @Test fun widthChangeDuringReleasedGestureSettleCancelsOnlyInternalCompletion() {
+        for (side in SwipeSide.values()) for (opening in listOf(true, false)) {
+            val key = "settling-${side.value}-$opening"
+            val row = row(key = key)
+            if (!opening) {
+                row.open(side)
+                settle()
+            }
+            events.clear()
+            val translation = side.sign * if (opening) 120f else -160f
+            row.handleGestureStart()
+            row.handleGestureUpdate(translation, 0f)
+            row.handleGestureEnd(translation, 0f)
+            assertEquals(1, named("onSwipeStart").size)
+            assertTrue(ends().isEmpty())
+            row.leftActionsWidth = 95f
+            row.rightActionsWidth = 140f
+            row.applyPendingConfiguration()
+            assertEquals(listOf(mapOf("recyclingKey" to key)), named("onGestureCancelled"))
+            settle()
+            assertTrue(ends().isEmpty())
+            row.leftActionsWidth = 100f
+            row.applyPendingConfiguration()
+            assertEquals(1, named("onGestureCancelled").size)
+            row.close(false)
+            row.handleGestureStart()
+            row.handleGestureUpdate(side.sign * 160f, 0f)
+            row.handleGestureEnd(side.sign * 160f, 0f)
+            settle()
+            assertEquals(2, named("onSwipeStart").size)
+            assertEquals(listOf("open:${side.value}"), ends())
+            row.rightActionsWidth = 150f
+            row.applyPendingConfiguration()
+            assertEquals(1, named("onGestureCancelled").size)
+            root.removeView(row)
+        }
+    }
+
+    @Test fun widthChangeDuringProgrammaticSettleDoesNotInventGestureCancellation() {
+        val row = row()
+        row.open(SwipeSide.LEFT)
+        row.leftActionsWidth = 95f
+        row.applyPendingConfiguration()
+        settle()
+        assertTrue(named("onGestureCancelled").isEmpty())
+        assertTrue(ends().isEmpty())
+    }
+
+    @Test fun widthChangesRetainAutoCloseOwnershipUntilItsRealCompletionOrRemoval() {
+        for (removeSide in listOf(false, true)) {
+            val row = row(key = "auto-owner-$removeSide")
+            row.autoClose = true
+            row.autoCloseTimeout = 1000f
+            row.handleGestureStart()
+            row.handleGestureUpdate(120f, 0f)
+            row.handleGestureEnd(120f, 0f)
+            row.leftActionsWidth = if (removeSide) 0f else 95f
+            row.applyPendingConfiguration()
+            assertEquals(if (removeSide) 1 else 0, named("onGestureCancelled").size)
+            settle()
+            assertEquals(if (removeSide) emptyList<String>() else listOf("open:left"), ends())
+            root.removeView(row)
+            events.clear()
+        }
+    }
+
     private fun reactRow(): SwipeableView {
         val row = row(children = false)
         row.id = 100

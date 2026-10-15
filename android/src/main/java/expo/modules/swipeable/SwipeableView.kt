@@ -1,6 +1,7 @@
 package expo.modules.swipeable
 
 import android.content.Context
+import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -261,6 +262,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var isAnimating: Boolean = false
     private var gestureStartTranslation: Float = 0f
     private var isGestureActivated: Boolean = false
+    // Release ends touch activation, not ownership of the eventual completion.
+    private var gestureCompletionPending = false
     private var lastEmittedProgress: Float = -1f
     private var pendingShouldOpen: Boolean = false
     /** Tracks pending snapToOpen from recyclingKey setter. Unlike pendingShouldOpen,
@@ -304,6 +307,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private val onSwipeStateChange by EventDispatcher<Map<String, Any>>()
     private val onSwipeEnd by EventDispatcher<Map<String, Any>>()
     private val onActionsNeeded by EventDispatcher<Map<String, Any>>()
+    private val onGestureCancelled by EventDispatcher<Map<String, Any>>()
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var velocityTracker: VelocityTracker? = null
@@ -327,6 +331,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     // Auto-close runnable for tracking and cancellation
     private var autoCloseRunnable: Runnable? = null
+    private var autoCloseDeadline: Long? = null
+    private var autoCloseClosingSide: SwipeSide? = null
 
     // Track when a child (e.g. RNGH gesture handler) claims the touch
     private var childRequestedDisallowIntercept: Boolean = false
@@ -696,7 +702,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     velocityTracker?.computeCurrentVelocity(1000)
                     val horizontalDelta = event.rawX - touchStartX
                     if (twoSided && event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                        val cancelled = sideMetadata()
+                        isCurrentTouchCancelled = true
                         reconcileLogicalState()
+                        onGestureCancelled(cancelled)
                     } else {
                         handlePanEnd(horizontalDelta, velocityTracker?.xVelocity ?: 0f)
                     }
@@ -712,6 +721,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private fun activateGesture(initialTranslation: Float) {
         if (isCurrentTouchCancelled) return
         applyPendingConfiguration()
+        if (isCurrentTouchCancelled) return
         val side = if (twoSided) selectGestureSide(initialTranslation) ?: return else legacySide
         val blockingChildren = isBlockingChildEvents
         val intercepting = isIntercepting
@@ -731,6 +741,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         if (generation != workGeneration || !isGestureActivated) return
         refreshRailVisibility()
         parent?.requestDisallowInterceptTouchEvent(true)
+        gestureCompletionPending = twoSided
         onSwipeStart(emptyMap())
         if (generation != workGeneration || !isGestureActivated) return
         startProgressUpdates()
@@ -757,21 +768,23 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private fun cancelAutoClose() {
         autoCloseRunnable?.let { removeCallbacks(it) }
         autoCloseRunnable = null
+        autoCloseDeadline = null
     }
 
-    private fun scheduleAutoClose() {
+    private fun scheduleAutoClose(deadline: Long = SystemClock.uptimeMillis() + maxOf(0L, autoCloseTimeout.toLong())) {
         cancelAutoClose()
+        autoCloseDeadline = deadline
         val generation = workGeneration
         val key = recyclingKey
         val side = openSide
-        val delay = if (autoCloseTimeout > 0) autoCloseTimeout.toLong() else 0L
         autoCloseRunnable = Runnable {
             autoCloseRunnable = null
+            autoCloseDeadline = null
             if (generation == workGeneration && key == recyclingKey && isOpen && openSide == side && autoClose) {
                 closeInternal(animated = true, autoCloseCompletion = true)
             }
         }
-        postDelayed(autoCloseRunnable, delay)
+        postDelayed(autoCloseRunnable, maxOf(0L, deadline - SystemClock.uptimeMillis()))
     }
 
     private fun handlePanUpdate(translationX: Float) {
@@ -833,7 +846,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             } else {
                 if (velocityX < 0) velocityX else 0f  // Trailing: negative velocity opens
             }
-            open(openingVelocity)
+            // A release settles its latch; an argumentless command uses the configured default.
+            openInternal(gestureSide ?: legacySide, openingVelocity, preserveGestureCompletion = true)
             // Schedule auto-close if enabled
             if (autoClose && isOpen && !isCurrentTouchCancelled) {
                 scheduleAutoClose()
@@ -845,7 +859,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             } else {
                 if (velocityX > 0) velocityX else 0f  // Trailing: positive velocity closes
             }
-            close(velocity = closingVelocity)
+            applyPendingConfiguration()
+            closeInternal(animated = true, velocity = closingVelocity, preserveGestureCompletion = true)
         }
     }
 
@@ -894,11 +909,15 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     fun open(velocity: Float = 0f) {
         applyPendingConfiguration()
-        val side = if (twoSided) gestureSide ?: defaultOpenSide() ?: return else legacySide
+        val side = defaultOpenSide() ?: return
         open(side, velocity)
     }
 
     fun open(side: SwipeSide, velocity: Float = 0f) {
+        openInternal(side, velocity)
+    }
+
+    private fun openInternal(side: SwipeSide, velocity: Float, preserveGestureCompletion: Boolean = false) {
         applyPendingConfiguration()
         if (twoSided && !isSideEnabled(side)) return
         if (!twoSided && side != legacySide) return
@@ -907,7 +926,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             closeInternal(animated = true, afterClose = { open(side, velocity) })
             return
         }
-        cancelActiveWork()
+        cancelActiveWork(preserveGestureCompletion)
         animationSide = side
         openSide = side
         val generation = workGeneration
@@ -934,7 +953,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             currentTranslation = targetX
             isAnimating = false
             emitFinalProgress(1f, targetX)
-            if (twoSided && !autoClose) onSwipeEnd(stateEvent("open", side))
+            if (twoSided && !autoClose) emitSwipeEnd("open", side)
             refreshRailVisibility()
             return
         }
@@ -976,7 +995,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 emitFinalProgress(1f, targetX)
                 // With autoClose, let close() emit onSwipeEnd("open") instead
                 if (!autoClose) {
-                    onSwipeEnd(stateEvent("open", side))
+                    emitSwipeEnd("open", side)
                 }
             }
             start()
@@ -1023,13 +1042,15 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         animated: Boolean,
         velocity: Float = 0f,
         autoCloseCompletion: Boolean = false,
+        preserveGestureCompletion: Boolean = false,
         afterClose: (() -> Unit)? = null
     ) {
         val side = activeSide ?: legacySide
         val width = widthFor(side)
-        cancelActiveWork()
+        cancelActiveWork(preserveGestureCompletion || autoCloseCompletion)
         val generation = workGeneration
         animationSide = side
+        autoCloseClosingSide = if (autoCloseCompletion) side else null
         isOpen = false
         openSide = null
         pendingShouldOpen = false
@@ -1051,7 +1072,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             actionsView?.translationX = -side.sign * width
             isAnimating = false
             emitFinalProgress(0f, 0f)
-            if (twoSided) onSwipeEnd(stateEvent(if (autoCloseCompletion) "open" else "closed", side))
+            autoCloseClosingSide = null
+            if (twoSided) emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
             animationSide = null
             refreshRailVisibility()
             if (generation == workGeneration) afterClose?.invoke()
@@ -1087,7 +1109,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 currentTranslation = 0f
                 actionsView?.visibility = View.INVISIBLE
                 emitFinalProgress(0f, 0f)
-                onSwipeEnd(stateEvent(if (autoCloseCompletion) "open" else "closed", side))
+                autoCloseClosingSide = null
+                emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
                 animationSide = null
                 refreshRailVisibility()
                 if (generation == workGeneration) afterClose?.invoke()
@@ -1276,6 +1299,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private fun stateEvent(state: String, side: SwipeSide? = activeSide): Map<String, Any> =
         mapOf("state" to state) + sideMetadata(side)
 
+    private fun emitSwipeEnd(state: String, side: SwipeSide) {
+        gestureCompletionPending = false
+        onSwipeEnd(stateEvent(state, side))
+    }
+
     private fun requestActions(side: SwipeSide, retryEmptySlot: Boolean = false) {
         // A slot may be emptied without changing this view's own layout bounds.
         if (retryEmptySlot && twoSided && (railFor(side) as? ViewGroup)?.childCount == 0) {
@@ -1299,6 +1327,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         if (!configurationDirty) return
         configurationDirty = false
         removeCallbacks(configurationRunnable)
+        val cancelsGesture = (twoSided || appliedTwoSided) && (isGestureActivated || gestureCompletionPending)
+        val cancelled = if (cancelsGesture) recyclingKey?.let { mapOf<String, Any>("recyclingKey" to it) } ?: emptyMap() else null
+        if ((twoSided || appliedTwoSided) && (isGestureActivated || directGesturePending)) {
+            // Configuration changes consume the remainder of this physical/direct gesture.
+            isCurrentTouchCancelled = true
+        }
         val modeChanged = appliedTwoSided != twoSided
         appliedTwoSided = twoSided
         if (modeChanged) {
@@ -1346,12 +1380,26 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         } else if (twoSided || modeChanged) {
             reconcileLogicalState()
         }
+        // A preserved auto-close still owns its real completion; do not reset its JS gate.
+        if (cancelled != null && !gestureCompletionPending) onGestureCancelled(cancelled)
     }
 
     private fun reconcileLogicalState(restartLayoutGuard: Boolean = true) {
         val side = openSide
-        cancelActiveWork()
+        val deadline = autoCloseDeadline
+        val closingSide = autoCloseClosingSide
+        val resumesCompletion = twoSided && autoClose && (
+            closingSide != null && isSideEnabled(closingSide) ||
+                isOpen && side != null && isSideEnabled(side) && deadline != null
+            )
+        cancelActiveWork(preserveGestureCompletion = resumesCompletion)
         animationSide = null
+        if (twoSided && autoClose && closingSide != null && isSideEnabled(closingSide)) {
+            // Continue an actual auto-close animation, preserving its original side/intent.
+            animationSide = closingSide
+            closeInternal(animated = true, autoCloseCompletion = true)
+            return
+        }
         if (isOpen && side != null && (!twoSided || isSideEnabled(side))) {
             openSide = if (twoSided) side else legacySide
             currentTranslation = openSide!!.sign * widthFor(openSide!!)
@@ -1364,6 +1412,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             resetPosition()
         }
         if (twoSided) persistOpenSide(openSide)
+        if (twoSided && autoClose && isOpen && deadline != null) scheduleAutoClose(deadline)
     }
 
     private fun persistOpenSide(side: SwipeSide?) {
@@ -1382,14 +1431,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
     }
 
-    private fun cancelActiveWork() {
+    private fun cancelActiveWork(preserveGestureCompletion: Boolean = false) {
         workGeneration++
+        if (!preserveGestureCompletion) gestureCompletionPending = false
         currentTranslation = contentView?.translationX ?: currentTranslation
         contentSpringAnimation?.cancel()
         contentSpringAnimation = null
         actionsSpringAnimation?.cancel()
         actionsSpringAnimation = null
         cancelAutoClose()
+        autoCloseClosingSide = null
         cancelGestureTimeout()
         stopProgressUpdates()
         stopLayoutGuard()
