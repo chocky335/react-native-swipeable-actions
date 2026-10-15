@@ -79,14 +79,20 @@ function Control({
   name,
   label,
   onPress,
-  selected = false
+  selected = false,
+  variant = 'grid'
 }: {
   name: string
   label: string
   onPress: () => void
   selected?: boolean
+  variant?: 'grid' | 'tab' | 'toggle'
 }) {
-  const style = selected ? styles.selectedControl : styles.control
+  const style = [
+    selected ? styles.selectedControl : styles.control,
+    variant === 'tab' && styles.tabControl,
+    variant === 'toggle' && styles.toggleControl
+  ]
   const accessibilityState = useMemo(() => ({ selected }), [selected])
   return (
     <Pressable
@@ -96,7 +102,10 @@ function Control({
       style={style}
       onPress={onPress}
     >
-      <Text testID={`two-sided-${name}-label`} style={styles.controlText}>
+      <Text
+        testID={`two-sided-${name}-label`}
+        style={[styles.controlText, variant === 'tab' && styles.tabText]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -467,44 +476,58 @@ export function TwoSidedScreen() {
     [counters, options, onAction, onEvent]
   )
   const listExtraData = useMemo(() => ({ counters, options }), [counters, options])
+  const autoHapticsEnabled = Platform.OS === 'ios' && options.appearance === 'ios26'
+  const hapticsLabel =
+    options.haptics === 'auto'
+      ? `Auto (${autoHapticsEnabled ? 'on' : 'off'})`
+      : options.haptics
 
   return (
     <View testID='two-sided-demo' style={containerStyle}>
-      <View>
+      <View style={styles.controlsHeader}>
         <Control
           name='toggle-controls'
           label={controlsVisible ? 'Hide controls' : 'Show controls'}
           onPress={toggleControls}
+          variant='toggle'
         />
       </View>
       {controlsVisible && (
         <View style={styles.controlsPane}>
-          <View style={styles.controlRow}>
+          <ScrollView
+            horizontal
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabsContent}
+          >
             <Control
               name='tab-commands'
               label='Commands'
+              variant='tab'
               selected={tab === 'commands'}
               onPress={showCommands}
             />
             <Control
               name='tab-options'
               label='Options'
+              variant='tab'
               selected={tab === 'options'}
               onPress={showOptions}
             />
             <Control
               name='tab-recycling'
               label='Recycling'
+              variant='tab'
               selected={tab === 'recycling'}
               onPress={showRecycling}
             />
             <Control
               name='tab-localization'
-              label='Language / RTL'
+              label='Language/RTL'
+              variant='tab'
               selected={tab === 'localization'}
               onPress={showLocalization}
             />
-          </View>
+          </ScrollView>
           <ScrollView
             ref={controlsRef}
             testID='two-sided-controls'
@@ -530,6 +553,21 @@ export function TwoSidedScreen() {
             )}
             {tab === 'options' && (
               <View style={styles.controlRow}>
+                <Control
+                  name='appearance'
+                  label={`Appearance: ${options.appearance === 'ios26' ? 'iOS 26' : 'Default'}`}
+                  onPress={toggleAppearance}
+                />
+                <Control
+                  name='haptics'
+                  label={`Haptics: ${hapticsLabel}`}
+                  onPress={toggleHaptics}
+                />
+                <Text style={styles.controlHint}>
+                  {Platform.OS === 'ios'
+                    ? 'Auto follows appearance: iOS 26 on, Default off.'
+                    : 'Appearance and haptic presets apply to iOS only.'}
+                </Text>
                 <Control
                   name='left-enabled'
                   label={`Left: ${options.leftEnabled ? 'enabled' : 'disabled'}`}
@@ -566,16 +604,6 @@ export function TwoSidedScreen() {
                   onPress={resizeRight}
                 />
                 <Control
-                  name='appearance'
-                  label={`Appearance: ${options.appearance}`}
-                  onPress={toggleAppearance}
-                />
-                <Control
-                  name='haptics'
-                  label={`Haptics: ${options.haptics}`}
-                  onPress={toggleHaptics}
-                />
-                <Control
                   name='rounded'
                   label={`Rounded / inset: ${options.rounded ? 'on' : 'off'}`}
                   onPress={toggleRounded}
@@ -590,7 +618,7 @@ export function TwoSidedScreen() {
                   label={`Row surroundings: ${options.light ? 'light' : 'dark'}`}
                   onPress={toggleLight}
                 />
-                <Text style={styles.readout}>
+                <Text style={styles.controlHint}>
                   {Platform.OS === 'ios'
                     ? 'Native iOS feedback. Reduce Motion suppresses the optional pop; haptics keep your preference.'
                     : 'Android keeps its normal native motion. The iOS preset and native haptics have no added effect.'}{' '}
@@ -706,10 +734,12 @@ export function TwoSidedScreen() {
 const controlBase = {
   minHeight: 44,
   minWidth: 96,
+  flexBasis: '46%' as const,
   flexGrow: 1,
   flexShrink: 1,
   justifyContent: 'center' as const,
-  padding: 10,
+  paddingVertical: 6,
+  paddingHorizontal: 10,
   borderRadius: 8
 }
 const contentBase = { minHeight: 100, padding: 16, justifyContent: 'center' as const }
@@ -717,13 +747,26 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.backgroundDark },
   directionProbe: { flexDirection: 'row', height: 8 },
   directionMarker: { width: 8, height: 8, backgroundColor: colors.primary },
-  controlsPane: { maxHeight: '42%', backgroundColor: colors.backgroundSurface },
-  controlRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  controlsContent: { padding: 12, gap: 8 },
+  controlsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+    gap: 8
+  },
+  controlsPane: { maxHeight: '34%', backgroundColor: colors.backgroundSurface },
+  tabsScroll: { flexGrow: 0, flexShrink: 0 },
+  tabsContent: { paddingHorizontal: 8, paddingVertical: 4, gap: 6 },
+  tabControl: { minWidth: 0, flexBasis: 'auto', flexGrow: 0 },
+  toggleControl: { flexBasis: 'auto', flexGrow: 0, backgroundColor: 'transparent' },
+  tabText: { fontSize: 12 },
+  controlHint: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, flexShrink: 1 },
+  controlRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  controlsContent: { padding: 8, gap: 6 },
   controlsScroll: { flexShrink: 1 },
   control: { ...controlBase, backgroundColor: colors.configButtonBg },
   selectedControl: { ...controlBase, backgroundColor: colors.primary },
-  controlText: { color: colors.textPrimary, fontSize: 16, textAlign: 'center' },
+  controlText: { color: colors.textPrimary, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   listPane: { flex: 1, minHeight: 100 },
   listContent: { padding: 12 },
   card: { marginBottom: 16, backgroundColor: colors.backgroundSurface },
