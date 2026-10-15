@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { finishCommandScope, guardRequest } from './helpers/command-scope'
 import { setPlatform } from './helpers/selectors'
 
 // Use APPIUM_PORT for both the client and the service, including concurrent platform runs.
@@ -36,6 +37,7 @@ export const config: WebdriverIO.Config = {
   waitforTimeout: 10000,
   connectionRetryTimeout: 120000,
   connectionRetryCount: 3,
+  transformRequest: guardRequest,
 
   services: [
     [
@@ -52,7 +54,8 @@ export const config: WebdriverIO.Config = {
 
   mochaOpts: {
     ui: 'bdd',
-    timeout: 120000
+    timeout: 120000,
+    require: [path.resolve(__dirname, 'helpers/command-scope.ts')]
   },
 
   before: async () => {
@@ -67,7 +70,9 @@ export const config: WebdriverIO.Config = {
     })
   },
 
-  afterTest: async (test, _context, { passed }) => {
+  afterHook: finishCommandScope(async () => {}),
+
+  afterTest: finishCommandScope(async (test, _context, { passed }) => {
     const directory = process.env.E2E_ARTIFACT_DIR
     if (passed || !directory) return
     const title = test.title.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 120)
@@ -86,5 +91,5 @@ export const config: WebdriverIO.Config = {
     } catch (error) {
       console.warn('Android failure evidence directory could not be created:', error)
     }
-  }
+  })
 }

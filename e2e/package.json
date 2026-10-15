@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "test:harness": "node --import tsx --test helpers/command-scope.test.mjs",
     "test": "ENABLED_TESTS= wdio run wdio.conf.ts",
     "test:android": "ENABLED_TESTS= wdio run wdio.conf.ts",
     "test:ios": "ENABLED_TESTS= wdio run wdio.ios.conf.ts",
@@ -23,6 +24,7 @@
     "appium-xcuitest-driver": "^11.7.7",
     "pngjs": "^7.0.0",
     "ts-node": "^10.9.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "undici": "6.24.1"
   }
 }

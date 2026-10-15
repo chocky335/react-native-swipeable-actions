@@ -1,4 +1,5 @@
 import { swipeOnElement } from '../helpers/gestures'
+import { after, before, beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
 
@@ -51,8 +52,8 @@ async function selectTab(tab: Tab): Promise<void> {
 
 async function scrollControls(up: boolean): Promise<void> {
   const viewport = await $(selectors.twoSidedControls)
-  const origin = await viewport.getLocation()
-  const size = await viewport.getSize()
+  const origin = await driver.getElementRect(await viewport.elementId)
+  const size = origin
   const x = Math.round(origin.x + size.width / 2)
   const top = Math.round(origin.y + size.height * 0.2)
   const bottom = Math.round(origin.y + size.height * 0.8)
@@ -76,12 +77,12 @@ async function scrollControls(up: boolean): Promise<void> {
 async function tap(name: string): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const viewport = await $(selectors.twoSidedControls)
-    const origin = await viewport.getLocation()
-    const size = await viewport.getSize()
+    const origin = await driver.getElementRect(await viewport.elementId)
+    const size = origin
     const button = await $(control(name))
     if (await button.isDisplayed()) {
-      const position = await button.getLocation()
-      const dimensions = await button.getSize()
+      const position = await driver.getElementRect(await button.elementId)
+      const dimensions = position
       const center = position.y + dimensions.height / 2
       if (center > origin.y + 4 && center < origin.y + size.height - 4) {
         await button.click()
@@ -128,10 +129,10 @@ async function requestDirection(direction: Direction): Promise<void> {
 async function geometry(id = 0) {
   const frame = await $(selectors.twoSidedFrame(id))
   const anchor = await $(selectors.twoSidedAnchor(id))
-  const origin = await frame.getLocation()
-  const size = await frame.getSize()
-  const marker = await anchor.getLocation()
-  const markerSize = await anchor.getSize()
+  const origin = await driver.getElementRect(await frame.elementId)
+  const size = origin
+  const marker = await driver.getElementRect(await anchor.elementId)
+  const markerSize = marker
   const match = (await text(selectors.twoSidedLayout(id))).match(/Row width (\d+)/)
   const layoutWidth = Number(match?.[1])
   if (!(layoutWidth > 0)) throw new Error(`RTL row ${id} has not laid out`)
@@ -161,8 +162,8 @@ async function assertPhysicalAction(side: Side, width: number, id = 0): Promise<
   const button = await $(selectors.twoSidedAction(id, side))
   await button.waitForDisplayed()
   const frame = await geometry(id)
-  const position = await button.getLocation()
-  const size = await button.getSize()
+  const position = await driver.getElementRect(await button.elementId)
+  const size = position
   const left =
     side === 'left' ? frame.origin.x : frame.origin.x + frame.size.width - width * frame.scale
   const right = left + width * frame.scale

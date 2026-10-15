@@ -1,4 +1,5 @@
 import { swipeOnElement } from '../helpers/gestures'
+import { beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
 
@@ -27,10 +28,10 @@ async function events(id = 0): Promise<Events> {
 async function geometry(id = 0): Promise<{ offset: number; scale: number }> {
   const frame = await $(selectors.twoSidedFrame(id))
   const anchor = await $(selectors.twoSidedAnchor(id))
-  const frameLocation = await frame.getLocation()
-  const frameSize = await frame.getSize()
-  const anchorLocation = await anchor.getLocation()
-  const anchorSize = await anchor.getSize()
+  const frameLocation = await driver.getElementRect(await frame.elementId)
+  const frameSize = frameLocation
+  const anchorLocation = await driver.getElementRect(await anchor.elementId)
+  const anchorSize = anchorLocation
   const match = (await textOf(selectors.twoSidedLayout(id))).match(/Row width (\d+)/)
   const layoutWidth = Number(match?.[1])
   if (!(layoutWidth > 0)) throw new Error(`Row ${id} has not laid out`)
@@ -92,8 +93,8 @@ async function selectTab(tab: 'commands' | 'options' | 'recycling'): Promise<voi
 
 async function scrollWithin(selector: string, direction: 'up' | 'down'): Promise<void> {
   const viewport = await $(selector)
-  const location = await viewport.getLocation()
-  const size = await viewport.getSize()
+  const location = await driver.getElementRect(await viewport.elementId)
+  const size = location
   const x = Math.round(location.x + size.width / 2)
   const top = Math.round(location.y + size.height * 0.2)
   const bottom = Math.round(location.y + size.height * 0.8)
@@ -124,12 +125,12 @@ async function tapControl(name: string): Promise<void> {
   // Controls wrap with large text and scroll independently of the demo rows.
   for (let attempt = 0; attempt < 10; attempt++) {
     const viewport = await $(selectors.twoSidedControls)
-    const origin = await viewport.getLocation()
-    const size = await viewport.getSize()
+    const origin = await driver.getElementRect(await viewport.elementId)
+    const size = origin
     const button = await $(selectors.twoSidedControl(name))
     if (await button.isDisplayed()) {
-      const position = await button.getLocation()
-      const buttonSize = await button.getSize()
+      const position = await driver.getElementRect(await button.elementId)
+      const buttonSize = position
       const center = position.y + buttonSize.height / 2
       if (center > origin.y + 4 && center < origin.y + size.height - 4) {
         await button.click()
@@ -182,8 +183,8 @@ async function expectQuietClosed(id: number, expected: Events): Promise<void> {
 async function reverseThroughZero(side: Side): Promise<void> {
   await hideControls()
   const row = await $(selectors.twoSidedFrame(0))
-  const location = await row.getLocation()
-  const size = await row.getSize()
+  const location = await driver.getElementRect(await row.elementId)
+  const size = location
   const centerX = Math.round(location.x + size.width / 2)
   const y = Math.round(location.y + size.height / 2)
   const distance = Math.round(size.width * 0.32)

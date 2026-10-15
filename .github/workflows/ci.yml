@@ -67,6 +67,12 @@ jobs:
       - name: Generate example Android project
         run: cd example && npx expo prebuild --platform android --no-install
 
+      - name: Install E2E harness dependencies
+        run: cd e2e && npm ci
+
+      - name: Test E2E command isolation
+        run: cd e2e && npm run test:harness
+
       - name: Run tests
         run: SKIP_E2E=1 ./scripts/test-all.sh
 
