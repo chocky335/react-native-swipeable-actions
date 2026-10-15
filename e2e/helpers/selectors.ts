@@ -18,7 +18,8 @@ export function setPlatform(platform: string): void {
  */
 function byTestId(id: string): string {
   if (isIOS) {
-    return `//*[@name="${id}"]`
+    // Match the same exact name natively, without serializing the UI tree for XPath.
+    return `-ios predicate string:name == ${JSON.stringify(id)}`
   }
   // The driver disables resource-ID prefixing for React Native's raw testIDs.
   // Direct IDs avoid XML dumps and cannot confuse a row with its action slots.
