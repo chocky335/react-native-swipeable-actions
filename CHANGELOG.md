@@ -38,6 +38,6 @@ retrospectively documented here; an absent entry does not imply an absent releas
 
 ## Maintaining this file
 
-See [the release checklist](docs/releasing.md). Test logs, CI status and unfinished
+See [the release checklist](https://github.com/chocky335/react-native-swipeable-actions/blob/main/docs/releasing.md). Test logs, CI status and unfinished
 acceptance checks belong in PR descriptions and implementation notes, not in
 published release notes.
