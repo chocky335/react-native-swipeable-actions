@@ -1,3 +1,4 @@
+import { afterEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
 import { listDemoPage } from '../pages/listDemoPage'

@@ -1,5 +1,6 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { finishCommandScope, guardRequest } from './helpers/command-scope'
 import { setPlatform } from './helpers/selectors'
 
 const appiumPort = Number(process.env.APPIUM_PORT || 4723)
@@ -82,6 +83,7 @@ export const config: WebdriverIO.Config = {
   waitforTimeout: 10000,
   connectionRetryTimeout: 600000,
   connectionRetryCount: 3,
+  transformRequest: guardRequest,
 
   services: [
     [
@@ -98,7 +100,8 @@ export const config: WebdriverIO.Config = {
 
   mochaOpts: {
     ui: 'bdd',
-    timeout: 120000
+    timeout: 120000,
+    require: [path.resolve(__dirname, 'helpers/command-scope.ts')]
   },
 
   before: async (_capabilities, specs) => {
@@ -117,7 +120,7 @@ export const config: WebdriverIO.Config = {
     })
   },
 
-  afterHook: async (test, _context, result, hookName) => {
+  afterHook: finishCommandScope(async (test, _context, result, hookName) => {
     const { error, duration, passed } = result
     // WDIO's Mocha adapter supplies skipped at runtime, but its shared type omits it.
     const skipped = (result as typeof result & { skipped?: boolean }).skipped === true
@@ -133,13 +136,13 @@ export const config: WebdriverIO.Config = {
       duration,
       error: failureDetails(error)
     })
-  },
+  }),
 
   after: async (result, _capabilities, specs) => {
     await recordResult({ event: 'worker-end', result, specs })
   },
 
-  afterTest: async (test, _context, { passed, error, duration, retries }) => {
+  afterTest: finishCommandScope(async (test, _context, { passed, error, duration, retries }) => {
     let status = 'failed'
     if (!error && test.pending) {
       status = 'skipped'
@@ -178,5 +181,5 @@ export const config: WebdriverIO.Config = {
     } catch (error) {
       console.warn('iOS failure evidence directory could not be created:', error)
     }
-  }
+  })
 }

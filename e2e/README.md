@@ -1,0 +1,74 @@
+# E2E harness
+
+The mobile suites exercise the demo through WebdriverIO and Appium. The command
+ownership regressions exercise the installed test framework and HTTP transport
+offline; they do not replace Android, iOS, or physical-device acceptance.
+
+## Offline harness checks
+
+From the repository root, after installing the repository dependencies:
+
+```sh
+npm --prefix e2e ci
+npm --prefix e2e run test:harness
+```
+
+The ordinary CI test job runs these regressions, even when the optional mobile
+jobs are disabled. CI uses Node.js 24. The tests use mocked transport or an
+in-memory connector, not a handset or a live Appium server.
+
+## Registering mobile tests
+
+Use the local registration adapter for tests and lifecycle hooks. Keep `describe`
+as the framework-provided global, and write async/promise-based callbacks:
+
+```ts
+import { beforeEach, it } from '../helpers/scoped-mocha'
+
+describe('Example', () => {
+  beforeEach(async () => {
+    // Prepare the demo using the configured driver.
+  })
+
+  it('preserves the expected behavior', async () => {
+    // Exercise the UI and assert its observable behavior.
+  })
+})
+```
+
+The adapter also exports `before`, `afterEach`, and `after`. It wraps the original
+callback before WebdriverIO captures it, so internal retries receive separate
+command ownership. Do not bypass it with global test/hook registrations in new
+specs. Both platform configurations also load the root-hook plugin and request
+guard. A throwing `beforeCommand` hook alone is not a replacement: WebdriverIO
+can catch errors from that hook without stopping HTTP dispatch.
+
+## Timing, geometry, and failure evidence
+
+- Sample an element's rectangle once when both its location and size are needed.
+  Keep the sample local to that observation; read it again after UI changes or on
+  the next poll. Do not reduce assertions or cache geometry across mutations.
+- Keep the existing 120-second test and 45-minute job budgets. A partial run is
+  not acceptance, and increasing deadlines is not a substitute for diagnosis.
+- A failed or expired attempt loses permission to send commands. Evidence
+  callbacks also have bounded, revocable ownership; remote evidence is not
+  guaranteed after the enclosing deadline.
+- Aborting a client request does not prove that Appium stopped an accepted
+  command. Unknown outstanding work quarantines the worker's session. Subsequent
+  commands, including remote evidence and cleanup, must not reuse that session.
+- A proven connection refusal before a request can reach the server may use the
+  configured retry policy. Ambiguous transport failures are not equivalent to
+  that safe pre-acceptance case.
+- Quarantine is a failure, not a skip or a pass. Local outcome recording remains
+  available, but screenshots, page source, and device-preference restoration can
+  be unavailable. Inspect and restore the intended device state before another
+  device run; do not assume failed cleanup restored it.
+
+When reporting mobile CI, identify the tested commit and separate recorded
+passes, failures, skipped checks, and unfinished cases. Missing result records
+are not zero failures. Keep physical haptic observations separate from simulator
+and mocked-transport results.
+
+Run mobile checks only against the intended simulator or explicitly authorized
+handset, following its device-session rules. The offline harness command above
+does not authorize connecting to or changing any device.

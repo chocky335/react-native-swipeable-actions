@@ -3,6 +3,7 @@ import {
   swipeOnElement,
   swipeOnElementInLayoutUnits
 } from '../helpers/gestures'
+import { afterEach, it } from '../helpers/scoped-mocha'
 import { compareImages, takeViewportScreenshot } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
 import { chatPage } from '../pages/chatPage'

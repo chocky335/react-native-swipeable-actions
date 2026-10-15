@@ -117,8 +117,8 @@ export async function swipeOnElement(
   duration: number = 300,
   distance: number = 0.8
 ): Promise<void> {
-  const location = await element.getLocation()
-  const size = await element.getSize()
+  const location = await driver.getElementRect(await element.elementId)
+  const size = location
 
   // distance <= 1: coefficient of element width; > 1: pixel distance
   const swipePx = distance <= 1 ? size.width * distance : distance
