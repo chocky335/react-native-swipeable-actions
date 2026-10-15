@@ -1066,3 +1066,180 @@ test('real Undici accepted requests keep deadline attribution and quarantine', a
     setGlobalDispatcher(previous)
   }
 })
+
+test('framework timeout completion retires authority before the guard timer', async (t) => {
+  function deliverFrameworkTimeout(runnable) {
+    // Force callback ordering, not an elapsed-time assumption. This matches
+    // Mocha's timeout error/completion/timedOut order, with its 50 ms budget intact.
+    const error = runnable._timeoutError(50)
+    runnable.callback(error)
+    runnable.timedOut = true
+    return error
+  }
+
+  function request(guard, label, dispatched, pending = false) {
+    const options = guard.guardRequest({})
+    options.dispatcher = {
+      dispatch(_options, handler) {
+        dispatched.push(label)
+        if (!pending) handler.onComplete([])
+        return true
+      }
+    }
+    return options
+  }
+
+  function dispatch(options) {
+    return options.dispatcher.dispatch({}, { onComplete() {} })
+  }
+
+  for (const phase of ['body', 'evidence']) {
+    await t.test(phase + ' is retired before the next healthy owner', async () => {
+      const guard = createCommandGuard()
+      const f = fixture(50, guard)
+      const gate = deferred()
+      const resumed = deferred()
+      const dispatched = []
+      let first
+      let oldRequest
+      let staleError
+      let originalTimeout
+      let runnerError
+      let abortedWhenForwarded
+      let reasonWhenForwarded
+      let localRecords = 0
+      const abandoned = async () => {
+        oldRequest = request(guard, 'old', dispatched)
+        queueMicrotask(() => {
+          originalTimeout = deliverFrameworkTimeout(first)
+        })
+        await gate.promise
+        localRecords++
+        try {
+          dispatch(oldRequest)
+        } catch (error) {
+          staleError = error
+        } finally {
+          resumed.resolve()
+        }
+      }
+      first = f.add(
+        'callback-first ' + phase,
+        phase === 'body' ? abandoned : isolatedWdio(guard, async () => {}, abandoned)
+      )
+      f.add('healthy owner after callback-first timeout', async () => {
+        assert.equal(oldRequest.signal.aborted, true)
+        assert.equal(oldRequest.signal.reason, originalTimeout)
+        gate.resolve()
+        await resumed.promise
+        assert.match(staleError.message, /expired scope/)
+        assert.deepEqual(dispatched, [])
+        const fresh = request(guard, 'fresh', dispatched)
+        assert.equal(fresh.signal.aborted, false)
+        assert.equal(dispatch(fresh), true)
+      })
+      assert.equal(
+        await f.run((runnable, error) => {
+          if (runnable === first) {
+            runnerError = error
+            abortedWhenForwarded = oldRequest.signal.aborted
+            reasonWhenForwarded = oldRequest.signal.reason
+          }
+        }),
+        1
+      )
+      assert.equal(abortedWhenForwarded, true)
+      assert.equal(originalTimeout.code, 'ERR_MOCHA_TIMEOUT')
+      assert.equal(runnerError, originalTimeout)
+      assert.equal(reasonWhenForwarded, originalTimeout)
+      assert.equal(localRecords, 1)
+      assert.deepEqual(dispatched, ['fresh'])
+    })
+  }
+
+  await t.test(
+    'pending linked evidence quarantines before timeout abort and forwarding',
+    async () => {
+      const guard = createCommandGuard()
+      const f = fixture(50, guard)
+      const gate = deferred()
+      const resumed = deferred()
+      const dispatched = []
+      let first
+      let evidence
+      let originalTimeout
+      let runnerError
+      let abortReason
+      let abortQuarantine
+      let blockedContinuation
+      let abortedWhenForwarded
+      let quarantineWhenForwarded
+      let nextRan = false
+      let localRecords = 0
+      first = f.add(
+        'pending callback-first evidence',
+        isolatedWdio(
+          guard,
+          async () => {},
+          async () => {
+            evidence = request(guard, 'accepted evidence', dispatched, true)
+            evidence.signal.addEventListener(
+              'abort',
+              () => {
+                abortReason = evidence.signal.reason
+                try {
+                  guard.guardRequest({})
+                } catch (error) {
+                  abortQuarantine = error
+                }
+              },
+              { once: true }
+            )
+            dispatch(evidence)
+            queueMicrotask(() => {
+              originalTimeout = deliverFrameworkTimeout(first)
+            })
+            await gate.promise
+            localRecords++
+            try {
+              dispatch(evidence)
+            } catch (error) {
+              blockedContinuation = error
+            } finally {
+              resumed.resolve()
+            }
+          }
+        )
+      )
+      f.add('next owner must not reuse pending session', async () => {
+        nextRan = true
+        dispatch(request(guard, 'unsafe next', dispatched))
+      })
+      const failures = await f.run((runnable, error) => {
+        if (runnable === first) {
+          runnerError = error
+          abortedWhenForwarded = evidence.signal.aborted
+          try {
+            guard.guardRequest({})
+          } catch (failure) {
+            quarantineWhenForwarded = failure
+          }
+        }
+      })
+      gate.resolve()
+      await resumed.promise
+      assert.equal(failures, 2)
+      assert.equal(originalTimeout.code, 'ERR_MOCHA_TIMEOUT')
+      assert.equal(runnerError, originalTimeout)
+      assert.equal(abortReason, originalTimeout)
+      assert.equal(abortedWhenForwarded, true)
+      assert.match(abortQuarantine.message, /quarantined/)
+      assert.equal(quarantineWhenForwarded, abortQuarantine)
+      assert.equal(blockedContinuation, abortQuarantine)
+      assert.equal(nextRan, false)
+      assert.equal(localRecords, 1)
+      assert.deepEqual(dispatched, ['accepted evidence'])
+      assert.throws(() => guard.guardRequest({}), /quarantined/)
+    }
+  )
+})

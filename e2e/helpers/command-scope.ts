@@ -360,6 +360,12 @@ export function createCommandGuard() {
         const error = args[0]
         if (error instanceof Error && 'code' in error && error.code === 'ERR_MOCHA_TIMEOUT') {
           scope.timeoutFailure ??= error
+          // Framework completion can beat our absolute-deadline timer. Revoke
+          // authority before forwarding completion and allowing the next case.
+          expire(scope)
+          for (const evidence of evidenceScopes) {
+            if (evidence.deadlineOwner === scope) expire(evidence)
+          }
         }
         return Reflect.apply(completion, this, args)
       }
