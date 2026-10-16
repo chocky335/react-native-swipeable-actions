@@ -203,6 +203,12 @@ public class SwipeableView: ExpoView {
                         view.close(animated: animated)
                     }
                 }, for: entry.key, target: entry.target)
+                // A row that unbinds before this close runs must not restore open either.
+                registryQueue.sync {
+                    _openStateCache.clearIfUnbound(
+                        for: entry.key, hasCurrentBinding: _viewRegistry[entry.key]?.value != nil
+                    )
+                }
             }
         }
     }

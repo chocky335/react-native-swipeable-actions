@@ -1,6 +1,8 @@
 package expo.modules.swipeable
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
@@ -92,11 +94,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {
-            synchronized(registryLock) {
+            val boundKeys = synchronized(registryLock) {
                 // Rows that are not mounted come back closed, like closeByKey for an unbound key.
                 openStateCache.snapshot().keys.forEach { key ->
                     if (getView(key) == null) setOpenState(key, null)
                 }
+                viewRegistry.keys.toList()
             }
             getAllViews().forEach { view ->
                 view.postCommand {
@@ -104,6 +107,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     val activeInteraction = (view.isAnimating || view.isDragging ||
                         view.directGesturePending || view.restorePending)
                     if (!animated || view.isOpen || activeInteraction) view.close(animated)
+                }
+            }
+            // A row that unbinds before its queued close runs must not restore open either.
+            Handler(Looper.getMainLooper()).post {
+                synchronized(registryLock) {
+                    boundKeys.forEach { key -> if (getView(key) == null) setOpenState(key, null) }
                 }
             }
         }
