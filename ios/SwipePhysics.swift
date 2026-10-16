@@ -98,15 +98,36 @@ struct SwipeReconciledState {
 /// Touch activation is deliberately independent: settling and auto-close have no active touch.
 struct SwipeGestureCompletion {
     private(set) var isPending = false
+    private var owner: [String: String]?
 
-    mutating func begin() { isPending = true }
-    mutating func complete() { isPending = false }
+    mutating func begin() { isPending = true; owner = nil }
+
+    mutating func begin(recyclingKey: String?, side: SwipeSide) {
+        begin()
+        var metadata = ["side": side.rawValue]
+        if let key = recyclingKey { metadata["recyclingKey"] = key }
+        owner = metadata
+    }
+
+    mutating func complete() { isPending = false; owner = nil }
+
+    /// Capture the abandoned owner before native work is reset. No public end is owed.
+    mutating func cancel(recyclingKey: String?, side: SwipeSide?) -> [String: String]? {
+        let capturedOwner = owner
+        guard invalidate() else { return nil }
+        if let capturedOwner = capturedOwner { return capturedOwner }
+        var metadata: [String: String] = [:]
+        if let key = recyclingKey { metadata["recyclingKey"] = key }
+        if let side = side { metadata["side"] = side.rawValue }
+        return metadata
+    }
 
     @discardableResult
     mutating func invalidate(preserving: Bool = false) -> Bool {
         guard !preserving else { return false }
         let cancelled = isPending
         isPending = false
+        owner = nil
         return cancelled
     }
 }
@@ -125,6 +146,32 @@ final class SwipeCommandTarget<View: AnyObject> {
     func perform(ifCurrent current: SwipeCommandTarget<View>?, _ command: (View) -> Void) {
         guard self === current, let view = value else { return }
         command(view)
+    }
+}
+
+/// Capture ownership at physical touch-down, before a pan can leave .possible.
+/// Additional fingers cannot transfer an unfinished sequence to a new binding.
+struct SwipeTouchBinding<Owner: AnyObject> {
+    private var touches: Set<ObjectIdentifier> = []
+    private var target: SwipeCommandTarget<Owner>?
+
+    mutating func begin<Touch: AnyObject>(_ newTouches: [Touch], target: SwipeCommandTarget<Owner>?) {
+        guard !newTouches.isEmpty else { return }
+        if touches.isEmpty { self.target = target }
+        touches.formUnion(newTouches.map { ObjectIdentifier($0) })
+    }
+
+    mutating func end<Touch: AnyObject>(_ endedTouches: [Touch]) {
+        touches.subtract(endedTouches.map { ObjectIdentifier($0) })
+        // Retain identity for a queued ended/cancelled action until the next down.
+    }
+
+    mutating func prune<Touch: AnyObject>(keeping activeTouches: [Touch]) {
+        touches.formIntersection(activeTouches.map { ObjectIdentifier($0) })
+    }
+
+    func isCurrent(_ current: SwipeCommandTarget<Owner>) -> Bool {
+        target === current && target?.value != nil
     }
 }
 

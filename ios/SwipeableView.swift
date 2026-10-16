@@ -7,6 +7,46 @@ import React
 
 extension UIView: SwipeChildVisibility {}
 
+private final class SwipeablePanGestureRecognizer: UIPanGestureRecognizer {
+    private struct WeakTouch {
+        weak var value: UITouch?
+    }
+
+    var captureBinding: (() -> SwipeCommandTarget<SwipeableView>?)?
+    private var binding = SwipeTouchBinding<SwipeableView>()
+    private var trackedTouches: [ObjectIdentifier: WeakTouch] = [:]
+
+    func isCurrentBinding(_ current: SwipeCommandTarget<SwipeableView>) -> Bool {
+        binding.isCurrent(current)
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        // A failed recognizer may stop receiving touch-end callbacks. Prune only
+        // physically finished contacts; resetting recognition is not a fresh down.
+        let active = trackedTouches.values.compactMap { $0.value }
+            .filter { $0.phase != .ended && $0.phase != .cancelled }
+        binding.prune(keeping: active)
+        trackedTouches = Dictionary(uniqueKeysWithValues: active.map {
+            (ObjectIdentifier($0), WeakTouch(value: $0))
+        })
+        binding.begin(Array(touches), target: captureBinding?())
+        for touch in touches { trackedTouches[ObjectIdentifier(touch)] = WeakTouch(value: touch) }
+        super.touchesBegan(touches, with: event)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        binding.end(Array(touches))
+        for touch in touches { trackedTouches.removeValue(forKey: ObjectIdentifier(touch)) }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        binding.end(Array(touches))
+        for touch in touches { trackedTouches.removeValue(forKey: ObjectIdentifier(touch)) }
+    }
+}
+
 public class SwipeableView: ExpoView {
 
     // MARK: - Cached RN Touch Handler Classes (2.4)
@@ -251,10 +291,9 @@ public class SwipeableView: ExpoView {
     func cancelGesture() {
         ignoresPanUntilNextBegin = true
         abortActiveGesture()
-        performClose(animated: false)
-        persistOpenSide()
         panGesture.isEnabled = false
         panGesture.isEnabled = gestureEnabled
+        performClose(animated: false)
     }
 
     private func abortActiveGesture() {
@@ -306,6 +345,7 @@ public class SwipeableView: ExpoView {
     var recyclingKey: String? {
         didSet {
             guard oldValue != recyclingKey else { return }
+            let cancelled = gestureCompletion.cancel(recyclingKey: oldValue, side: currentSide)
             commandTarget = SwipeCommandTarget(self)
             let restored = recyclingKey.flatMap { Self.getOpenSide(for: $0) }
                 .flatMap { SwipeSide(rawValue: $0) }
@@ -326,6 +366,9 @@ public class SwipeableView: ExpoView {
             if let key = recyclingKey, !isDetached { Self.registerView(self, for: key) }
             // Widths may follow the key in the same Expo prop transaction.
             scheduleReconciliation()
+            // Registry state is complete before native callback reentry. The
+            // cancellation retains the old start's identity across async delivery.
+            if let cancelled = cancelled { onGestureCancelled(cancelled) }
         }
     }
 
@@ -417,11 +460,8 @@ public class SwipeableView: ExpoView {
         )
         let previous = appliedConfiguration
         appliedConfiguration = next
-        var cancelledGesture: [String: Any]?
         var resumeAutoClose: SwipeAutoCloseState?
         if next != previous {
-            let ownedCompletion = isGestureActivated || gestureCompletion.isPending
-            let cancellationPayload = payload([:], side: currentSide)
             if panGesture.state == .began || panGesture.state == .changed {
                 ignoresPanUntilNextBegin = true
             }
@@ -434,11 +474,10 @@ public class SwipeableView: ExpoView {
             )
             let presentation = contentView?.layer.presentation()?.transform.m41 ?? currentTranslation
             let preservesCompletion = reconciled.autoClose != nil
-            if ownedCompletion && !preservesCompletion { cancelledGesture = cancellationPayload }
-            invalidateWork(
+            guard invalidateWork(
                 preservePresentation: false, clearRestore: false,
                 preserveGestureCompletion: preservesCompletion
-            )
+            ) else { return }
             requestedSides.removeAll()
             openSide = reconciled.openSide
             resumeAutoClose = reconciled.autoClose
@@ -477,20 +516,22 @@ public class SwipeableView: ExpoView {
                 performClose(animated: true, endState: "open")
             }
         }
-        if let cancelled = cancelledGesture { onGestureCancelled(cancelled) }
     }
 
+    @discardableResult
     private func invalidateWork(
         preservePresentation: Bool = true,
         clearRestore: Bool = true,
         resetAppearance: Bool = true,
         preserveGestureCompletion: Bool = false
-    ) {
-        gestureCompletion.invalidate(preserving: preserveGestureCompletion)
+    ) -> Bool {
+        let cancelled = preserveGestureCompletion ? nil :
+            gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide)
         if (panGesture.state == .began || panGesture.state == .changed) {
             ignoresPanUntilNextBegin = true
         }
         workGeneration += 1
+        let generation = workGeneration
         cancelAutoClose()
         visualRestoreWorkItem?.cancel()
         visualRestoreWorkItem = nil
@@ -518,6 +559,10 @@ public class SwipeableView: ExpoView {
         startOffset = 0
         if clearRestore { pendingRestoreSide = nil }
         if resetAppearance { resetFeedback() }
+        // Queue the old cancellation before any replacement start. Ownership has
+        // already been cleared, so synchronous native reentry cannot cancel twice.
+        if let cancelled = cancelled { onGestureCancelled(cancelled) }
+        return generation == workGeneration
     }
 
     // MARK: - Appearance
@@ -581,8 +626,9 @@ public class SwipeableView: ExpoView {
         return nil
     }
 
-    private lazy var panGesture: UIPanGestureRecognizer = {
-        let gesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan))
+    private lazy var panGesture: SwipeablePanGestureRecognizer = {
+        let gesture = SwipeablePanGestureRecognizer(target: self, action: #selector(handlePan))
+        gesture.captureBinding = { [weak self] in self?.commandTarget }
         gesture.delegate = self
         gesture.cancelsTouchesInView = false
         gesture.delaysTouchesBegan = true
@@ -624,6 +670,7 @@ public class SwipeableView: ExpoView {
 
     private func suspendForDetach() {
         guard !isDetached else { return }
+        let cancelled = gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide)
         let preservesCachedSide = SwipePhysics.shouldRestoreAfterDetach(
             hasPendingInteraction: hasPendingInteraction
         )
@@ -643,6 +690,7 @@ public class SwipeableView: ExpoView {
             if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self) }
             Self.unregisterView(self, for: key)
         }
+        if let cancelled = cancelled { onGestureCancelled(cancelled) }
     }
 
     public override func willMove(toSuperview newSuperview: UIView?) {
@@ -868,6 +916,8 @@ public class SwipeableView: ExpoView {
     }
 
     public override func unmountChildComponentView(_ childComponentView: UIView, index: Int) {
+        let cancelled = childComponentView === contentView
+            ? gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide) : nil
         if childComponentView === contentView {
             let interrupted = hasPendingInteraction
             // Invalidate completion/timer generations before returning the child to
@@ -888,6 +938,9 @@ public class SwipeableView: ExpoView {
         if childComponentView === leftActionsView { leftActionsView = nil; requestedSides.remove(.left) }
         if childComponentView === rightActionsView { rightActionsView = nil; requestedSides.remove(.right) }
         super.unmountChildComponentView(childComponentView, index: index)
+        let generation = workGeneration
+        if let cancelled = cancelled { onGestureCancelled(cancelled) }
+        guard generation == workGeneration else { return }
         reconcileChildRoles()
         scheduleReconciliation()
     }
@@ -933,7 +986,7 @@ public class SwipeableView: ExpoView {
         commitProps()
         guard gestureEnabled, defaultOpenSide() != nil else { return }
         let side = currentSide
-        invalidateWork()
+        guard invalidateWork() else { return }
         gestureSide = side
         directGesturePending = true
         startOffset = currentTranslation
@@ -958,7 +1011,9 @@ public class SwipeableView: ExpoView {
 
     func handleGestureEnd(translationX: CGFloat, velocityX: CGFloat) {
         guard isGestureActivated, let side = currentSide else {
-            invalidateWork()
+            // A command already consumed this gesture. Its trailing end cannot
+            // invalidate the animator that inherited the completion.
+            directGesturePending = false
             return
         }
         let relative = translationX - gestureStartTranslation
@@ -967,6 +1022,11 @@ public class SwipeableView: ExpoView {
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard gestureEnabled, defaultOpenSide() != nil else { return }
+        // Key/detach rebinding invalidates even a touch that was still .possible.
+        guard panGesture.isCurrentBinding(commandTarget) else {
+            ignoresPanUntilNextBegin = true
+            return
+        }
         // A command/configuration cancellation consumes the rest of this physical pan.
         // It must not reactivate on a later changed event or switch to the opposite edge.
         if ignoresPanUntilNextBegin && gesture.state != .began {
@@ -981,15 +1041,13 @@ public class SwipeableView: ExpoView {
         case .ended:
             handlePanEnded(gesture)
         case .cancelled:
-            let cancelled = isGestureActivated ? payload([:], side: currentSide) : nil
             let settledSide = openSide
-            invalidateWork(preservePresentation: false)
+            guard invalidateWork(preservePresentation: false) else { return }
             openSide = settledSide
             currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
             savedFirstResponder = nil
-            if let cancelled = cancelled { onGestureCancelled(cancelled) }
         default:
             break
         }
@@ -998,7 +1056,7 @@ public class SwipeableView: ExpoView {
     private func handlePanBegan(_ gesture: UIPanGestureRecognizer) {
         cancelFabricTouches()
         let interruptedSide = currentSide
-        invalidateWork()
+        guard invalidateWork() else { return }
         ignoresPanUntilNextBegin = false
         gestureStartTranslation = gesture.translation(in: self).x
         gestureSide = interruptedSide
@@ -1042,6 +1100,8 @@ public class SwipeableView: ExpoView {
     }
 
     private func activateGesture(on side: SwipeSide) {
+        let generation = workGeneration
+        let key = recyclingKey
         gestureSide = side
         isGestureActivated = true
         isDragging = true
@@ -1050,8 +1110,10 @@ public class SwipeableView: ExpoView {
         lastEmittedWillEndState = isOpen ? "open" : "closed"
         beginFeedback(on: side)
         requestActions(on: side)
-        gestureCompletion.begin()
-        onSwipeStart([:])
+        guard isCurrent(generation, key: key), isGestureActivated else { return }
+        gestureCompletion.begin(recyclingKey: key, side: side)
+        onSwipeStart(payload([:], side: side))
+        guard isCurrent(generation, key: key), isGestureActivated else { return }
         startProgressUpdates()
     }
 
@@ -1082,6 +1144,8 @@ public class SwipeableView: ExpoView {
     private func finishGesture(
         translation: CGFloat, velocity: CGFloat, side: SwipeSide
     ) {
+        let generation = workGeneration
+        let key = recyclingKey
         isGestureActivated = false
         directGesturePending = false
         gestureStartTranslation = 0
@@ -1093,9 +1157,10 @@ public class SwipeableView: ExpoView {
             isCurrentlyOpen: gestureStartedOpen
         )
         emitIntendedState(willOpen, side: side)
+        guard isCurrent(generation, key: key) else { return }
         if willOpen {
             beginOpen(on: side, preserveFeedback: true, preserveGestureCompletion: true)
-            if autoClose { scheduleAutoClose() }
+            if autoClose, gestureCompletion.isPending, isOpen { scheduleAutoClose() }
         } else {
             performClose(animated: true, preserveGestureCompletion: true)
         }
@@ -1119,7 +1184,7 @@ public class SwipeableView: ExpoView {
 
     private func openResolvedSide(_ side: SwipeSide) {
         if let previous = currentSide, previous != side,
-           isOpen || isAnimating || currentTranslation != 0 {
+           isOpen || isAnimating || currentTranslation != 0 || gestureCompletion.isPending {
             performClose(animated: true) { [weak self] in
                 guard let self = self, self.width(for: side) > 0 else { return }
                 self.beginOpen(on: side)
@@ -1132,15 +1197,21 @@ public class SwipeableView: ExpoView {
     private func beginOpen(
         on side: SwipeSide, preserveFeedback: Bool = false, preserveGestureCompletion: Bool = false
     ) {
-        invalidateWork(resetAppearance: !preserveFeedback, preserveGestureCompletion: preserveGestureCompletion)
+        // Imperative auto-close opens have no timer/end; all other same-side opens
+        // can take over the owed completion without resetting the JS start gate.
+        guard invalidateWork(
+            resetAppearance: !preserveFeedback,
+            preserveGestureCompletion: preserveGestureCompletion || !autoClose
+        ) else { return }
+        let generation = workGeneration
+        let key = recyclingKey
         openSide = side
         animationSide = side
         isAnimating = true
         persistOpenSide()
         requestActions(on: side)
+        guard isCurrent(generation, key: key) else { return }
         let targetX = side.sign * width(for: side)
-        let generation = workGeneration
-        let key = recyclingKey
         startProgressUpdates()
         let animator = UIViewPropertyAnimator(
             duration: SwipeAnimationConfig.openDuration,
@@ -1158,8 +1229,10 @@ public class SwipeableView: ExpoView {
             self.resetFeedback()
             self.updateActionsTransform()
             self.onSwipeProgress(self.payload(["progress": 1.0, "translationX": targetX], side: side))
+            guard self.isCurrent(generation, key: key) else { return }
             // Programmatic opens with autoClose historically neither schedule a close nor emit end.
             if !self.autoClose { self.emitSwipeEnd("open", side: side) }
+            guard self.isCurrent(generation, key: key) else { return }
             self.restoreFirstResponder()
         }
         currentAnimator = animator
@@ -1173,11 +1246,15 @@ public class SwipeableView: ExpoView {
     }
 
     private func snapToOpen(side: SwipeSide) {
+        guard invalidateWork() else { return }
+        let generation = workGeneration
+        let key = recyclingKey
         openSide = side
         isAnimating = false
         currentTranslation = side.sign * width(for: side)
         contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
         requestActions(on: side)
+        guard isCurrent(generation, key: key) else { return }
         updateActionsTransform()
         onSwipeProgress(payload(["progress": 1.0, "translationX": currentTranslation], side: side))
     }
@@ -1191,7 +1268,11 @@ public class SwipeableView: ExpoView {
         completion: (() -> Void)? = nil
     ) {
         let side = currentSide
-        invalidateWork(preserveGestureCompletion: preserveGestureCompletion || endState == "open")
+        // An animated close inherits pending completion ownership until it ends
+        // or a later silent close/cancel sends the internal abandonment event.
+        guard invalidateWork(
+            preserveGestureCompletion: animated || preserveGestureCompletion || endState == "open"
+        ) else { return }
         openSide = nil
         animationSide = side
         if endState == "open", let side = side {
@@ -1225,8 +1306,10 @@ public class SwipeableView: ExpoView {
             self.stopProgressUpdates()
             self.updateActionsTransform()
             self.onSwipeProgress(self.payload(["progress": 0.0, "translationX": 0.0], side: side))
+            guard self.isCurrent(generation, key: key) else { return }
             self.autoCloseState = nil
             self.emitSwipeEnd(endState, side: side)
+            guard self.isCurrent(generation, key: key) else { return }
             self.animationSide = nil
             self.resetFeedback()
             self.restoreFirstResponder()
@@ -1253,6 +1336,7 @@ extension SwipeableView: UIGestureRecognizerDelegate {
 
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        if pan === panGesture && !panGesture.isCurrentBinding(commandTarget) { return false }
         let velocity = pan.velocity(in: self)
         let isHorizontal = abs(velocity.x) > abs(velocity.y)
         guard isHorizontal else { return false }

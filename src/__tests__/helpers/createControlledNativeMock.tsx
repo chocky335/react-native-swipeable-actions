@@ -7,12 +7,17 @@ import {
   type RefAttributes
 } from 'react'
 import { View } from 'react-native'
-import type { NativeSwipeableRef, SwipeableViewProps, SwipeSide } from '../../Swipeable.types'
+import type {
+  NativeSwipeableRef,
+  SwipeableViewProps,
+  SwipeSide,
+  SwipeStartEvent
+} from '../../Swipeable.types'
 
 type SwipeState = 'open' | 'closed'
 
 interface ControlledSwipeableInstance {
-  triggerSwipeStart: () => void
+  triggerSwipeStart: (metadata?: SwipeStartEvent['nativeEvent']) => void
   requestActions: (side: SwipeSide) => void
   triggerSwipeProgress: (progress: number, translationX?: number) => void
   triggerSwipeStateChange: (state: SwipeState) => void
@@ -52,6 +57,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
   const SwipeableView = forwardRef<NativeSwipeableRef, SwipeableViewProps>(
     function SwipeableView(props, ref) {
       const callbacks = useRef({
+        recyclingKey: props.recyclingKey,
         onActionsNeeded: props.onActionsNeeded,
         onSwipeStart: props.onSwipeStart,
         onSwipeProgress: props.onSwipeProgress,
@@ -60,6 +66,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
       })
 
       callbacks.current = {
+        recyclingKey: props.recyclingKey,
         onActionsNeeded: props.onActionsNeeded,
         onSwipeStart: props.onSwipeStart,
         onSwipeProgress: props.onSwipeProgress,
@@ -68,18 +75,25 @@ export function createControlledNativeMock(): SwipeableViewMock {
       }
 
       const instanceRef = useRef<ControlledSwipeableInstance | null>(null)
+      const bindingMetadata = () => {
+        const key = callbacks.current.recyclingKey
+        return key === undefined ? {} : { recyclingKey: key }
+      }
 
       if (!instanceRef.current) {
         instanceRef.current = {
           requestActions: (side) => {
-            callbacks.current.onActionsNeeded?.({ nativeEvent: { side } })
+            callbacks.current.onActionsNeeded?.({ nativeEvent: { ...bindingMetadata(), side } })
           },
-          triggerSwipeStart: () => {
-            callbacks.current.onSwipeStart?.()
+          triggerSwipeStart: (metadata) => {
+            callbacks.current.onSwipeStart?.({
+              nativeEvent: metadata ?? bindingMetadata()
+            })
           },
           triggerSwipeProgress: (progress: number, translationX = 0) => {
             callbacks.current.onSwipeProgress?.({
               nativeEvent: {
+                ...bindingMetadata(),
                 progress,
                 translationX
               }
@@ -88,6 +102,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
           triggerSwipeStateChange: (state: SwipeState) => {
             callbacks.current.onSwipeStateChange?.({
               nativeEvent: {
+                ...bindingMetadata(),
                 state
               }
             })
@@ -95,6 +110,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
           triggerSwipeEnd: (state: SwipeState, side?: SwipeSide) => {
             callbacks.current.onSwipeEnd?.({
               nativeEvent: {
+                ...bindingMetadata(),
                 state,
                 ...(side ? { side } : {})
               }
