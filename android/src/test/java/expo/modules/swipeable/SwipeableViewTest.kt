@@ -2058,6 +2058,40 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun tapDuringAutoCloseClosingSpringKeepsItsOpenCompletion() {
+        for (dispatch in listOf(false, true)) {
+            val row = row()
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 1000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(120f, 0f)
+            row.handleGestureEnd(120f, 0f)
+            var reachedOpen = false
+            for (frame in 0 until 200) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                val x = content(row).translationX
+                if (x >= 159.99f) reachedOpen = true
+                if (reachedOpen && x < 150f) break
+            }
+            val closingAt = content(row).translationX
+            assertTrue(reachedOpen && closingAt > 0f && closingAt < 150f)
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                motion(action, 200f, 10f).useEvent {
+                    if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                }
+            }
+            settle()
+            assertTrue(named("onGestureCancelled").isEmpty())
+            assertEquals(listOf("open:left"), ends())
+            assertEquals(0f, content(row).translationX, 0f)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun rebindDuringAutoCloseWaitRestoresTheOldKeyClosed() {
         for (side in SwipeSide.values()) {
             val row = row(key = "auto-wait")
