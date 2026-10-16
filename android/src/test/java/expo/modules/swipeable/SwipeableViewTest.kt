@@ -2028,6 +2028,31 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun detachDuringAutoCloseWaitReattachesClosedWithoutCompletion() {
+        for (side in SwipeSide.values()) {
+            val row = row(key = "auto-wait")
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 10000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(side.sign * 120f, 0f)
+            row.handleGestureEnd(side.sign * 120f, 0f)
+            settle()
+            assertEquals(side.value, SwipeableView.getOpenSideByKey("auto-wait"))
+            root.removeView(row)
+            root.addView(row, FrameLayout.LayoutParams(400, 64))
+            repeat(5) { settle() }
+            assertEquals(0f, content(row).translationX, 0f)
+            assertNull(SwipeableView.getOpenSideByKey("auto-wait"))
+            assertTrue(ends().isEmpty())
+            assertEquals(1, named("onGestureCancelled").size)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.

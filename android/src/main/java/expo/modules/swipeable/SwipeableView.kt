@@ -1105,6 +1105,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         velocityTracker = null
         requestedActions.clear()
         observedSlotCounts.clear()
+        if (autoCloseDeadline != null) {
+            // The abandoned auto-close cannot resume, so the transient open must not restore.
+            isOpen = false
+            openSide = null
+            persistOpenSide(null)
+        }
         recyclingKey?.let { unregisterView(this, it) }
         cancelActiveWork()
         reconcileLogicalState(restartLayoutGuard = false)
