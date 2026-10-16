@@ -35,7 +35,7 @@ Every configuration below ran the release candidate. The E2E suite has 59 cases
 | App stack | Expo SDK 54.0, React Native 0.81.5, React 19.1.0 | Example app and a clean app that installs the packed tarball |
 | Architecture | New Architecture (Fabric), Hermes | All runs below |
 | Android | API 34 x86_64 emulator (Pixel 6 profile) | 59 E2E cases, Robolectric unit tests |
-| iOS | iOS 26 simulator (iPhone 17 Pro), Xcode 26.6 | 59 E2E cases, Maestro flows, Swift unit tests |
+| iOS | iOS 26.4 simulator (iPhone 17 Pro), Xcode 26.6 | 59 E2E cases, Maestro flows, Swift unit tests |
 | Packaging | `npm pack` tarball in a clean Expo app | Install, type check, autolinking, release builds on both platforms |
 
 ## Not tested
