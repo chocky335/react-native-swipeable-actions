@@ -149,7 +149,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-consumer-${{ runner.os }}-${{ hashFiles('example/package-lock.json', 'android/build.gradle') }}
+          key: gradle-consumer-${{ runner.os }}-${{ hashFiles('example/package.json', 'android/build.gradle') }}
           restore-keys: gradle-consumer-${{ runner.os }}-
 
       - name: Build release APK
