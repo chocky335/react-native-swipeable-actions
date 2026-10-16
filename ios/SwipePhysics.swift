@@ -192,7 +192,6 @@ struct SwipeReactChildren<Child: AnyObject> {
 struct SwipeChildRoles: Equatable {
     let left: Int?
     let right: Int?
-    let actions: Int?
     let content: Int
 }
 
@@ -307,36 +306,24 @@ extension SwipePhysics {
         return SwipeReconciledState(openSide: restored, autoClose: pending)
     }
 
-    static func shouldSyncOpenWidth(
-        oldWidth: CGFloat, newWidth: CGFloat, isOpen: Bool, isInteracting: Bool
-    ) -> Bool {
-        oldWidth != newWidth && newWidth > 0 && isOpen && !isInteracting
-    }
-
-    static func shouldRestoreAfterDetach(twoSided: Bool, hasPendingInteraction: Bool) -> Bool {
-        twoSided && !hasPendingInteraction
+    static func shouldRestoreAfterDetach(hasPendingInteraction: Bool) -> Bool {
+        !hasPendingInteraction
     }
 
     static func shouldCloseForCloseAll(
-        isOpen: Bool, twoSided: Bool, isAnimating: Bool, hasPendingInteraction: Bool
+        isOpen: Bool, isAnimating: Bool, hasPendingInteraction: Bool
     ) -> Bool {
-        // A closing two-sided animator can own a close-then-open continuation even
-        // though its logical open state is already false. Legacy filtering stays exact.
-        isOpen || (twoSided && (isAnimating || hasPendingInteraction))
+        // A closing animator can own a close-then-open continuation while logically closed.
+        isOpen || isAnimating || hasPendingInteraction
     }
 
     static func validWidth(_ width: CGFloat) -> CGFloat {
         width.isFinite && width > 0 ? width : 0
     }
 
-    static func childRoles(count: Int, twoSided: Bool) -> SwipeChildRoles? {
-        if twoSided {
-            guard count == 3 else { return nil }
-            return SwipeChildRoles(left: 0, right: 1, actions: nil, content: 2)
-        }
-        guard count > 0 else { return nil }
-        // Preserve the raw legacy view's first-two fallback for extra children.
-        return SwipeChildRoles(left: nil, right: nil, actions: count > 1 ? 0 : nil, content: count > 1 ? 1 : 0)
+    static func childRoles(count: Int) -> SwipeChildRoles? {
+        guard count == 3 else { return nil }
+        return SwipeChildRoles(left: 0, right: 1, content: 2)
     }
 
     static func latchedSide(

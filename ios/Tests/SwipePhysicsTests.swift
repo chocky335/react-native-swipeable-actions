@@ -400,24 +400,24 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
 
     func testCloseAllIncludesClosingLegOfOppositeSideOpen() {
         XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
-            isOpen: false, twoSided: true, isAnimating: true, hasPendingInteraction: false
+            isOpen: false, isAnimating: true, hasPendingInteraction: false
         ))
         XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
-            isOpen: false, twoSided: true, isAnimating: false, hasPendingInteraction: true
+            isOpen: false, isAnimating: false, hasPendingInteraction: true
         ))
         XCTAssertFalse(SwipePhysics.shouldCloseForCloseAll(
-            isOpen: false, twoSided: true, isAnimating: false, hasPendingInteraction: false
+            isOpen: false, isAnimating: false, hasPendingInteraction: false
         ))
     }
 
-    func testCloseAllPreservesLegacyOpenOnlyFilter() {
+    func testCloseAllIncludesPendingWorkForEveryRow() {
         for isAnimating in [false, true] {
             for pending in [false, true] {
-                XCTAssertFalse(SwipePhysics.shouldCloseForCloseAll(
-                    isOpen: false, twoSided: false, isAnimating: isAnimating, hasPendingInteraction: pending
+                XCTAssertEqual(isAnimating || pending, SwipePhysics.shouldCloseForCloseAll(
+                    isOpen: false, isAnimating: isAnimating, hasPendingInteraction: pending
                 ))
                 XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
-                    isOpen: true, twoSided: false, isAnimating: isAnimating, hasPendingInteraction: pending
+                    isOpen: true, isAnimating: isAnimating, hasPendingInteraction: pending
                 ))
             }
         }
@@ -498,22 +498,23 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
     }
 
     func testIncompleteTwoSidedSlotsNeverHaveContentRole() {
-        for count in [0, 1, 2, 4] { XCTAssertNil(SwipePhysics.childRoles(count: count, twoSided: true)) }
-        let roles = SwipePhysics.childRoles(count: 3, twoSided: true)
+        for count in [0, 1, 2, 4] { XCTAssertNil(SwipePhysics.childRoles(count: count)) }
+        let roles = SwipePhysics.childRoles(count: 3)
         XCTAssertEqual(roles?.left, 0)
         XCTAssertEqual(roles?.right, 1)
         XCTAssertEqual(roles?.content, 2)
-        XCTAssertNil(roles?.actions)
+        XCTAssertNotEqual(roles?.left, roles?.right)
     }
 
-    func testLegacyChildProtocolIsUnchanged() {
-        XCTAssertNil(SwipePhysics.childRoles(count: 0, twoSided: false))
-        XCTAssertEqual(SwipePhysics.childRoles(count: 1, twoSided: false)?.content, 0)
-        XCTAssertNil(SwipePhysics.childRoles(count: 1, twoSided: false)?.actions)
-        for count in [2, 3, 4] {
-            XCTAssertEqual(SwipePhysics.childRoles(count: count, twoSided: false)?.actions, 0)
-            XCTAssertEqual(SwipePhysics.childRoles(count: count, twoSided: false)?.content, 1)
-        }
+    func testSingleSideRowsRequireTheSameCompleteChildProtocol() {
+        XCTAssertNil(SwipePhysics.childRoles(count: 0))
+        XCTAssertNil(SwipePhysics.childRoles(count: 1))
+        XCTAssertNil(SwipePhysics.childRoles(count: 2))
+        XCTAssertNil(SwipePhysics.childRoles(count: 4))
+        let roles = SwipePhysics.childRoles(count: 3)
+        XCTAssertEqual(roles?.left, 0)
+        XCTAssertEqual(roles?.right, 1)
+        XCTAssertEqual(roles?.content, 2)
     }
 
     func testCacheRestoresExactSideAndEvictsOldestOpenKey() {

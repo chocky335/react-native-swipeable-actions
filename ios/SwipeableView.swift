@@ -152,7 +152,7 @@ public class SwipeableView: ExpoView {
             for entry in targets {
                 performCommand({ view in
                     if !animated || SwipePhysics.shouldCloseForCloseAll(
-                        isOpen: view.isOpen, twoSided: view.twoSided, isAnimating: view.isAnimating,
+                        isOpen: view.isOpen, isAnimating: view.isAnimating,
                         hasPendingInteraction: view.isDragging || view.isGestureActivated ||
                             view.directGesturePending || view.pendingRestoreSide != nil
                     ) {
@@ -165,15 +165,12 @@ public class SwipeableView: ExpoView {
 
     // MARK: - State
 
-    private var legacyActionsView: UIView?
     private var leftActionsView: UIView?
     private var rightActionsView: UIView?
     private var contentView: UIView?
     private let railVisibility = SwipeRailVisibility()
     // Fabric mount order, not UIView.subviews (which can contain UIKit/Expo helpers).
     private var reactChildren = SwipeReactChildren<UIView>()
-    private var assignedTwoSided = false
-    private var awaitingChildProtocol = false
     private var isDetached = false
     private var currentTranslation: CGFloat = 0
     private var openSide: SwipeSide?
@@ -201,11 +198,8 @@ public class SwipeableView: ExpoView {
     private var slotChildren: [SwipeSide: [ObjectIdentifier]] = [:]
 
     private struct LayoutConfiguration: Equatable {
-        var twoSided: Bool
-        var legacyWidth: CGFloat
         var leftWidth: CGFloat
         var rightWidth: CGFloat
-        var position: String
         var enabled: Bool
         var friction: CGFloat
         var threshold: CGFloat
@@ -214,27 +208,11 @@ public class SwipeableView: ExpoView {
         var autoCloseTimeout: CGFloat
     }
     private var appliedConfiguration = LayoutConfiguration(
-        twoSided: false, legacyWidth: 0, leftWidth: 0, rightWidth: 0, position: "right", enabled: true,
+        leftWidth: 0, rightWidth: 0, enabled: true,
         friction: 1, threshold: 0.4, dragOffset: 0, autoClose: false, autoCloseTimeout: 0
     )
 
     // MARK: - Props
-
-    var actionsWidth: CGFloat = 0 {
-        didSet {
-            let validated = max(0, actionsWidth)
-            if validated != actionsWidth {
-                actionsWidth = validated
-                return
-            }
-            guard actionsWidth != oldValue else { return }
-            scheduleReconciliation()
-        }
-    }
-
-    var twoSided = false {
-        didSet { if twoSided != oldValue { scheduleReconciliation() } }
-    }
 
     var leftActionsWidth: CGFloat = 0 {
         didSet {
@@ -250,45 +228,21 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    var actionsPosition = "right" {
-        didSet {
-            if actionsPosition != "left" && actionsPosition != "right" {
-                actionsPosition = "right"
-                return
-            }
-            guard actionsPosition != oldValue else { return }
-            scheduleReconciliation()
-        }
-    }
-    var isLeading: Bool { actionsPosition == "left" }
-    private var legacySide: SwipeSide { isLeading ? .left : .right }
-
     var friction: CGFloat = 1.0 {
         didSet {
             friction = max(0.0, min(1.0, friction))
-            if twoSided && friction != oldValue { scheduleReconciliation() }
+            if friction != oldValue { scheduleReconciliation() }
         }
     }
     var threshold: CGFloat = 0.4 {
         didSet {
             threshold = max(0.0, min(1.0, threshold))
-            if twoSided && threshold != oldValue { scheduleReconciliation() }
+            if threshold != oldValue { scheduleReconciliation() }
         }
     }
     var gestureEnabled = true {
         didSet {
             guard gestureEnabled != oldValue else { return }
-            if !twoSided {
-                // Preserve legacy immediate disabling and its nonanimated cache behavior.
-                if !gestureEnabled {
-                    abortActiveGesture()
-                    panGesture.isEnabled = false
-                    if isOpen || currentTranslation != 0 { close(animated: false) }
-                    else { invalidateWork() }
-                } else {
-                    panGesture.isEnabled = true
-                }
-            }
             scheduleReconciliation()
         }
     }
@@ -314,12 +268,12 @@ public class SwipeableView: ExpoView {
     var dragOffsetFromEdge: CGFloat = 0 {
         didSet {
             dragOffsetFromEdge = max(0, dragOffsetFromEdge)
-            if twoSided && dragOffsetFromEdge != oldValue { scheduleReconciliation() }
+            if dragOffsetFromEdge != oldValue { scheduleReconciliation() }
         }
     }
     var autoClose = false {
         didSet {
-            if twoSided && autoClose != oldValue {
+            if autoClose != oldValue {
                 cancelAutoClose()
                 scheduleReconciliation()
             }
@@ -328,7 +282,7 @@ public class SwipeableView: ExpoView {
     var autoCloseTimeout: CGFloat = 0 {
         didSet {
             autoCloseTimeout = max(0, autoCloseTimeout)
-            if twoSided && autoCloseTimeout != oldValue { scheduleReconciliation() }
+            if autoCloseTimeout != oldValue { scheduleReconciliation() }
         }
     }
 
@@ -370,7 +324,7 @@ public class SwipeableView: ExpoView {
             updateActionsTransform()
             pendingRestoreSide = restored
             if let key = recyclingKey, !isDetached { Self.registerView(self, for: key) }
-            // Widths and layout mode may follow the key in the same Expo prop transaction.
+            // Widths may follow the key in the same Expo prop transaction.
             scheduleReconciliation()
         }
     }
@@ -396,7 +350,7 @@ public class SwipeableView: ExpoView {
     private var usesAppearance: Bool { appearance == "ios26" }
     private var usesHaptics: Bool { hapticFeedback ?? usesAppearance }
     private var currentSide: SwipeSide? {
-        twoSided ? (gestureSide ?? animationSide ?? openSide) : legacySide
+        gestureSide ?? animationSide ?? openSide
     }
     private var actionsView: UIView? {
         guard let side = currentSide else { return nil }
@@ -404,23 +358,20 @@ public class SwipeableView: ExpoView {
     }
 
     private func width(for side: SwipeSide) -> CGFloat {
-        if twoSided { return side == .left ? leftActionsWidth : rightActionsWidth }
-        return side == legacySide ? actionsWidth : 0
+        return side == .left ? leftActionsWidth : rightActionsWidth
     }
 
     private func actionsView(for side: SwipeSide) -> UIView? {
-        if !twoSided { return side == legacySide ? legacyActionsView : nil }
         return side == .left ? leftActionsView : rightActionsView
     }
 
     private func defaultOpenSide() -> SwipeSide? {
-        if !twoSided { return legacySide }
-        if width(for: legacySide) > 0 { return legacySide }
-        return SwipeSide.allCases.first { width(for: $0) > 0 }
+        if width(for: .right) > 0 { return .right }
+        if width(for: .left) > 0 { return .left }
+        return nil
     }
 
     private func payload(_ values: [String: Any], side: SwipeSide?) -> [String: Any] {
-        guard twoSided else { return values }
         var result = values
         if let side = side { result["side"] = side.rawValue }
         // Capture identity before EventDispatcher queues delivery to JavaScript.
@@ -437,7 +388,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func requestActions(on side: SwipeSide) {
-        guard !twoSided || width(for: side) > 0 else { return }
+        guard width(for: side) > 0 else { return }
         guard requestedSides.insert(side).inserted else { return }
         onActionsNeeded(payload(["side": side.rawValue], side: nil))
     }
@@ -460,11 +411,7 @@ public class SwipeableView: ExpoView {
         reconciliationWorkItem = nil
         guard !isDetached else { return }
         let next = LayoutConfiguration(
-            twoSided: twoSided,
-            legacyWidth: twoSided ? 0 : actionsWidth,
-            leftWidth: twoSided ? leftActionsWidth : 0,
-            rightWidth: twoSided ? rightActionsWidth : 0,
-            position: actionsPosition,
+            leftWidth: leftActionsWidth, rightWidth: rightActionsWidth,
             enabled: gestureEnabled, friction: friction, threshold: threshold,
             dragOffset: dragOffsetFromEdge, autoClose: autoClose, autoCloseTimeout: autoCloseTimeout
         )
@@ -472,7 +419,7 @@ public class SwipeableView: ExpoView {
         appliedConfiguration = next
         var cancelledGesture: [String: Any]?
         var resumeAutoClose: SwipeAutoCloseState?
-        if next != previous && (next.twoSided || previous.twoSided) {
+        if next != previous {
             let ownedCompletion = isGestureActivated || gestureCompletion.isPending
             let cancellationPayload = payload([:], side: currentSide)
             if panGesture.state == .began || panGesture.state == .changed {
@@ -481,7 +428,7 @@ public class SwipeableView: ExpoView {
             let logicalSide = openSide
             let reconciled = SwipePhysics.reconcileTwoSidedState(
                 openSide: logicalSide,
-                autoCloseState: next.twoSided && previous.twoSided ? autoCloseState : nil,
+                autoCloseState: autoCloseState,
                 leftWidth: width(for: .left), rightWidth: width(for: .right),
                 wasGestureEnabled: previous.enabled, gestureEnabled: gestureEnabled, autoClose: autoClose
             )
@@ -493,10 +440,6 @@ public class SwipeableView: ExpoView {
                 preserveGestureCompletion: preservesCompletion
             )
             requestedSides.removeAll()
-            if next.twoSided != previous.twoSided {
-                releaseChildRoles()
-                awaitingChildProtocol = true
-            }
             openSide = reconciled.openSide
             resumeAutoClose = reconciled.autoClose
             if case .closing = resumeAutoClose {
@@ -509,15 +452,9 @@ public class SwipeableView: ExpoView {
         }
         panGesture.isEnabled = gestureEnabled
         reconcileChildRoles()
-        if !next.twoSided && !previous.twoSided && SwipePhysics.shouldSyncOpenWidth(
-            oldWidth: previous.legacyWidth, newWidth: next.legacyWidth, isOpen: isOpen,
-            isInteracting: isDragging || isAnimating || isGestureActivated
-        ) {
-            syncOpenStateToCurrentWidth()
-        }
         if let cachedSide = pendingRestoreSide {
-            let side = twoSided ? cachedSide : legacySide
-            if twoSided && (width(for: side) <= 0 || !gestureEnabled) {
+            let side = cachedSide
+            if (width(for: side) <= 0 || !gestureEnabled) {
                 pendingRestoreSide = nil
                 openSide = nil
                 currentTranslation = 0
@@ -525,7 +462,7 @@ public class SwipeableView: ExpoView {
             } else if contentView != nil {
                 pendingRestoreSide = nil
                 snapToOpen(side: side)
-            } else if twoSided {
+            } else {
                 requestActions(on: side)
             }
         }
@@ -550,7 +487,7 @@ public class SwipeableView: ExpoView {
         preserveGestureCompletion: Bool = false
     ) {
         gestureCompletion.invalidate(preserving: preserveGestureCompletion)
-        if twoSided && (panGesture.state == .began || panGesture.state == .changed) {
+        if (panGesture.state == .began || panGesture.state == .changed) {
             ignoresPanUntilNextBegin = true
         }
         workGeneration += 1
@@ -589,7 +526,7 @@ public class SwipeableView: ExpoView {
         feedback.reset()
         feedbackGenerator = nil
         popStartedAt = nil
-        for view in [legacyActionsView, leftActionsView, rightActionsView].compactMap({ $0 }) {
+        for view in [leftActionsView, rightActionsView].compactMap({ $0 }) {
             view.transform = CGAffineTransform(translationX: view.transform.tx, y: view.transform.ty)
         }
     }
@@ -688,7 +625,7 @@ public class SwipeableView: ExpoView {
     private func suspendForDetach() {
         guard !isDetached else { return }
         let preservesCachedSide = SwipePhysics.shouldRestoreAfterDetach(
-            twoSided: twoSided, hasPendingInteraction: hasPendingInteraction
+            hasPendingInteraction: hasPendingInteraction
         )
         commandTarget = SwipeCommandTarget(self)
         isDetached = true
@@ -702,8 +639,7 @@ public class SwipeableView: ExpoView {
         requestedSides.removeAll()
         releaseChildRoles()
         if let key = recyclingKey {
-            // Legacy detach follows main's closed reset. New-mode restoration is
-            // cache-driven and only preserves settled intent, never unfinished work.
+            // Restore only settled cache intent, never unfinished interaction work.
             if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self) }
             Self.unregisterView(self, for: key)
         }
@@ -725,7 +661,7 @@ public class SwipeableView: ExpoView {
         reduceMotionChanged()
         if let key = recyclingKey {
             Self.registerView(self, for: key)
-            if wasDetached && twoSided {
+            if wasDetached {
                 // Read again: a closeByKey while detached may have cleared the cache.
                 pendingRestoreSide = Self.getOpenSide(for: key).flatMap { SwipeSide(rawValue: $0) }
             }
@@ -735,7 +671,7 @@ public class SwipeableView: ExpoView {
             addGestureRecognizer(panGesture)
         }
         commitProps()
-        if twoSided { scheduleVisualRestore() }
+        scheduleVisualRestore()
         // A detached timer/animation must not restart and fabricate an end-open event.
     }
 
@@ -767,7 +703,6 @@ public class SwipeableView: ExpoView {
             currentView = view.superview
         }
     }
-
 
     private func startProgressUpdates() {
         guard displayLink == nil else { return }
@@ -801,7 +736,7 @@ public class SwipeableView: ExpoView {
     private func scheduleAutoClose() {
         cancelAutoClose()
         let delay = autoCloseTimeout > 0 ? autoCloseTimeout / 1000.0 : 0
-        if twoSided, let side = openSide {
+        if let side = openSide {
             autoCloseState = .waiting(side: side, deadline: ProcessInfo.processInfo.systemUptime + delay)
         }
         enqueueAutoClose(
@@ -822,7 +757,7 @@ public class SwipeableView: ExpoView {
         let item = DispatchWorkItem { [weak self] in
             guard let self = self, self.isCurrent(generation, key: key),
                   self.autoCloseGeneration == timerGeneration,
-                  !self.twoSided || self.autoClose else { return }
+                  self.autoClose else { return }
             self.autoCloseWorkItem = nil
             if self.isAnimating {
                 self.enqueueAutoClose(after: 0.1, generation: generation, timerGeneration: timerGeneration, key: key)
@@ -842,7 +777,7 @@ public class SwipeableView: ExpoView {
             : currentTranslation
         updateActionsTransform(translation: translation)
         let rawProgress = abs(translation) / width(for: side)
-        let progress = twoSided ? min(rawProgress, 1) : rawProgress
+        let progress = min(rawProgress, 1)
         if abs(progress - lastEmittedProgress) > SwipeAnimationConfig.progressChangeThreshold {
             lastEmittedProgress = progress
             onSwipeProgress(payload(["progress": progress, "translationX": translation], side: side))
@@ -863,23 +798,9 @@ public class SwipeableView: ExpoView {
             let scale = active && (isDragging || isAnimating || isOpen) ? railScale(progress: progress) : 1
             // Explicit tx keeps scaling centered on the rail and never scales row translation.
             rail.transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: offset, ty: 0)
-            if twoSided {
-                let revealed = active && sideWidth > 0 && side.sign * translation > 0
-                railVisibility.setRevealed(revealed, for: rail)
-            }
+            let revealed = active && sideWidth > 0 && side.sign * translation > 0
+            railVisibility.setRevealed(revealed, for: rail)
         }
-    }
-
-    private func syncOpenStateToCurrentWidth() {
-        let targetX = legacySide.sign * actionsWidth
-        currentTranslation = targetX
-        contentView?.transform = CGAffineTransform(translationX: targetX, y: 0)
-        if let actions = legacyActionsView {
-            actions.transform = .identity
-        } else {
-            onSwipeStart([:])
-        }
-        onSwipeProgress(["progress": 1.0, "translationX": targetX])
     }
 
     // MARK: - React child roles
@@ -891,11 +812,10 @@ public class SwipeableView: ExpoView {
     }
 
     private func releaseChildRoles() {
-        for view in [legacyActionsView, leftActionsView, rightActionsView, contentView].compactMap({ $0 }) {
+        for view in [leftActionsView, rightActionsView, contentView].compactMap({ $0 }) {
             releaseChild(view)
         }
         railVisibility.releaseAll()
-        legacyActionsView = nil
         leftActionsView = nil
         rightActionsView = nil
         contentView = nil
@@ -905,49 +825,30 @@ public class SwipeableView: ExpoView {
     private func reconcileChildRoles() {
         guard !isDetached else { return }
         let children = reactChildren.views
-        if assignedTwoSided != twoSided {
-            releaseChildRoles()
-            assignedTwoSided = twoSided
-            awaitingChildProtocol = true
-        }
         // On removal, preserve surviving identities instead of promoting a rail to content.
         if let view = contentView, !children.contains(where: { $0 === view }) { releaseChild(view); contentView = nil }
         if let view = leftActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); leftActionsView = nil }
         if let view = rightActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); rightActionsView = nil }
-        if let view = legacyActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); legacyActionsView = nil }
-        if awaitingChildProtocol && !twoSided && children.count > 2 { return }
-        guard let roles = SwipePhysics.childRoles(count: children.count, twoSided: twoSided) else { return }
-        awaitingChildProtocol = false
+        guard let roles = SwipePhysics.childRoles(count: children.count) else { return }
         let previousLeft = leftActionsView
         let previousRight = rightActionsView
-        let previousLegacy = legacyActionsView
         contentView = children[roles.content]
         // A complete Fabric transaction can give a previously hidden rail the content role.
-        // Restore only flags that this view owned, in both legacy and two-sided layouts.
+        // Restore only flags that this view owned, for all side configurations.
         if let contentView = contentView { railVisibility.release(contentView) }
-        if twoSided {
-            leftActionsView = roles.left.map { children[$0] }
-            rightActionsView = roles.right.map { children[$0] }
-            if previousLeft !== leftActionsView { requestedSides.remove(.left) }
-            if previousRight !== rightActionsView { requestedSides.remove(.right) }
-        } else {
-            legacyActionsView = roles.actions.map { children[$0] }
-            if previousLegacy !== legacyActionsView { requestedSides.remove(legacySide) }
-            if previousLegacy == nil && legacyActionsView != nil && (isOpen || isAnimating) {
-                legacyActionsView?.transform = .identity
-            }
-        }
+        leftActionsView = roles.left.map { children[$0] }
+        rightActionsView = roles.right.map { children[$0] }
+        if previousLeft !== leftActionsView { requestedSides.remove(.left) }
+        if previousRight !== rightActionsView { requestedSides.remove(.right) }
         contentView?.layer.zPosition = 1
         for side in SwipeSide.allCases {
             guard let rail = actionsView(for: side) else { continue }
             rail.layer.zPosition = -1
-            if twoSided {
-                let children = rail.subviews.map { ObjectIdentifier($0) }
-                if let previous = slotChildren[side], !previous.isEmpty && previous != children {
-                    requestedSides.remove(side)
-                }
-                slotChildren[side] = children
+            let children = rail.subviews.map { ObjectIdentifier($0) }
+            if let previous = slotChildren[side], !previous.isEmpty && previous != children {
+                requestedSides.remove(side)
             }
+            slotChildren[side] = children
         }
         if let side = currentSide, isOpen || isDragging || isAnimating {
             requestActions(on: side)
@@ -984,7 +885,6 @@ public class SwipeableView: ExpoView {
         releaseChild(childComponentView)
         reactChildren.unmount(childComponentView, at: index)
         if childComponentView === contentView { contentView = nil }
-        if childComponentView === legacyActionsView { legacyActionsView = nil; requestedSides.remove(legacySide) }
         if childComponentView === leftActionsView { leftActionsView = nil; requestedSides.remove(.left) }
         if childComponentView === rightActionsView { rightActionsView = nil; requestedSides.remove(.right) }
         super.unmountChildComponentView(childComponentView, index: index)
@@ -993,7 +893,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func scheduleVisualRestore() {
-        guard twoSided, !isDetached, visualRestoreWorkItem == nil else { return }
+        guard !isDetached, visualRestoreWorkItem == nil else { return }
         let generation = workGeneration
         let key = recyclingKey
         let item = DispatchWorkItem { [weak self] in
@@ -1011,22 +911,16 @@ public class SwipeableView: ExpoView {
     public override func layoutSubviews() {
         guard !isDetached else { return }
         guard !isDragging && !isAnimating else {
-            if twoSided { reconcileChildRoles(); updateActionsTransform() }
+            reconcileChildRoles(); updateActionsTransform()
             return
         }
         super.layoutSubviews()
         reconcileChildRoles()
         for side in SwipeSide.allCases {
             guard let rail = actionsView(for: side) else { continue }
-            if twoSided {
-                // React aligns the caller's actions inside full-bounds slot shells.
-                rail.bounds.size = bounds.size
-                rail.center = CGPoint(x: bounds.midX, y: bounds.midY)
-            } else {
-                var frame = rail.frame
-                frame.size.height = bounds.height
-                rail.frame = frame
-            }
+            // React aligns the caller's actions inside full-bounds slot shells.
+            rail.bounds.size = bounds.size
+            rail.center = CGPoint(x: bounds.midX, y: bounds.midY)
         }
         contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
         updateActionsTransform()
@@ -1037,32 +931,18 @@ public class SwipeableView: ExpoView {
 
     func handleGestureStart() {
         commitProps()
-        guard gestureEnabled, defaultOpenSide() != nil, twoSided || actionsWidth > 0 else { return }
-        if twoSided {
-            let side = currentSide
-            invalidateWork()
-            gestureSide = side
-            directGesturePending = true
-            startOffset = currentTranslation
-            gestureStartedOpen = isOpen
-            // Direct API has no direction at start. Latch when its first update arrives.
-            return
-        }
-        // Legacy direct handlers intentionally have no clamp, state callbacks or auto-close.
-        gestureSide = legacySide
-        isDragging = true
+        guard gestureEnabled, defaultOpenSide() != nil else { return }
+        let side = currentSide
+        invalidateWork()
+        gestureSide = side
+        directGesturePending = true
         startOffset = currentTranslation
         gestureStartedOpen = isOpen
-        gestureStartTranslation = 0
-        isGestureActivated = true
-        beginFeedback(on: legacySide)
-        requestActions(on: legacySide)
-        onSwipeStart([:])
-        startProgressUpdates()
+        // Direct API has no direction at start. Latch when its first update arrives.
     }
 
     func handleGestureUpdate(translationX: CGFloat, velocityX: CGFloat) {
-        if twoSided && directGesturePending && !isGestureActivated {
+        if directGesturePending && !isGestureActivated {
             guard abs(translationX) >= dragOffsetFromEdge,
                   let side = gestureSide ?? SwipePhysics.latchedSide(
                     openSide: openSide, translation: translationX,
@@ -1072,21 +952,21 @@ public class SwipeableView: ExpoView {
             activateGesture(on: side)
         }
         guard isGestureActivated, let side = currentSide, width(for: side) > 0 else { return }
-        let relative = twoSided ? translationX - gestureStartTranslation : translationX
-        updateGesture(translation: relative, side: side, clamp: twoSided, emitState: twoSided)
+        let relative = translationX - gestureStartTranslation
+        updateGesture(translation: relative, side: side)
     }
 
     func handleGestureEnd(translationX: CGFloat, velocityX: CGFloat) {
         guard isGestureActivated, let side = currentSide else {
-            if twoSided { invalidateWork() }
+            invalidateWork()
             return
         }
-        let relative = twoSided ? translationX - gestureStartTranslation : translationX
-        finishGesture(translation: relative, velocity: velocityX, side: side, emitState: twoSided, allowAutoClose: twoSided)
+        let relative = translationX - gestureStartTranslation
+        finishGesture(translation: relative, velocity: velocityX, side: side)
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard gestureEnabled, twoSided ? defaultOpenSide() != nil : actionsWidth > 0 else { return }
+        guard gestureEnabled, defaultOpenSide() != nil else { return }
         // A command/configuration cancellation consumes the rest of this physical pan.
         // It must not reactivate on a later changed event or switch to the opposite edge.
         if ignoresPanUntilNextBegin && gesture.state != .began {
@@ -1101,21 +981,15 @@ public class SwipeableView: ExpoView {
         case .ended:
             handlePanEnded(gesture)
         case .cancelled:
-            if twoSided {
-                let cancelled = isGestureActivated ? payload([:], side: currentSide) : nil
-                let settledSide = openSide
-                invalidateWork(preservePresentation: false)
-                openSide = settledSide
-                currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
-                contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
-                updateActionsTransform()
-                savedFirstResponder = nil
-                if let cancelled = cancelled { onGestureCancelled(cancelled) }
-            } else {
-                // The original pan treats cancellation as release. Preserve its callbacks.
-                resetFeedback()
-                handlePanEnded(gesture)
-            }
+            let cancelled = isGestureActivated ? payload([:], side: currentSide) : nil
+            let settledSide = openSide
+            invalidateWork(preservePresentation: false)
+            openSide = settledSide
+            currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
+            contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
+            updateActionsTransform()
+            savedFirstResponder = nil
+            if let cancelled = cancelled { onGestureCancelled(cancelled) }
         default:
             break
         }
@@ -1127,16 +1001,12 @@ public class SwipeableView: ExpoView {
         invalidateWork()
         ignoresPanUntilNextBegin = false
         gestureStartTranslation = gesture.translation(in: self).x
-        if twoSided {
-            gestureSide = interruptedSide
-            if gestureSide == nil && dragOffsetFromEdge <= 0 {
-                gestureSide = SwipePhysics.latchedSide(
-                    openSide: openSide, translation: gesture.velocity(in: self).x,
-                    leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
-                )
-            }
-        } else {
-            gestureSide = legacySide
+        gestureSide = interruptedSide
+        if gestureSide == nil && dragOffsetFromEdge <= 0 {
+            gestureSide = SwipePhysics.latchedSide(
+                openSide: openSide, translation: gesture.velocity(in: self).x,
+                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+            )
         }
         if dragOffsetFromEdge <= 0, let side = gestureSide { activateGesture(on: side) }
     }
@@ -1146,16 +1016,16 @@ public class SwipeableView: ExpoView {
         if !isGestureActivated {
             let relative = translation - gestureStartTranslation
             guard abs(relative) >= dragOffsetFromEdge else { return }
-            let side = gestureSide ?? (twoSided ? SwipePhysics.latchedSide(
+            let side = gestureSide ?? SwipePhysics.latchedSide(
                 openSide: openSide, translation: relative,
                 leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
-            ) : legacySide)
+            )
             guard let selected = side else { return }
             gestureStartTranslation = translation
             activateGesture(on: selected)
         }
         guard let side = currentSide else { return }
-        updateGesture(translation: translation - gestureStartTranslation, side: side, clamp: true, emitState: true)
+        updateGesture(translation: translation - gestureStartTranslation, side: side)
     }
 
     private func handlePanEnded(_ gesture: UIPanGestureRecognizer) {
@@ -1167,7 +1037,7 @@ public class SwipeableView: ExpoView {
         }
         finishGesture(
             translation: gesture.translation(in: self).x - gestureStartTranslation,
-            velocity: gesture.velocity(in: self).x, side: side, emitState: true, allowAutoClose: true
+            velocity: gesture.velocity(in: self).x, side: side
         )
     }
 
@@ -1180,37 +1050,25 @@ public class SwipeableView: ExpoView {
         lastEmittedWillEndState = isOpen ? "open" : "closed"
         beginFeedback(on: side)
         requestActions(on: side)
-        if twoSided { gestureCompletion.begin() }
+        gestureCompletion.begin()
         onSwipeStart([:])
         startProgressUpdates()
     }
 
-    private func updateGesture(translation: CGFloat, side: SwipeSide, clamp: Bool, emitState: Bool) {
+    private func updateGesture(translation: CGFloat, side: SwipeSide) {
         let raw = startOffset + translation * friction
-        let constrained: CGFloat
-        if twoSided {
-            constrained = SwipePhysics.constrainToSide(
-                translation: raw, actionsWidth: width(for: side), side: side
-            )
-        } else {
-            let translation = clamp ? (isLeading ? max(0, raw) : min(0, raw)) : raw
-            constrained = SwipePhysics.applyRubberBand(
-                translation: translation, actionsWidth: actionsWidth, isLeading: isLeading
-            )
-        }
+        let constrained = SwipePhysics.constrainToSide(
+            translation: raw, actionsWidth: width(for: side), side: side
+        )
         currentTranslation = constrained
         contentView?.transform = CGAffineTransform(translationX: constrained, y: 0)
         updateFeedback(on: side, relativeTranslation: translation)
         updateActionsTransform()
-        if emitState {
-            // Legacy pan uses absolute drag position here; do not change its event cadence.
-            let projected = twoSided ? translation * friction : constrained
-            let wouldOpen = SwipePhysics.shouldSnapToOpen(
-                projectedTranslation: projected, actionsWidth: width(for: side), threshold: threshold,
-                isLeading: side == .left, isCurrentlyOpen: twoSided ? gestureStartedOpen : isOpen
-            )
-            emitIntendedState(wouldOpen, side: side)
-        }
+        let wouldOpen = SwipePhysics.shouldSnapToOpen(
+            projectedTranslation: translation * friction, actionsWidth: width(for: side), threshold: threshold,
+            isLeading: side == .left, isCurrentlyOpen: gestureStartedOpen
+        )
+        emitIntendedState(wouldOpen, side: side)
     }
 
     private func emitIntendedState(_ willOpen: Bool, side: SwipeSide) {
@@ -1222,7 +1080,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func finishGesture(
-        translation: CGFloat, velocity: CGFloat, side: SwipeSide, emitState: Bool, allowAutoClose: Bool
+        translation: CGFloat, velocity: CGFloat, side: SwipeSide
     ) {
         isGestureActivated = false
         directGesturePending = false
@@ -1232,12 +1090,12 @@ public class SwipeableView: ExpoView {
         let willOpen = SwipePhysics.shouldOpenOnSide(
             translation: translation, velocity: velocity, friction: friction,
             actionsWidth: width(for: side), threshold: threshold, side: side,
-            isCurrentlyOpen: twoSided ? gestureStartedOpen : isOpen
+            isCurrentlyOpen: gestureStartedOpen
         )
-        if emitState { emitIntendedState(willOpen, side: side) }
+        emitIntendedState(willOpen, side: side)
         if willOpen {
             beginOpen(on: side, preserveFeedback: true, preserveGestureCompletion: true)
-            if allowAutoClose && autoClose { scheduleAutoClose() }
+            if autoClose { scheduleAutoClose() }
         } else {
             performClose(animated: true, preserveGestureCompletion: true)
         }
@@ -1260,7 +1118,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func openResolvedSide(_ side: SwipeSide) {
-        if twoSided, let previous = currentSide, previous != side,
+        if let previous = currentSide, previous != side,
            isOpen || isAnimating || currentTranslation != 0 {
             performClose(animated: true) { [weak self] in
                 guard let self = self, self.width(for: side) > 0 else { return }
@@ -1320,10 +1178,6 @@ public class SwipeableView: ExpoView {
         currentTranslation = side.sign * width(for: side)
         contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
         requestActions(on: side)
-        if !twoSided && legacyActionsView == nil {
-            // Keep the historical legacy restore start callback, including raw native users.
-            onSwipeStart([:])
-        }
         updateActionsTransform()
         onSwipeProgress(payload(["progress": 1.0, "translationX": currentTranslation], side: side))
     }
@@ -1340,11 +1194,11 @@ public class SwipeableView: ExpoView {
         invalidateWork(preserveGestureCompletion: preserveGestureCompletion || endState == "open")
         openSide = nil
         animationSide = side
-        if twoSided && endState == "open", let side = side {
+        if endState == "open", let side = side {
             autoCloseState = .closing(side: side)
         }
-        // Instant legacy resets deliberately preserve cache; explicit two-sided closes clear it.
-        if animated || twoSided { persistOpenSide() }
+        // Every explicit close clears cached intent, including instant resets.
+        persistOpenSide()
         if !animated {
             currentTranslation = 0
             animationSide = nil
@@ -1403,16 +1257,12 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         let isHorizontal = abs(velocity.x) > abs(velocity.y)
         guard isHorizontal else { return false }
         let shouldBegin: Bool
-        if twoSided {
-            guard gestureEnabled else { return false }
-            let side = currentSide ?? SwipePhysics.latchedSide(
-                openSide: openSide, translation: velocity.x,
-                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
-            )
-            shouldBegin = side.map { width(for: $0) > 0 } ?? false
-        } else {
-            shouldBegin = isOpen || (isLeading ? velocity.x > 0 : velocity.x < 0)
-        }
+        guard gestureEnabled else { return false }
+        let side = currentSide ?? SwipePhysics.latchedSide(
+            openSide: openSide, translation: velocity.x,
+            leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+        )
+        shouldBegin = side.map { width(for: $0) > 0 } ?? false
 
         if shouldBegin {
             // Yield to any child-owned recognizer, including RNGH recognizers

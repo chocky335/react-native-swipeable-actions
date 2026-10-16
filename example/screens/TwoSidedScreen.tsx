@@ -21,15 +21,16 @@ import {
 import { colors } from '../styles'
 
 type Tab = 'commands' | 'options' | 'recycling' | 'localization'
+// Keep the existing alternate-action test ID; it no longer represents an API fallback.
 type Action = SwipeSide | 'more' | 'legacy'
 type Language = 'en' | 'ar'
 const ACTION_LABELS = {
-  en: { left: 'Pin', right: 'Del', more: '...', legacy: 'Old' },
+  en: { left: 'Pin', right: 'Del', more: '...', legacy: 'Alt' },
   ar: {
     left: '\u062a\u062b\u0628\u064a\u062a',
     right: '\u062d\u0630\u0641',
     more: '\u0627\u0644\u0645\u0632\u064a\u062f',
-    legacy: '\u0642\u062f\u064a\u0645'
+    legacy: '\u0628\u062f\u064a\u0644'
   }
 }
 let nextContentInstance = 0
@@ -162,14 +163,14 @@ function DemoRow({
   counters: Counters
   options: {
     language: Language
-    legacyOnly: boolean
+    rightOnly: boolean
     leftEnabled: boolean
     rightEnabled: boolean
     leftWidth: number
     rightWidth: number
     gestureEnabled: boolean
     autoClose: boolean
-    mixed: boolean
+    alternateContent: boolean
     rounded: boolean
     multiple: boolean
     light: boolean
@@ -220,60 +221,49 @@ function DemoRow({
   const contentStyle = options.light ? styles.lightContent : styles.content
   const titleStyle = options.light ? styles.lightTitle : styles.title
   const readoutStyle = options.light ? styles.lightReadout : styles.readout
-  const legacy = options.mixed
-    ? {
-        actions: (
-          <View style={styles.legacyRail}>
-            <ActionButton
-              id={id}
-              action='legacy'
-              language={options.language}
-              rounded={false}
-              onAction={onAction}
-            />
-          </View>
-        ),
-        actionsWidth: 96,
-        actionsPosition: 'right' as const
-      }
-    : {}
   const feedback = options.haptics === 'auto' ? {} : { hapticFeedback: options.haptics === 'on' }
   const sideProps = {
-    leftActions: options.leftEnabled ? (
-      <View style={leftRailStyle}>
-        <ActionButton
-          id={id}
-          action='left'
-          language={options.language}
-          rounded={options.rounded}
-          onAction={onAction}
-        />
-      </View>
-    ) : null,
-    leftActionsWidth: options.leftWidth,
-    rightActions: options.rightEnabled ? (
-      <View style={rightRailStyle}>
-        <ActionButton
-          id={id}
-          action='right'
-          language={options.language}
-          rounded={options.rounded}
-          onAction={onAction}
-        />
-        {options.multiple && (
-          <ActionButton
-            id={id}
-            action='more'
-            language={options.language}
-            rounded={options.rounded}
-            onAction={onAction}
-          />
-        )}
-      </View>
-    ) : (
-      false
-    ),
-    rightActionsWidth: options.rightWidth
+    ...(options.leftEnabled && !options.rightOnly
+      ? {
+          leftActions: (
+            <View style={leftRailStyle}>
+              <ActionButton
+                id={id}
+                action='left'
+                language={options.language}
+                rounded={options.rounded}
+                onAction={onAction}
+              />
+            </View>
+          ),
+          leftActionsWidth: options.leftWidth
+        }
+      : { leftActions: null }),
+    ...(options.rightEnabled
+      ? {
+          rightActions: (
+            <View style={rightRailStyle}>
+              <ActionButton
+                id={id}
+                action={options.alternateContent ? 'legacy' : 'right'}
+                language={options.language}
+                rounded={options.rounded}
+                onAction={onAction}
+              />
+              {options.multiple && (
+                <ActionButton
+                  id={id}
+                  action='more'
+                  language={options.language}
+                  rounded={options.rounded}
+                  onAction={onAction}
+                />
+              )}
+            </View>
+          ),
+          rightActionsWidth: options.rightWidth
+        }
+      : { rightActions: false as const })
   } satisfies Pick<
     TwoSidedSwipeableProps,
     'leftActions' | 'leftActionsWidth' | 'rightActions' | 'rightActionsWidth'
@@ -308,24 +298,13 @@ function DemoRow({
   return (
     <View style={cardStyle}>
       <View testID={`two-sided-frame-${id}`} collapsable={false} onLayout={recordLayout}>
-        {options.legacyOnly ? (
-          <Swipeable
-            {...commonProps}
-            actions={sideProps.rightActions}
-            actionsWidth={options.rightWidth}
-            actionsPosition='right'
-          >
-            {content}
-          </Swipeable>
-        ) : (
-          <Swipeable {...commonProps} {...legacy} {...sideProps}>
-            {content}
-          </Swipeable>
-        )}
+        <Swipeable {...commonProps} {...sideProps}>
+          {content}
+        </Swipeable>
       </View>
       <View style={styles.rowReadout}>
         <Text testID={`two-sided-presses-${id}`} style={readoutStyle}>
-          Left {counters.left}; right {counters.right}; more {counters.more}; legacy{' '}
+          Left {counters.left}; right {counters.right}; more {counters.more}; alternate{' '}
           {counters.legacy}
         </Text>
         <Text testID={`two-sided-events-${id}`} style={readoutStyle}>
@@ -354,14 +333,14 @@ export function TwoSidedScreen() {
   const [requestedDirection, setRequestedDirection] = useState<'LTR' | 'RTL' | null>(null)
   const [options, setOptions] = useState({
     language: 'en' as Language,
-    legacyOnly: false,
+    rightOnly: false,
     leftEnabled: true,
     rightEnabled: true,
     leftWidth: 80,
     rightWidth: 120,
     gestureEnabled: true,
     autoClose: false,
-    mixed: false,
+    alternateContent: false,
     rounded: false,
     multiple: false,
     light: false,
@@ -400,7 +379,7 @@ export function TwoSidedScreen() {
       leftWidth: value.language === 'en' ? 112 : 80,
       rightWidth: value.language === 'en' ? 160 : 120
     }))
-  const toggleLegacy = () => setOptions((value) => ({ ...value, legacyOnly: !value.legacyOnly }))
+  const toggleRightOnly = () => setOptions((value) => ({ ...value, rightOnly: !value.rightOnly }))
   const toggleControls = () => setControlsVisible((value) => !value)
   const openLeft = () => rowRefs.current.get(first.slot)?.open('left')
   const openRight = () => rowRefs.current.get(first.slot)?.open('right')
@@ -415,7 +394,8 @@ export function TwoSidedScreen() {
   const toggleGesture = () =>
     setOptions((value) => ({ ...value, gestureEnabled: !value.gestureEnabled }))
   const toggleAutoClose = () => setOptions((value) => ({ ...value, autoClose: !value.autoClose }))
-  const toggleMixed = () => setOptions((value) => ({ ...value, mixed: !value.mixed }))
+  const toggleAlternateContent = () =>
+    setOptions((value) => ({ ...value, alternateContent: !value.alternateContent }))
   const resizeLeft = () =>
     setOptions((value) => ({ ...value, leftWidth: value.leftWidth === 80 ? 112 : 80 }))
   const resizeRight = () =>
@@ -588,8 +568,8 @@ export function TwoSidedScreen() {
                 />
                 <Control
                   name='mixed'
-                  label={`Legacy fallback: ${options.mixed ? 'on' : 'off'}`}
-                  onPress={toggleMixed}
+                  label={`Alternate explicit content: ${options.alternateContent ? 'on' : 'off'}`}
+                  onPress={toggleAlternateContent}
                 />
                 <Control
                   name='left-width'
@@ -688,8 +668,8 @@ export function TwoSidedScreen() {
                   />
                   <Control
                     name='legacy-only'
-                    label={`Legacy only: ${options.legacyOnly ? 'on' : 'off'}`}
-                    onPress={toggleLegacy}
+                    label={`Right only: ${options.rightOnly ? 'on' : 'off'}`}
+                    onPress={toggleRightOnly}
                   />
                 </View>
                 <Text style={styles.readout}>
@@ -779,7 +759,6 @@ const styles = StyleSheet.create({
   lightReadout: { color: colors.backgroundInput, fontSize: 14, flexShrink: 1 },
   rail: { flexDirection: 'row' },
   insetRail: { flexDirection: 'row', padding: 8, gap: 8 },
-  legacyRail: { width: 96, height: '100%', flexDirection: 'row' },
   action: { flex: 1, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   roundedAction: { borderRadius: 16 },
   leftAction: { backgroundColor: colors.primary },

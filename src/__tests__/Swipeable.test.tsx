@@ -2,7 +2,6 @@ import { createElement, createRef } from 'react'
 import { act, create } from 'react-test-renderer'
 import { createControlledNativeMock } from './helpers/createControlledNativeMock'
 import type { SwipeableMethods, SwipeableProps } from '../Swipeable.types'
-import { SwipeableActions } from '../SwipeableActions'
 
 type SwipeableComponent = typeof import('../Swipeable').default
 
@@ -21,11 +20,11 @@ let tree: ReturnType<typeof create> | undefined
 
 const defaultProps: SwipeableProps = {
   children: createElement('View', { testID: 'swipeable-content' }, 'Message'),
-  actions: createElement('View', { testID: 'actions' }, 'Delete'),
-  actionsWidth: 80,
-  testID: 'legacy-row'
+  rightActions: createElement('View', { testID: 'actions' }, 'Delete'),
+  rightActionsWidth: 80,
+  testID: 'single-side-row'
 }
-const mockActions = defaultProps.actions
+const mockActions = defaultProps.rightActions
 const createRow = (props: Partial<SwipeableProps> = {}) => {
   const merged = { ...defaultProps, ...props }
   let nextTree: ReturnType<typeof create>
@@ -61,14 +60,14 @@ describe('Swipeable', () => {
   })
 
   describe('props interface', () => {
-    it('requires children, actions, and actionsWidth', () => {
+    it('accepts children and an explicit right-side action pair', () => {
       const props: SwipeableProps = {
         children: createElement('div'),
-        actions: mockActions,
-        actionsWidth: 80
+        rightActions: mockActions,
+        rightActionsWidth: 80
       }
-      expect(props.actionsWidth).toBe(80)
-      expect(props.actions).toBe(mockActions)
+      expect(props.rightActionsWidth).toBe(80)
+      expect(props.rightActions).toBe(mockActions)
     })
 
     it('accepts all optional props', () => {
@@ -77,9 +76,8 @@ describe('Swipeable', () => {
       const onProgress = jest.fn()
       const props: SwipeableProps = {
         children: createElement('div'),
-        actions: mockActions,
-        actionsWidth: 80,
-        actionsPosition: 'left',
+        rightActions: mockActions,
+        rightActionsWidth: 80,
         friction: 0.5,
         threshold: 0.3,
         dragOffsetFromEdge: 20,
@@ -89,7 +87,7 @@ describe('Swipeable', () => {
         onSwipeEnd,
         onProgress
       }
-      expect(props.actionsPosition).toBe('left')
+      expect(props.rightActionsWidth).toBe(80)
       expect(props.friction).toBe(0.5)
       expect(props.threshold).toBe(0.3)
       expect(props.dragOffsetFromEdge).toBe(20)
@@ -104,8 +102,8 @@ describe('Swipeable', () => {
       const onProgress = jest.fn()
       const props: SwipeableProps = {
         children: createElement('div'),
-        actions: mockActions,
-        actionsWidth: 80,
+        rightActions: mockActions,
+        rightActionsWidth: 80,
         onProgress
       }
       // Simulate calling onProgress with a progress value
@@ -114,36 +112,32 @@ describe('Swipeable', () => {
     })
   })
 
-  describe('legacy runtime behavior', () => {
-    it('lazily mounts actions', () => {
+  describe('single-side runtime behavior', () => {
+    it('lazily mounts actions on a native side request', () => {
       tree = createRow()
       const instance = mock.getLastInstance()
       expect(instance).toBeDefined()
       expect(
-        tree.root.findAll(
-          (node) => node.type === SwipeableActions && node.props.testID === 'legacy-row-actions'
-        )
+        tree.root.findAll((node) => node.type === 'View' && node.props.testID === 'actions')
       ).toHaveLength(0)
 
       act(() => {
-        instance?.triggerSwipeStart()
+        instance?.requestActions('right')
       })
 
       expect(
-        tree.root.findAll(
-          (node) => node.type === SwipeableActions && node.props.testID === 'legacy-row-actions'
-        )
+        tree.root.findAll((node) => node.type === 'View' && node.props.testID === 'actions')
       ).toHaveLength(1)
     })
 
-    it('forwards legacy callback arity and clamped progress values', () => {
+    it('forwards single-side callback arity and clamped progress values', () => {
       const onSwipeStart = jest.fn()
       const onSwipeStateChange = jest.fn()
       const onSwipeEnd = jest.fn()
       const onProgress = jest.fn()
 
       tree = createRow({
-        testID: 'legacy-callbacks',
+        testID: 'single-side-callbacks',
         onSwipeStart,
         onSwipeStateChange,
         onSwipeEnd,
@@ -173,9 +167,9 @@ describe('Swipeable', () => {
       expect(onSwipeEnd.mock.calls[0]).toHaveLength(1)
     })
 
-    it('keeps legacy duplicate-start guard semantics', () => {
+    it('keeps single-side duplicate-start guard semantics', () => {
       const onSwipeStart = jest.fn()
-      tree = createRow({ testID: 'legacy-duplicate-start', onSwipeStart })
+      tree = createRow({ testID: 'single-side-duplicate-start', onSwipeStart })
       const instance = mock.getLastInstance()
 
       act(() => {
@@ -196,7 +190,7 @@ describe('Swipeable', () => {
     it('routes ref commands through native module, including numeric recycling keys', () => {
       const ref = createRef<SwipeableMethods>()
       tree = createRow({
-        testID: 'legacy-ref-commands',
+        testID: 'single-side-ref-commands',
         recyclingKey: 8,
         ref
       })
@@ -217,7 +211,7 @@ describe('Swipeable', () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
 
       tree = createRow({
-        testID: 'legacy-ref-missing-key',
+        testID: 'single-side-ref-missing-key',
         ref
       })
 
@@ -235,17 +229,15 @@ describe('Swipeable', () => {
     })
 
     it('hydrates from native cache at mount and exposes static helpers', () => {
-      mock.SwipeableModule.isOpenByKey.mockReturnValue(true)
+      mock.SwipeableModule.getOpenSideByKey.mockReturnValue('right')
 
       tree = createRow({
-        testID: 'legacy-cache',
+        testID: 'single-side-cache',
         recyclingKey: 'cached-key'
       })
-      expect(mock.SwipeableModule.isOpenByKey).toHaveBeenCalledWith('cached-key')
+      expect(mock.SwipeableModule.getOpenSideByKey).toHaveBeenCalledWith('cached-key')
       expect(
-        tree.root.findAll(
-          (node) => node.type === SwipeableActions && node.props.testID === 'legacy-cache-actions'
-        )
+        tree.root.findAll((node) => node.type === 'View' && node.props.testID === 'actions')
       ).toHaveLength(1)
 
       Swipeable.open('cached-key')
@@ -263,7 +255,7 @@ describe('Swipeable', () => {
     const onSwipeEnd = jest.fn()
 
     tree = createRow({
-      testID: 'legacy-auto-close',
+      testID: 'single-side-auto-close',
       autoClose: true,
       recyclingKey: 'auto-close-row',
       onSwipeEnd
@@ -320,7 +312,10 @@ describe('Swipeable', () => {
       expect(mock.SwipeableModule.cancelByKey).toHaveBeenCalledWith('static-cancel-test')
     })
 
-    it.each([false, true])('allows a new gesture after ref cancel with twoSided=%s', (twoSided) => {
+    it.each([
+      false,
+      true
+    ])('allows a new gesture after ref cancel with bothSides=%s', (bothSides) => {
       const ref = createRef<SwipeableMethods>()
       const onSwipeStart = jest.fn()
       const onSwipeEnd = jest.fn()
@@ -329,7 +324,7 @@ describe('Swipeable', () => {
         recyclingKey: 'cancel-gate',
         onSwipeStart,
         onSwipeEnd,
-        ...(twoSided ? { leftActions: mockActions, leftActionsWidth: 80 } : {})
+        ...(bothSides ? { leftActions: mockActions, leftActionsWidth: 80 } : {})
       })
       const instance = mock.getLastInstance()
 

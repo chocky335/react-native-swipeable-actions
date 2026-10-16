@@ -37,12 +37,7 @@ class SwipeableModule : Module() {
         }
 
         View(SwipeableView::class) {
-            Prop("actionsWidth") { view: SwipeableView, width: Float ->
-                view.actionsWidth = width
-            }
-            Prop("actionsPosition") { view: SwipeableView, position: String ->
-                view.actionsPosition = position
-            }
+
             Prop("friction") { view: SwipeableView, friction: Float ->
                 view.friction = friction.coerceIn(0f, 1f)
             }
@@ -64,9 +59,7 @@ class SwipeableModule : Module() {
             Prop("autoCloseTimeout") { view: SwipeableView, timeout: Float ->
                 view.autoCloseTimeout = timeout
             }
-            Prop("twoSided") { view: SwipeableView, enabled: Boolean ->
-                view.twoSided = enabled
-            }
+
             Prop("leftActionsWidth") { view: SwipeableView, width: Float ->
                 view.leftActionsWidth = width
             }

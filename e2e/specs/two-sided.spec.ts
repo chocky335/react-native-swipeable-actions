@@ -269,8 +269,8 @@ describe('Two-sided native demo', () => {
         await $(selectors.twoSidedAction(0, side)).click()
         await expect($(selectors.twoSidedPresses(0))).toHaveText(
           side === 'left'
-            ? 'Left 1; right 0; more 0; legacy 0'
-            : 'Left 0; right 1; more 0; legacy 0'
+            ? 'Left 1; right 0; more 0; alternate 0'
+            : 'Left 0; right 1; more 0; alternate 0'
         )
         expect(await events()).toEqual({
           starts: 0,
@@ -286,7 +286,7 @@ describe('Two-sided native demo', () => {
         await expect($(selectors.twoSidedAction(0, side))).not.toBeDisplayed()
         await $(selectors.twoSidedAction(0, next)).click()
         await expect($(selectors.twoSidedPresses(0))).toHaveText(
-          'Left 1; right 1; more 0; legacy 0'
+          'Left 1; right 1; more 0; alternate 0'
         )
         expect(await events()).toEqual({
           starts: 0,
@@ -319,14 +319,14 @@ describe('Two-sided native demo', () => {
     await waitOffset(0, 80)
   })
 
-  it('explicit false blocks legacy right fallback and explicit disabled opens never choose left', async () => {
-    await option('mixed', 'Legacy fallback: on')
-    // Complete explicit right content overrides the legacy right button/width.
+  it('explicit false disables alternate right content and explicit disabled opens never choose left', async () => {
+    // The retained technical control ID now selects explicit content, never fallback props.
+    await option('mixed', 'Alternate explicit content: on')
     await command('open-right')
     await waitEnd(0, 'right', 'open')
     await waitOffset(0, -120)
-    await expect($(selectors.twoSidedAction(0, 'right'))).toBeDisplayed()
-    await expect($(selectors.twoSidedAction(0, 'legacy'))).not.toExist()
+    await expect($(selectors.twoSidedAction(0, 'legacy'))).toBeDisplayed()
+    await expect($(selectors.twoSidedAction(0, 'right'))).not.toExist()
     await option('right-enabled', 'Right: disabled')
     await waitOffset(0, 0)
     const baseline = await events()
@@ -341,7 +341,7 @@ describe('Two-sided native demo', () => {
     await waitEnd(0, 'left', 'open')
     await waitOffset(0, 80)
     await $(selectors.twoSidedAction(0, 'left')).click()
-    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 0; more 0; legacy 0')
+    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 0; more 0; alternate 0')
   })
 
   it('explicit null disables left without opening right, and both edges can be disabled', async () => {
@@ -427,7 +427,9 @@ describe('Two-sided native demo', () => {
       await waitEnd(0, opposite(side), 'open')
       await waitOffset(0, 0)
       expect(await events()).toEqual({ starts: 2, ends: 2, left: 1, right: 1 })
-      await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 0; right 0; more 0; legacy 0')
+      await expect($(selectors.twoSidedPresses(0))).toHaveText(
+        'Left 0; right 0; more 0; alternate 0'
+      )
     })
 
     for (const list of ['FlashList', 'FlatList'] as const) {
@@ -470,8 +472,8 @@ describe('Two-sided native demo', () => {
         await $(selectors.twoSidedAction(0, side)).click()
         await expect($(selectors.twoSidedPresses(0))).toHaveText(
           side === 'left'
-            ? 'Left 1; right 0; more 0; legacy 0'
-            : 'Left 0; right 1; more 0; legacy 0'
+            ? 'Left 1; right 0; more 0; alternate 0'
+            : 'Left 0; right 1; more 0; alternate 0'
         )
 
         await selectTab('recycling')
@@ -539,7 +541,7 @@ describe('Two-sided native demo', () => {
       expect(size.height / scale).toBeGreaterThanOrEqual(44)
       await button.click()
     }
-    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 1; more 1; legacy 0')
+    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 1; more 1; alternate 0')
     await option('haptics', 'Haptics: off')
     await option('appearance', 'Appearance: Default')
     await waitOffset(0, -120)

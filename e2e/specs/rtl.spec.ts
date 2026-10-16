@@ -261,8 +261,8 @@ describe('Global direction and live translated labels', () => {
         const offset = side === 'left' ? width : -width
         const expectedPresses =
           side === 'left'
-            ? 'Left 1; right 0; more 0; legacy 0'
-            : 'Left 0; right 1; more 0; legacy 0'
+            ? 'Left 1; right 0; more 0; alternate 0'
+            : 'Left 0; right 1; more 0; alternate 0'
 
         it(`gesture reveals physical ${side}, fires only that side, and keeps actions tappable`, async () => {
           await swipe(side)
@@ -343,17 +343,17 @@ describe('Global direction and live translated labels', () => {
         }
       }
 
-      it('legacy-only right actions retain gesture, command and translated-width behavior', async () => {
+      it('explicit right-only actions retain gesture, command and translated-width behavior', async () => {
         await selectTab('localization')
         await tap('legacy-only')
-        await expect($(label('legacy-only'))).toHaveText('Legacy only: on')
+        await expect($(label('legacy-only'))).toHaveText('Right only: on')
         await swipe('right')
         await expectEnd('right', 'open')
         await waitOffset(-120)
         await assertPhysicalAction('right', 120)
         await $(selectors.twoSidedAction(0, 'right')).click()
         await expect($(selectors.twoSidedPresses(0))).toHaveText(
-          'Left 0; right 1; more 0; legacy 0'
+          'Left 0; right 1; more 0; alternate 0'
         )
         const instance = await text(control('instance-0'))
         await setLanguage('ar')

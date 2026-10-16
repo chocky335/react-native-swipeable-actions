@@ -7,7 +7,10 @@ This follow-up to issue 15 addresses
 Its PR is based on the issue-15 branch until that delivery merges, then can be
 retargeted to main. Review this PR against its selected base to see only the
 appearance changes, not the independent two-sided implementation.
-This is PR22 at appearance revision `411719a`, stacked on PR21 (`a92045c`).
+PR22 now integrates appearance on the breaking, explicit-only upcoming 1.0.0 base.
+The appearance layer is additive to that new base; it does not preserve or restore
+the removed `actions`, `actionsWidth`, or `actionsPosition` API. Single-side rows
+use one explicit side pair on the same engine as rows with both sides enabled.
 The physical-edge API, RTL alignment, and their common documentation belong to PR21;
 the optional appearance/feedback props and their acceptance checks belong to PR22.
 
@@ -16,15 +19,17 @@ the previous presentation. `hapticFeedback` explicitly enables/disables one nati
 light impact at the first opening-threshold crossing in a gesture; when omitted,
 the effective value is `hapticFeedback ?? (appearance === 'ios26')`: enabled for
 `ios26`, disabled for `default`. The example's Auto control omits the boolean prop;
-`'auto'` is not an API value. Both props also support legacy single-sided rows.
+`'auto'` is not an API value. Both props support migrated explicit single-side rows
+and rows with both sides enabled.
 Programmatic opens, remounts,
 recycling, and auto-close do not synthesize a new threshold impact.
 
 This is iOS-inspired motion, not Apple's native Mail/Notes control, Liquid Glass,
 or a claim of exact system-control parity. Rounded/inset/multiple buttons remain
 caller-owned React content. No new blur dependency, SDK minimum, or Android motion
-change or Android haptic feedback is introduced. The physical-side and RTL contracts
-of issue 15 remain intact. Global RTL changes require an app restart; translation-only
+change or Android haptic feedback is introduced by the appearance layer. The physical-side
+and RTL contracts of the new 1.0.0 base remain intact; its approved behavioral changes
+still apply to migrated single-side rows. Global RTL changes require an app restart; translation-only
 label/width updates can happen live without changing the item's recycling key.
 
 iOS Reduce Motion suppresses the preset's entry/pop scaling, including when toggled
@@ -33,17 +38,27 @@ not override the haptic preference. This behavior still requires human acceptanc
 
 ## Automated checks
 
-The separate change restores seven Swift appearance/feedback tests and two React
-prop/default/platform tests. The two-sided E2E styling case additionally exercises
-the preset and explicit haptic options while retaining reveal-width and tappability
-assertions. All legacy, two-sided, RTL, and benchmark cases must still run.
+Retain the appearance/feedback native and React regressions alongside the canonical
+API migration tests. The earlier split restored seven Swift appearance/feedback tests
+and two React prop/default/platform tests; those historical counts are not evidence
+that the current integration passes. The two-sided E2E styling case additionally
+exercises the preset and explicit haptic options while retaining reveal-width and
+tappability assertions. All 25 original single-side scenarios remain, with 19 two-sided,
+14 RTL and one benchmark case: the gate remains 59 cases plus required Maestro.
+Do not change assertions, hooks, retries, or deadlines to obtain a passing merge.
 
 Swift package tests exclude UIKit; a successful native app build and full iOS E2E
 run are required. Simulator tests cannot establish physical haptic feel. Fresh,
 commit-specific results belong in the PR, not in claims derived from the older
 combined branch.
 
-## Reported acceptance snapshot for PR22
+## Historical acceptance snapshot for PR22 (before the 1.0.0 migration)
+
+The following evidence was recorded for the earlier appearance delivery `411719a`,
+stacked on PR21 `a92045c`, or for the older owner-tested app described below. It is
+preserved as history, not acceptance of the current explicit-only API integration.
+In particular, prior owner feedback on that old build cannot establish new-migration
+acceptance, even when the intended appearance/haptic behavior is unchanged.
 
 - CI run `38624200228` completed with overall status cancelled. Lint, test, and
   Android jobs succeeded. This PR's Android run is independently verified at 59/59,
@@ -64,7 +79,8 @@ combined branch.
 
 ## Physical iPhone acceptance checklist
 
-Use a newly built app from this PR, not the earlier combined APK/simulator build.
+Use a newly built app from the current integrated PR commit, not the earlier owner-tested
+app or combined APK/simulator build. Record fresh results against that exact commit.
 In the example config panel choose Two-sided, then its Options tab.
 
 1. With appearance default and haptics auto, compare motion and confirm no new impact.

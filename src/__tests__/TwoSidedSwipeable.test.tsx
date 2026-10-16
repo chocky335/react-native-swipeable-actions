@@ -69,7 +69,7 @@ it('keeps a gesture start separate from native action-render requests', () => {
   expect(onSwipeStart).toHaveBeenCalledWith()
 })
 
-it('keeps old command arity and routes explicit sides through the additive bridge', () => {
+it('routes default and explicit side commands through the shared bridge', () => {
   const ref = createRef<SwipeableMethods>()
   render({ ...base, ref })
   act(() => {

@@ -31,15 +31,13 @@ export interface NativeSwipeableRef {
   cancel: () => Promise<void>
 }
 
+/** Native child order is always left slot, right slot, then content. */
 export interface SwipeableViewProps extends ViewProps {
-  actionsWidth: number
-  twoSided?: boolean
   leftActionsWidth?: number
   rightActionsWidth?: number
   onActionsNeeded?: (event: ActionsNeededEvent) => void
   appearance?: SwipeAppearance
   hapticFeedback?: boolean
-  actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number
   gestureEnabled?: boolean
@@ -57,19 +55,12 @@ export interface SwipeableViewProps extends ViewProps {
   testID?: string
 }
 
-export interface SwipeableProps {
+interface SwipeableCommonProps {
   children: ReactNode
-  actions: ReactNode
-  actionsWidth: number
-  leftActions?: ReactNode
-  leftActionsWidth?: number
-  rightActions?: ReactNode
-  rightActionsWidth?: number
   onLeftSwipeEnd?: (state: 'open' | 'closed') => void
   onRightSwipeEnd?: (state: 'open' | 'closed') => void
   appearance?: SwipeAppearance
   hapticFeedback?: boolean
-  actionsPosition?: 'left' | 'right'
   friction?: number
   threshold?: number
   gestureEnabled?: boolean
@@ -88,6 +79,7 @@ export interface SwipeableProps {
 
 export interface SwipeableMethods {
   close: (animated?: boolean) => void
+  /** Open the requested physical edge; without a side, prefer enabled right, then left. */
   open: (side?: SwipeSide) => void
   cancel: () => void
 }
@@ -107,20 +99,12 @@ type RightActionsConfiguration =
   | { rightActions: ReactNode; rightActionsWidth: number }
   | { rightActions?: null | false | undefined; rightActionsWidth?: never }
 
-/** Additive input type; the legacy SwipeableProps interface keeps its required members. */
-export type TwoSidedSwipeableProps = Omit<
-  SwipeableProps,
-  | 'actions'
-  | 'actionsWidth'
-  | 'leftActions'
-  | 'leftActionsWidth'
-  | 'rightActions'
-  | 'rightActionsWidth'
-> & {
-  actions?: ReactNode
-  actionsWidth?: number
-} & LeftActionsConfiguration &
+/** The sole action API: explicit physical-edge pairs, including single-sided rows. */
+export type SwipeableProps = SwipeableCommonProps &
+  LeftActionsConfiguration &
   RightActionsConfiguration &
   ({ leftActions: ReactNode } | { rightActions: ReactNode })
 
-export type SwipeableComponentProps = SwipeableProps | TwoSidedSwipeableProps
+/** Descriptive alias for the same explicit-side API, not a separate implementation. */
+export type TwoSidedSwipeableProps = SwipeableProps
+export type SwipeableComponentProps = SwipeableProps
