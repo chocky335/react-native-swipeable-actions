@@ -15,10 +15,12 @@ jest.mock('./src/SwipeableView.tsx', () => {
   const SwipeableView = React.forwardRef((props, ref) => {
     const {
       children,
+      onActionsNeeded,
       onSwipeStart,
       testID,
       ...rest
     } = props
+    const { recyclingKey } = props
 
     React.useImperativeHandle(ref, () => ({
       close: jest.fn(),
@@ -27,8 +29,14 @@ jest.mock('./src/SwipeableView.tsx', () => {
     }), [])
 
     React.useEffect(() => {
-      onSwipeStart?.()
-    }, [onSwipeStart])
+      // Match the native event shape: Swipeable reads the binding key from nativeEvent.
+      const nativeEvent = (extra) => ({
+        nativeEvent: { ...(recyclingKey != null ? { recyclingKey } : {}), ...extra }
+      })
+      onActionsNeeded?.(nativeEvent({ side: 'left' }))
+      onActionsNeeded?.(nativeEvent({ side: 'right' }))
+      onSwipeStart?.(nativeEvent({}))
+    }, [onActionsNeeded, onSwipeStart, recyclingKey])
 
     return React.createElement(
       View,

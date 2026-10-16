@@ -29,7 +29,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - name: Test release and package guards
-        run: node --test scripts/package-artifact.test.mjs scripts/release-readiness.test.mjs
+        run: node --test scripts/package-artifact.test.mjs scripts/release-readiness.test.mjs scripts/jest-setup.test.mjs
       - name: Build and validate consumer artifact
         run: node scripts/package-artifact.mjs pack "$RUNNER_TEMP/swipeable-package"
       - uses: actions/upload-artifact@v4
