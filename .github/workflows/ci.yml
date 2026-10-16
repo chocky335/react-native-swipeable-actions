@@ -103,10 +103,11 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      SWIPEABLE_CONSUMER: ${{ runner.temp }}/swipeable-consumer
     steps:
       - uses: actions/checkout@v4
+
+      - name: Locate the clean consumer
+        run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -254,9 +255,11 @@ jobs:
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      SWIPEABLE_CONSUMER: ${{ runner.temp }}/swipeable-consumer
     steps:
       - uses: actions/checkout@v4
+
+      - name: Locate the clean consumer
+        run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
 
       - name: Check pinned iOS toolchain
         run: |
