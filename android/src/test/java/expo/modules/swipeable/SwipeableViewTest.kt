@@ -2066,6 +2066,42 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun gestureDisabledRowsRestoreTheCachedOpenSide() {
+        for (side in SwipeSide.values()) {
+            val row = row(key = "disabled-restore")
+            row.gestureEnabled = false
+            row.applyPendingConfiguration()
+            row.open(side)
+            settle()
+            val openX = side.sign * (if (side == SwipeSide.LEFT) 160f else 240f)
+            // Recycled instance: rebind away and back while gestures stay disabled.
+            row.recyclingKey = "other"
+            row.applyPendingConfiguration()
+            row.recyclingKey = "disabled-restore"
+            row.applyPendingConfiguration()
+            settle()
+            assertEquals(openX, content(row).translationX, .01f)
+            root.removeView(row)
+            // New instance: its first gestureEnabled=false prop is not a disable of this row.
+            val fresh = SwipeableView(activity, mockk<AppContext>(relaxed = true))
+            fresh.gestureEnabled = false
+            fresh.recyclingKey = "disabled-restore"
+            fresh.leftActionsWidth = 80f
+            fresh.rightActionsWidth = 120f
+            fresh.applyPendingConfiguration()
+            repeat(3) { fresh.addView(FrameLayout(activity)) }
+            root.addView(fresh, FrameLayout.LayoutParams(400, 64))
+            fresh.layout(0, 0, 400, 64)
+            settle()
+            assertEquals(openX, content(fresh).translationX, .01f)
+            assertEquals(side.value, SwipeableView.getOpenSideByKey("disabled-restore"))
+            assertTrue(named("onSwipeStart").isEmpty())
+            root.removeView(fresh)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.

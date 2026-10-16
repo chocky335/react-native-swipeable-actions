@@ -493,7 +493,8 @@ public class SwipeableView: ExpoView {
         reconcileChildRoles()
         if let cachedSide = pendingRestoreSide {
             let side = cachedSide
-            if (width(for: side) <= 0 || !gestureEnabled) {
+            // gestureEnabled turns off only the gesture; cached intent still restores.
+            if width(for: side) <= 0 {
                 pendingRestoreSide = nil
                 openSide = nil
                 currentTranslation = 0

@@ -1190,9 +1190,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             isOpen = false
             openSide = null
             animationSide = null
-            pendingRestoreSide = null
             resetPosition()
-            persistOpenSide(null)
+            // A pending cached restore owns the cache: gestureEnabled turns off only the gesture.
+            if (!restorePending) persistOpenSide(null)
         }
         pendingGestureDisable = false
         if (restorePending) {
