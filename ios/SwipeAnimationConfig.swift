@@ -37,15 +37,23 @@ extension SwipeAnimationConfig {
         progress: CGFloat, popElapsed: TimeInterval?, hasPopped: Bool, reduceMotion: Bool
     ) -> CGFloat {
         guard !reduceMotion else { return actionRailRestScale }
+        let entryScale = actionRailEntryScale + (actionRailRestScale - actionRailEntryScale) * max(0, min(1, progress))
         if let elapsed = popElapsed {
             if elapsed < actionRailPopRiseDuration {
+                // Rise from the scale shown at the crossing, so the pop starts without a jump.
                 let t = CGFloat(max(0, elapsed) / actionRailPopRiseDuration)
-                return actionRailRestScale + (actionRailPopScale - actionRailRestScale) * t
+                return entryScale + (actionRailPopScale - entryScale) * t
             }
             let t = CGFloat(min(1, (elapsed - actionRailPopRiseDuration) / actionRailPopSettleDuration))
             return actionRailPopScale + (actionRailRestScale - actionRailPopScale) * (1 - (1 - t) * (1 - t))
         }
         if hasPopped { return actionRailRestScale }
-        return actionRailEntryScale + (actionRailRestScale - actionRailEntryScale) * max(0, min(1, progress))
+        return entryScale
+    }
+
+    /// Rails span the row and align actions to their outer edge. Scaling about
+    /// that edge, not the rail center, keeps a pop from pushing actions past the row.
+    static func actionRailTranslation(offset: CGFloat, scale: CGFloat, railWidth: CGFloat, side: SwipeSide) -> CGFloat {
+        offset - side.sign * railWidth / 2 * (1 - scale)
     }
 }

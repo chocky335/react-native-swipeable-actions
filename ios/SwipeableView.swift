@@ -844,8 +844,11 @@ public class SwipeableView: ExpoView {
             let progress = active && sideWidth > 0 ? min(abs(translation) / sideWidth, 1) : 0
             let offset = -side.sign * sideWidth * (1 - progress)
             let scale = active && (isDragging || isAnimating || isOpen) ? railScale(progress: progress) : 1
-            // Explicit tx keeps scaling centered on the rail and never scales row translation.
-            rail.transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: offset, ty: 0)
+            // Explicit tx anchors scaling at the actions' row edge and never scales row translation.
+            let tx = SwipeAnimationConfig.actionRailTranslation(
+                offset: offset, scale: scale, railWidth: rail.bounds.width, side: side
+            )
+            rail.transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: tx, ty: 0)
             let revealed = active && sideWidth > 0 && side.sign * translation > 0
             railVisibility.setRevealed(revealed, for: rail)
         }

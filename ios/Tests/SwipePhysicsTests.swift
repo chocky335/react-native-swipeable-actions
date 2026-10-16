@@ -617,6 +617,36 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
         XCTAssertEqual(SwipeAnimationConfig.actionRailScale(progress: 0, popElapsed: nil, hasPopped: true, reduceMotion: false), 1)
     }
 
+    func testAppearancePopRisesFromTheCurrentEntryScale() {
+        for progress: CGFloat in [0.2, 0.4, 0.7] {
+            let beforePop = SwipeAnimationConfig.actionRailScale(
+                progress: progress, popElapsed: nil, hasPopped: false, reduceMotion: false
+            )
+            let popStart = SwipeAnimationConfig.actionRailScale(
+                progress: progress, popElapsed: 0, hasPopped: true, reduceMotion: false
+            )
+            XCTAssertEqual(popStart, beforePop, accuracy: 0.0001)
+        }
+    }
+
+    func testAppearanceScaleKeepsActionsAtTheirRowEdge() {
+        // Rails span the row; actions are aligned to the rail's outer edge.
+        let railWidth: CGFloat = 390
+        for side in SwipeSide.allCases {
+            for scale: CGFloat in [0.96, 1, 1.03] {
+                let tx = SwipeAnimationConfig.actionRailTranslation(
+                    offset: 0, scale: scale, railWidth: railWidth, side: side
+                )
+                let outerEdge: CGFloat = side == .left ? 0 : railWidth
+                let center = railWidth / 2
+                XCTAssertEqual(center + (outerEdge - center) * scale + tx, outerEdge, accuracy: 0.0001)
+            }
+            XCTAssertEqual(SwipeAnimationConfig.actionRailTranslation(
+                offset: 25, scale: 1, railWidth: railWidth, side: side
+            ), 25)
+        }
+    }
+
     func testReduceMotionSuppressesBothEntryAndActivePop() {
         XCTAssertEqual(SwipeAnimationConfig.actionRailScale(progress: 0, popElapsed: nil, hasPopped: false, reduceMotion: true), 1)
         XCTAssertEqual(SwipeAnimationConfig.actionRailScale(progress: 0.5, popElapsed: 0.12, hasPopped: true, reduceMotion: true), 1)
