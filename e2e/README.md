@@ -94,17 +94,17 @@ does not authorize connecting to or changing any device.
 
 ## Isolated iOS CI coverage
 
-The opt-in iOS E2E workflow runs performance, RTL, single-side swipeable regression, and two-sided specs in separate jobs with matrix fail-fast disabled. Each job retains the 45-minute limit; test assertions, retries, and per-test deadlines are unchanged. The swipeable shard also runs the required Maestro seekbar regression.
+The opt-in iOS E2E workflow runs performance, RTL, swipe-to-go-back, single-side swipeable regression, and two-sided specs in separate jobs with matrix fail-fast disabled. Each job retains the 45-minute limit; test assertions, retries, and per-test deadlines are unchanged. The swipeable shard also runs the required Maestro seekbar regression.
 
-The final `e2e-ios` gate requires all four jobs to succeed, all 59 registered cases to pass exactly once, completed workers, and successful Maestro coverage. Missing, cancelled, skipped, duplicate, failed, or unfinished evidence fails the gate. Artifacts are separated by source SHA, workflow run, attempt, and shard. Registration discovery rejects inventory changes until the reviewed expected spec counts are updated.
+The final `e2e-ios` gate requires all five jobs to succeed, all 62 registered cases to pass exactly once, completed workers, and successful Maestro coverage. Missing, cancelled, skipped, duplicate, failed, or unfinished evidence fails the gate. Artifacts are separated by source SHA, workflow run, attempt, and shard. Registration discovery rejects inventory changes until the reviewed expected spec counts are updated.
 
 Run `cd e2e && npm run test:harness` for the offline shard-evidence regressions alongside the existing harness tests. Offline success does not establish simulator acceptance. Job isolation prevents one serial run from leaving later suites unstarted; it does not change or excuse individual test timeouts.
 
 ## Upcoming 1.0.0 API migration
 
 The demo now uses explicit physical-side content/width pairs for every row. The original
-25 cases in `swipeable.spec.ts` remain, alongside 19 two-sided, 14 RTL and one benchmark
-case. Maestro's seekbar flow is unchanged. No hook, retry, polling or deadline is relaxed.
+25 cases in `swipeable.spec.ts` remain, alongside 19 two-sided, 14 RTL, 3 swipe-to-go-back and
+one benchmark case. Maestro's seekbar flow is unchanged. No hook, retry, polling or deadline is relaxed.
 
 The fallback-precedence case now tests alternate explicit right content and its disabled
 edge. The former legacy-only RTL mode is explicit right-only. Technical control IDs remain

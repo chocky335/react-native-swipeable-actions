@@ -71,6 +71,12 @@ class ConfigPanel extends BasePage {
     await $(selectors.twoSidedDemo).waitForExist()
   }
 
+  /** Select the swipe-to-go-back showcase. */
+  async selectSwipeBackDemo(): Promise<void> {
+    await this.tap(selectors.selectDemoSwipeBack)
+    await $(selectors.swipeBackScreen).waitForExist()
+  }
+
   /**
    * Select Native Swipeable implementation
    */

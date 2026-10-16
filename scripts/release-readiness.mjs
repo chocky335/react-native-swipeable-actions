@@ -15,7 +15,8 @@ import {
 
 export const REQUIRED_JOBS = Object.freeze([
   'lint', 'test', 'package', 'build-ios', 'e2e-android', 'ios-plan',
-  'iOS / performance', 'iOS / rtl', 'iOS / swipeable', 'iOS / two-sided', 'e2e-ios'
+  'iOS / performance', 'iOS / rtl', 'iOS / swipe-back', 'iOS / swipeable', 'iOS / two-sided',
+  'e2e-ios'
 ])
 export const PHYSICAL_CHECKS = Object.freeze([
   'defaultAppearance', 'physicalSwipesAndActions', 'autoHaptics', 'hapticsOn',
@@ -65,7 +66,7 @@ export function validateRun(run, jobs, { sourceSha, repository }) {
     assert.equal(job.status, 'completed', 'Unfinished job: ' + job.name)
     assert.equal(job.conclusion, 'success', 'Unsuccessful job: ' + job.name)
   }
-  for (const name of ['e2e-android', 'iOS / performance', 'iOS / rtl', 'iOS / swipeable', 'iOS / two-sided']) {
+  for (const name of ['e2e-android', 'iOS / performance', 'iOS / rtl', 'iOS / swipe-back', 'iOS / swipeable', 'iOS / two-sided']) {
     const steps = jobs.find((job) => job.name === name).steps
     assert.equal(steps?.find((step) => step.name === 'Run E2E tests')?.conclusion, 'success', 'Missing successful test execution: ' + name)
   }
@@ -90,7 +91,7 @@ export function validatePackage(report, bytes, version, sourceSha, packedPackage
 // Fail closed if the reporter format changes; update against real logs, never invent success.
 export function validateAndroidLog(log, manifest) {
   const text = log.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
-  assert.equal([...text.matchAll(/Spec Files:\s*4 passed,\s*4 total\b/g)].length, 1, 'Missing complete Android run summary')
+  assert.equal([...text.matchAll(/Spec Files:\s*5 passed,\s*5 total\b/g)].length, 1, 'Missing complete Android run summary')
   assert.ok(!/\b[1-9][0-9]* (?:failing|pending|skipped|failed|retried)\b/i.test(text), 'Android failures, retries or skips')
   assert.ok(!/\[[0-9]+-[0-9]+\] RETRYING\b/.test(text), 'Retried Android worker')
   const completed = [...text.matchAll(/\[([0-9]+-[0-9]+)\] PASSED[^\r\n]*?((?:file:\/\/)?\/[^\r\n]*?\/specs\/[^\s]+\.spec\.ts)\s*$/gm)]
@@ -111,7 +112,7 @@ export function validateAndroidLog(log, manifest) {
     // Reporters group nested suites; registration and display order can differ.
     assert.deepEqual(titles.sort(), shard.cases.map((entry) => entry.title).sort(), 'Android passing case inventory differs: ' + shard.id)
   }
-  assert.equal(seen.size, 4)
+  assert.equal(seen.size, 5)
 }
 
 // REST's user identifies the original author, not whoever last edited the body.

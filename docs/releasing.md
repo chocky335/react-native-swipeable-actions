@@ -43,7 +43,8 @@ Both runs must be successful [CI workflow](https://github.com/chocky335/react-na
 repository with the exact source SHA and these successful jobs:
 
 - `lint`, `test`, `package`, `build-ios`, `e2e-android`, `ios-plan`
-- `iOS / performance`, `iOS / rtl`, `iOS / swipeable`, `iOS / two-sided`, `e2e-ios`
+- `iOS / performance`, `iOS / rtl`, `iOS / swipe-back`, `iOS / swipeable`, `iOS / two-sided`,
+  `e2e-ios`
 
 Any additional unsuccessful, duplicate, missing, skipped or unfinished job also
 blocks publication. Each mobile job must have a successful `Run E2E tests` step,
@@ -61,12 +62,12 @@ iOS uses the existing `ios-plan-<sha>-<run>-1` and
 `ios-shard-<sha>-<run>-1-<shard>` artifacts. The gate rediscovers the maintained
 inventory from the prepared checkout, compares source hashes and case identities,
 then validates raw NDJSON, worker completion, receipts, zero retries/skips,
-all 59 cases and Maestro. Records must belong to the run's time interval.
-Android uses the actual `e2e-android` job log: four completed spec workers, the
+all 62 cases and Maestro. Records must belong to the run's time interval.
+Android uses the actual `e2e-android` job log: five completed spec workers, the
 complete WDIO summary and every passing case title (including duplicate counts) are required.
 A success badge, hand-entered count or summary without case output cannot pass.
 Missing/expired artifacts or logs and changed reporter formats fail closed.
-Recycling, detach and RTL remain mandatory in this same-source 59-case E2E
+Recycling, detach and RTL remain mandatory in this same-source 62-case E2E
 inventory on both platforms, in both runs. They are automated evidence requirements,
 not extra physical smoke confirmations; removing their manual keys does not remove
 any automated cases, assertions or required jobs.

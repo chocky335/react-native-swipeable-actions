@@ -47,7 +47,7 @@ function fixture(version = '1.0.0-rc.0') {
       const androidLog = manifest.shards.map((shard, index) =>
         shard.cases.map((entry) => '[app Android #0-' + index + '] \u2713 ' + entry.title).join('\n') +
         '\n[0-' + index + '] PASSED in Android - file:///checkout/e2e/' + shard.spec
-      ).join('\n') + '\nSpec Files: 4 passed, 4 total (100% completed)\n'
+      ).join('\n') + '\nSpec Files: 5 passed, 5 total (100% completed)\n'
       return { run, jobs, manifest, expectedManifest: structuredClone(manifest), bundles, androidLog,
         report: { sourceSha: sha, cleanSource: true, version, filename: 'package.tgz', integrity: digest, files: ['package.json'] },
         bytes, packedPackage: pkg }
@@ -105,7 +105,7 @@ const mutations = {
   'failed iOS case': (v) => { v.runs[0].bundles['two-sided'].workers[0][2].status = 'failed' },
   'retried iOS case': (v) => { v.runs[0].bundles.rtl.workers[0][2].retries.attempts = 1 },
   'replayed old records': (v) => { v.runs[0].bundles.rtl.workers[0][0].timestamp = '2026-10-15T11:00:00Z' },
-  'Android summary only': (v) => { v.runs[0].androidLog = 'Spec Files: 4 passed, 4 total\n' },
+  'Android summary only': (v) => { v.runs[0].androidLog = 'Spec Files: 5 passed, 5 total\n' },
   'Android missing case': (v) => { v.runs[0].androidLog = v.runs[0].androidLog.replace('[app Android #0-0] \u2713 case 0', '') },
   'Android duplicate output': (v) => { v.runs[0].androidLog += v.runs[0].androidLog },
   'Android skipped case': (v) => { v.runs[0].androidLog += '1 skipped\n' },
@@ -181,12 +181,12 @@ test('uses edit-specific metadata rather than inferring edits from REST updated_
   assert.equal(validateReadiness(value).acceptance.reviewer, 'maintainer')
 })
 
-test('short physical smoke retains seven grouped checks and both complete 59-case mobile inventories', () => {
+test('short physical smoke retains seven grouped checks and both complete 62-case mobile inventories', () => {
   assert.deepEqual(PHYSICAL_CHECKS, ['defaultAppearance', 'physicalSwipesAndActions', 'autoHaptics',
     'hapticsOn', 'hapticsOff', 'hapticSuppression', 'reduceMotion'])
   const value = fixture()
   for (const evidence of value.runs) {
-    assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 59)
+    assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 62)
   }
   assert.deepEqual(validateReadiness(value).ciRuns, [101, 102])
 })

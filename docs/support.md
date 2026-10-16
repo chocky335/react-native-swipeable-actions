@@ -27,15 +27,16 @@ The package declares these ranges. They are minimums, not a tested matrix.
 
 ## Tested for 1.0
 
-Every configuration below ran the release candidate. The E2E suite has 59 cases
-(25 single-sided, 19 two-sided, 14 RTL, 1 performance) plus the Maestro flows.
+Every configuration below ran the release candidate. The E2E suite has 62 cases
+(25 single-sided, 19 two-sided, 14 RTL, 3 swipe to go back, 1 performance) plus the
+Maestro flows.
 
 | Area | Configuration | What ran |
 | --- | --- | --- |
 | App stack | Expo SDK 54.0, React Native 0.81.5, React 19.1.0 | Example app and a clean app that installs the packed tarball |
 | Architecture | New Architecture (Fabric), Hermes | All runs below |
-| Android | API 34 x86_64 emulator (Pixel 6 profile) | 59 E2E cases, Robolectric unit tests |
-| iOS | iOS 26.4 simulator (iPhone 17 Pro), Xcode 26.6 | 59 E2E cases, Maestro flows, Swift unit tests |
+| Android | API 34 x86_64 emulator (Pixel 6 profile) | 62 E2E cases, Robolectric unit tests |
+| iOS | iOS 26.4 simulator (iPhone 17 Pro), Xcode 26.6 | 62 E2E cases, Maestro flows, Swift unit tests |
 | Packaging | `npm pack` tarball in a clean Expo app | Install, type check, autolinking, release builds on both platforms |
 
 ## Not tested

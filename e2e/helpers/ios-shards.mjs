@@ -11,10 +11,11 @@ const e2eDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 export const EXPECTED_COUNTS = Object.freeze({
   'specs/performance.spec.ts': 1,
   'specs/rtl.spec.ts': 14,
+  'specs/swipe-back.spec.ts': 3,
   'specs/swipeable.spec.ts': 25,
   'specs/two-sided.spec.ts': 19
 })
-const TOTAL = 59
+const TOTAL = 62
 const identityKeys = ['sha', 'runId', 'runAttempt']
 
 function identity(value) {

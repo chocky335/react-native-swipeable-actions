@@ -93,6 +93,24 @@ export const selectors = {
   twoSidedPresses: (id: number) => byExactTestId(`two-sided-presses-${id}`),
   twoSidedEvents: (id: number) => byExactTestId(`two-sided-events-${id}`),
   twoSidedLastEnd: (id: number) => byExactTestId(`two-sided-last-end-${id}`),
+  get selectDemoSwipeBack() {
+    return byTestId('select-demo-swipe-back')
+  },
+  get swipeBackScreen() {
+    return byTestId('swipe-back-screen')
+  },
+  get swipeBackTitle() {
+    return byTestId('swipe-back-title')
+  },
+  get swipeBackDraft() {
+    return byTestId('swipe-back-draft')
+  },
+  get swipeBackDraftLabel() {
+    return byTestId('swipe-back-draft-label')
+  },
+  get swipeBackBlocked() {
+    return byTestId('swipe-back-blocked')
+  },
   get selectSwipeable() {
     return byTestId('select-swipeable')
   },
@@ -118,6 +136,7 @@ export const selectors = {
   get chatDemo() {
     return byTestId('chat-demo')
   },
+  headerSubtitle: (text: string) => byTextAttr(text),
 
   // Chat demo
   get chatInput() {

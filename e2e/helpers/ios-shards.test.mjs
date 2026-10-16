@@ -71,11 +71,11 @@ function fixture() {
   return { plan, bundles, run: { ...context } }
 }
 
-test('real checkout discovers every eligible spec and all 59 cases without executing bodies', async () => {
+test('real checkout discovers every eligible spec and all 62 cases without executing bodies', async () => {
   const actual = buildManifest(await discoverSources(), context)
   assert.deepEqual(
     actual.shards.map((s) => s.cases.length),
-    [1, 14, 25, 19]
+    [1, 14, 3, 25, 19]
   )
   assert.equal(actual.shards.filter((s) => s.maestro).length, 1)
   assert.equal(actual.shards.find((s) => s.maestro).id, 'swipeable')
@@ -144,14 +144,14 @@ test('source changes bind a new digest even when titles are unchanged', () => {
   assert.notEqual(changed.shards[0].sourceHash, manifest.shards[0].sourceHash)
 })
 
-test('healthy aggregate requires all 59 cases and Maestro exactly once', () => {
+test('healthy aggregate requires all 62 cases and Maestro exactly once', () => {
   const { plan, bundles, run } = fixture()
   assert.deepEqual(validateAggregate(plan, bundles, run), {
     sha: context.sha,
     runId: '123',
     runAttempt: '1',
-    passed: 59,
-    shards: 4,
+    passed: 62,
+    shards: 5,
     maestro: 'success'
   })
 })
@@ -221,7 +221,7 @@ const mutations = {
     plan.sha = 'b'.repeat(40)
   },
   'wrong total': ({ plan }) => {
-    plan.total = 58
+    plan.total = 61
   },
   'duplicate manifest shard': ({ plan }) => {
     plan.shards[1] = plan.shards[0]
