@@ -317,7 +317,7 @@ class SwipeableViewTest {
         row.applyPendingConfiguration()
         row.open(SwipeSide.RIGHT)
         settle()
-        assertEquals("left", SwipeableView.getOpenSideByKey("a"))
+        assertNull(SwipeableView.getOpenSideByKey("a"))
         assertEquals("right", SwipeableView.getOpenSideByKey("b"))
         assertEquals(listOf("open:right"), ends())
     }
@@ -2052,6 +2052,33 @@ class SwipeableViewTest {
             assertTrue(named("onGestureCancelled").isEmpty())
             assertEquals(listOf("open:left"), ends())
             assertEquals(0f, content(row).translationX, 0f)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun rebindDuringAutoCloseWaitRestoresTheOldKeyClosed() {
+        for (side in SwipeSide.values()) {
+            val row = row(key = "auto-wait")
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 10000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(side.sign * 120f, 0f)
+            row.handleGestureEnd(side.sign * 120f, 0f)
+            settle()
+            assertEquals(side.value, SwipeableView.getOpenSideByKey("auto-wait"))
+            row.recyclingKey = "other"
+            row.applyPendingConfiguration()
+            assertNull(SwipeableView.getOpenSideByKey("auto-wait"))
+            row.recyclingKey = "auto-wait"
+            repeat(5) { settle() }
+            assertEquals(0f, content(row).translationX, 0f)
+            assertNull(SwipeableView.getOpenSideByKey("auto-wait"))
+            assertTrue(ends().isEmpty())
+            assertEquals(1, named("onGestureCancelled").size)
             root.removeView(row)
             SwipeableView.clearCache()
             events.clear()

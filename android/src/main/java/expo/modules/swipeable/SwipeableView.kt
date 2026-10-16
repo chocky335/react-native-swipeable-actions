@@ -211,7 +211,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             val restoredSide = value?.let { openStateCache[it] }
             if (oldValue != null) {
                 if (getView(oldValue) === this) {
-                    setOpenState(oldValue, if (isOpen) openSide else null)
+                    // An abandoned auto-close wait cannot resume, so its transient open must not restore.
+                    setOpenState(oldValue, if (isOpen && autoCloseDeadline == null) openSide else null)
                 }
                 unregisterView(this, oldValue)
             }

@@ -360,6 +360,8 @@ public class SwipeableView: ExpoView {
             let restored = recyclingKey.flatMap { Self.getOpenSide(for: $0) }
                 .flatMap { SwipeSide(rawValue: $0) }
             if let old = oldValue {
+                // An abandoned auto-close wait cannot resume, so its transient open must not restore.
+                if autoCloseWorkItem != nil { Self.setOpenState(for: old, side: nil, owner: self) }
                 // Commands own cached intent. Rebinding must not resurrect the old
                 // view's stale state while a queued close is waiting to execute.
                 Self.unregisterView(self, for: old)
