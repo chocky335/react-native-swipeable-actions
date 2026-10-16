@@ -180,6 +180,8 @@ struct SwipeOpenStateCache {
     let capacity: Int
     private var sides: [String: SwipeSide] = [:]
     private var order: [String] = []
+    // Bound keys with a queued close that has not run yet.
+    private var pendingCloses: [String: Int] = [:]
 
     init(capacity: Int) {
         self.capacity = capacity
@@ -196,7 +198,22 @@ struct SwipeOpenStateCache {
             set(nil, for: key)
             return nil
         }
+        beginClose(for: key)
         return current
+    }
+
+    // A binding that ends before its queued close runs must apply the close itself:
+    // the command cannot reach a replacement binding, which would restore this side.
+    func hasPendingClose(for key: String) -> Bool { pendingCloses[key] != nil }
+
+    mutating func beginClose(for key: String) {
+        pendingCloses[key, default: 0] += 1
+    }
+
+    mutating func finishClose(for key: String, hasCurrentBinding: Bool) {
+        let count = (pendingCloses[key] ?? 0) - 1
+        pendingCloses[key] = count > 0 ? count : nil
+        clearIfUnbound(for: key, hasCurrentBinding: hasCurrentBinding)
     }
 
     // closeAll's equivalent of an unbound close(key). Bound rows close through their own command.

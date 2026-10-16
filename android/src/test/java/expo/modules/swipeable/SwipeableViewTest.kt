@@ -2308,6 +2308,44 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun commandedCloseHoldsWhenTheKeyRebindsBeforeTheQueuedClose() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            for (rebind in listOf("newView", "sameView", "reattach")) {
+                val label = "$command $rebind"
+                val row = row(key = "late")
+                row.open(SwipeSide.LEFT)
+                settle()
+                assertEquals(label, "left", SwipeableView.getOpenSideByKey("late"))
+                if (command == "closeByKey") SwipeableView.closeByKey("late") else SwipeableView.closeAll()
+                // The key binds again before the main looper runs the queued close.
+                val bound = when (rebind) {
+                    "newView" -> {
+                        row.recyclingKey = "other"
+                        row(key = "late")
+                    }
+                    "sameView" -> {
+                        row.recyclingKey = "other"
+                        row.recyclingKey = "late"
+                        row.applyPendingConfiguration()
+                        row
+                    }
+                    else -> {
+                        root.removeView(row)
+                        root.addView(row, FrameLayout.LayoutParams(400, 64))
+                        row.layout(0, 0, 400, 64)
+                        row
+                    }
+                }
+                settle()
+                assertEquals(label, 0f, content(bound).translationX, 0f)
+                assertNull(label, SwipeableView.getOpenSideByKey("late"))
+                root.removeAllViews()
+                SwipeableView.clearCache()
+                events.clear()
+            }
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.

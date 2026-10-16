@@ -38,6 +38,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         /** Lock for thread-safe registry access */
         private val registryLock = Any()
 
+        /** Keys with a keyed close that is queued but has not run yet (guarded by registryLock) */
+        private val pendingCloses = mutableMapOf<String, Int>()
+
         // LruCache synchronizes access internally; absence represents closed.
         private fun getOpenState(key: String): Boolean = openStateCache[key] != null
 
@@ -61,6 +64,19 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             viewRegistry.values.mapNotNull { it.get() }
         }
 
+        private fun beginClose(key: String) = synchronized(registryLock) {
+            pendingCloses[key] = (pendingCloses[key] ?: 0) + 1
+        }
+
+        private fun endClose(key: String) = synchronized(registryLock) {
+            val count = (pendingCloses[key] ?: 0) - 1
+            if (count > 0) pendingCloses[key] = count else pendingCloses.remove(key)
+        }
+
+        private fun hasPendingClose(key: String): Boolean = synchronized(registryLock) {
+            pendingCloses.containsKey(key)
+        }
+
         private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
             val view = getView(key) ?: return
             view.postCommand {
@@ -82,7 +98,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 getView(key).also { current ->
                     // Clear unbound intent before a remount can restore it. Queue no
                     // work in this case: a future binding owns its own cached intent.
-                    if (current == null) setOpenState(key, null)
+                    if (current == null) setOpenState(key, null) else beginClose(key)
                 }
             } ?: return
             view.postCommand {
@@ -90,7 +106,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
             // A row that unbinds before this close runs must not restore open either.
             Handler(Looper.getMainLooper()).post {
-                synchronized(registryLock) { if (getView(key) == null) setOpenState(key, null) }
+                synchronized(registryLock) {
+                    endClose(key)
+                    if (getView(key) == null) setOpenState(key, null)
+                }
             }
         }
 
@@ -103,7 +122,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 openStateCache.snapshot().keys.forEach { key ->
                     if (getView(key) == null) setOpenState(key, null)
                 }
-                viewRegistry.keys.toList()
+                viewRegistry.keys.toList().onEach(::beginClose)
             }
             getAllViews().forEach { view ->
                 view.postCommand {
@@ -116,7 +135,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             // A row that unbinds before its queued close runs must not restore open either.
             Handler(Looper.getMainLooper()).post {
                 synchronized(registryLock) {
-                    boundKeys.forEach { key -> if (getView(key) == null) setOpenState(key, null) }
+                    boundKeys.forEach { key ->
+                        endClose(key)
+                        if (getView(key) == null) setOpenState(key, null)
+                    }
                 }
             }
         }
@@ -216,7 +238,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (oldValue != null) {
                 if (getView(oldValue) === this) {
                     // An abandoned auto-close wait cannot resume, so its transient open must not restore.
-                    setOpenState(oldValue, if (isOpen && autoCloseDeadline == null) openSide else null)
+                    // A queued keyed close cannot run after the rebind, so its intent applies now.
+                    val keepsOpen = isOpen && autoCloseDeadline == null && !hasPendingClose(oldValue)
+                    setOpenState(oldValue, if (keepsOpen) openSide else null)
                 }
                 unregisterView(this, oldValue)
             }
@@ -1122,8 +1146,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         velocityTracker = null
         requestedActions.clear()
         observedSlotCounts.clear()
-        if (autoCloseDeadline != null) {
-            // The abandoned auto-close cannot resume, so the transient open must not restore.
+        if (autoCloseDeadline != null || recyclingKey?.let(::hasPendingClose) == true) {
+            // The abandoned auto-close or queued keyed close cannot resume, so the open must not restore.
             isOpen = false
             openSide = null
             persistOpenSide(null)

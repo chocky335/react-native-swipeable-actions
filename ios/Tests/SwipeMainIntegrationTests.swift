@@ -491,6 +491,34 @@ final class SwipeMainIntegrationTests: XCTestCase {
         XCTAssertEqual(cache.side(for: "a"), .right)
     }
 
+    func testBoundCloseIntentHoldsWhenTheKeyRebindsBeforeTheCloseRuns() {
+        let view = Child()
+        var cache = SwipeOpenStateCache(capacity: 2)
+        cache.set(.left, for: "a")
+        let oldBinding = SwipeCommandTarget(view)
+        let captured = cache.captureCloseTarget(for: "a", current: oldBinding)
+        XCTAssertTrue(captured === oldBinding)
+        cache.beginClose(for: "a")  // closeAll in the same turn
+        XCTAssertEqual(cache.side(for: "a"), .left, "Bound capture must not change cached intent")
+        // A -> B -> A before the queued closes run: the ending binding applies their intent.
+        XCTAssertTrue(cache.hasPendingClose(for: "a"))
+        if cache.hasPendingClose(for: "a") { cache.set(nil, for: "a") }
+        let replacement = SwipeCommandTarget(view)
+        XCTAssertNil(cache.side(for: "a"), "The new binding must not restore the pre-close side")
+        captured?.perform(ifCurrent: replacement) { _ in
+            XCTFail("A queued close must not operate on an A -> B -> A binding")
+        }
+        cache.finishClose(for: "a", hasCurrentBinding: true)
+        XCTAssertTrue(cache.hasPendingClose(for: "a"), "The closeAll close is still queued")
+        cache.finishClose(for: "a", hasCurrentBinding: true)
+        XCTAssertFalse(cache.hasPendingClose(for: "a"))
+        XCTAssertNil(cache.side(for: "a"))
+        // A later binding of the key keeps its own intent once the closes have run.
+        cache.set(.right, for: "a")
+        XCTAssertFalse(cache.hasPendingClose(for: "a"))
+        XCTAssertEqual(cache.side(for: "a"), .right)
+    }
+
     func testCancelDoesNotInvalidateLaterCommandsForSameBinding() {
         let view = Child()
         let binding = SwipeCommandTarget(view)

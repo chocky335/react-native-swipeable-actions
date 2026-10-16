@@ -91,6 +91,10 @@ public class SwipeableView: ExpoView {
         registryQueue.sync { _openStateCache.side(for: key)?.rawValue }
     }
 
+    private static func hasPendingClose(for key: String) -> Bool {
+        registryQueue.sync { _openStateCache.hasPendingClose(for: key) }
+    }
+
     private static func setOpenState(for key: String, side: SwipeSide?, owner: SwipeableView) {
         let identity = ObjectIdentifier(owner)
         registryQueue.async {
@@ -174,7 +178,7 @@ public class SwipeableView: ExpoView {
             // A close for an unmounted row must also cancel its cached restore.
             // Never clear a replacement/reattached binding rejected by performCommand.
             registryQueue.sync {
-                _openStateCache.clearIfUnbound(
+                _openStateCache.finishClose(
                     for: key, hasCurrentBinding: _viewRegistry[key]?.value != nil
                 )
             }
@@ -190,6 +194,7 @@ public class SwipeableView: ExpoView {
         let targets = registryQueue.sync { () -> [(key: String, target: SwipeCommandTarget<SwipeableView>)] in
             // Rows that are not mounted come back closed, like close(key) for an unbound key.
             _openStateCache.clearUnbound(bindings: _viewRegistry)
+            _viewRegistry.keys.forEach { _openStateCache.beginClose(for: $0) }
             return _viewRegistry.map { (key: $0.key, target: $0.value) }
         }
         DispatchQueue.main.async {
@@ -205,7 +210,7 @@ public class SwipeableView: ExpoView {
                 }, for: entry.key, target: entry.target)
                 // A row that unbinds before this close runs must not restore open either.
                 registryQueue.sync {
-                    _openStateCache.clearIfUnbound(
+                    _openStateCache.finishClose(
                         for: entry.key, hasCurrentBinding: _viewRegistry[entry.key]?.value != nil
                     )
                 }
@@ -361,7 +366,10 @@ public class SwipeableView: ExpoView {
                 .flatMap { SwipeSide(rawValue: $0) }
             if let old = oldValue {
                 // An abandoned auto-close wait cannot resume, so its transient open must not restore.
-                if autoCloseWorkItem != nil { Self.setOpenState(for: old, side: nil, owner: self) }
+                // A queued keyed close cannot run after the rebind, so its intent applies now.
+                if autoCloseWorkItem != nil || Self.hasPendingClose(for: old) {
+                    Self.setOpenState(for: old, side: nil, owner: self)
+                }
                 // Commands own cached intent. Rebinding must not resurrect the old
                 // view's stale state while a queued close is waiting to execute.
                 Self.unregisterView(self, for: old)
@@ -700,7 +708,9 @@ public class SwipeableView: ExpoView {
         releaseChildRoles()
         if let key = recyclingKey {
             // Restore only settled cache intent, never unfinished interaction work.
-            if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self) }
+            if !preservesCachedSide || Self.hasPendingClose(for: key) {
+                Self.setOpenState(for: key, side: nil, owner: self)
+            }
             Self.unregisterView(self, for: key)
         }
         if let cancelled = cancelled { onGestureCancelled(cancelled) }
