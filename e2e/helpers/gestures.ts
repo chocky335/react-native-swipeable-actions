@@ -99,12 +99,14 @@ export async function scrollUpUntilDisplayed(
 ): Promise<void> {
   for (let i = 0; i < maxScrolls; i++) {
     const el = await $(selector)
-    if (await el.isDisplayed().catch(() => false)) {
+    if (await el.isDisplayed()) {
       return
     }
     await scrollUp()
     await driver.pause(300)
   }
+  // The final permitted gesture can reveal the target too; do not scroll again.
+  if (await $(selector).isDisplayed()) return
   throw new Error(`Element "${selector}" not visible after ${maxScrolls} scroll attempts`)
 }
 
