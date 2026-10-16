@@ -691,6 +691,10 @@ export function TwoSidedScreen() {
               keyExtractor={keyExtractor}
               extraData={listExtraData}
               contentContainerStyle={styles.listContent}
+              // Mount a few screens of rows, as an app list would. Mounting all
+              // rows makes every XCUITest query snapshot a much larger tree.
+              initialNumToRender={8}
+              windowSize={3}
             />
           ) : (
             <FlashList
