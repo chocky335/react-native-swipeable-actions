@@ -404,6 +404,12 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "device_name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
           echo "Detected simulator: $DEVICE_NAME ($UDID)"
+          RUNTIME=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          print(next(r for r, devs in devices.items() if any(d['udid'] == '$UDID' for d in devs)))
+          ")
+          echo "Simulator runtime: $RUNTIME"
 
       - name: Boot simulator
         run: |
