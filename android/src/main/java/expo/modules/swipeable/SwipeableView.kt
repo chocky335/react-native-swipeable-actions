@@ -904,6 +904,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         preserveGestureCompletion: Boolean = false,
         afterClose: (() -> Unit)? = null
     ) {
+        // Closing an already-closed row reports no side, like iOS.
+        val endSide = gestureSide ?: animationSide ?: openSide
         val side = activeSide ?: SwipeSide.RIGHT
         val width = widthFor(side)
         if (isGestureActivated || directGesturePending) {
@@ -936,7 +938,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             emitFinalProgress(0f, 0f)
             if (generation != workGeneration) return
             autoCloseClosingSide = null
-            emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
+            emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", endSide)
             if (generation != workGeneration) return
             animationSide = null
             refreshRailVisibility()
@@ -975,7 +977,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 emitFinalProgress(0f, 0f)
                 if (generation != workGeneration) return@addEndListener
                 autoCloseClosingSide = null
-                emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
+                emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", endSide)
                 if (generation != workGeneration) return@addEndListener
                 animationSide = null
                 refreshRailVisibility()
@@ -1140,16 +1142,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     private fun sideMetadata(side: SwipeSide? = activeSide): Map<String, Any> {
-        if (side == null) return emptyMap()
         val key = recyclingKey
-        return if (key != null) mapOf("side" to side.value, "recyclingKey" to key)
-            else mapOf("side" to side.value)
+        val keyMetadata = if (key != null) mapOf("recyclingKey" to key) else emptyMap()
+        if (side == null) return keyMetadata
+        return mapOf("side" to side.value) + keyMetadata
     }
 
     private fun stateEvent(state: String, side: SwipeSide? = activeSide): Map<String, Any> =
         mapOf("state" to state) + sideMetadata(side)
 
-    private fun emitSwipeEnd(state: String, side: SwipeSide) {
+    private fun emitSwipeEnd(state: String, side: SwipeSide?) {
         gestureCompletionPending = false
         gestureCompletionMetadata = null
         onSwipeEnd(stateEvent(state, side))

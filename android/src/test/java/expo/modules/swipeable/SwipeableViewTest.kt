@@ -2053,6 +2053,19 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun closingAnAlreadyClosedRowReportsNoSide() {
+        for (bothSides in listOf(true, false)) {
+            val row = row(bothSides = bothSides)
+            settle()
+            row.close(true)
+            settle()
+            assertEquals(listOf(mapOf("state" to "closed", "recyclingKey" to "row")), named("onSwipeEnd"))
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.
