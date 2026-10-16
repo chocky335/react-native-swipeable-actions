@@ -2,9 +2,23 @@ import { swipeOnElement } from '../helpers/gestures'
 import { beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
+import { guardRequest } from '../helpers/command-scope'
+import { createFastGeometryReader } from '../helpers/fast-geometry'
+import { createControlsNavigator } from '../helpers/control-navigation'
 
 type Side = 'left' | 'right'
 type Events = { starts: number; ends: number; left: number; right: number }
+let fastReader: ReturnType<typeof createFastGeometryReader> | undefined
+let fastControls: ReturnType<typeof createControlsNavigator> | undefined
+function readIOSGeometry(id: number) {
+  fastReader ??= createFastGeometryReader(driver, {
+    assertOwnerActive() {
+      guardRequest({})
+    }
+  })
+  return fastReader(id)
+}
+
 const APP_ID = 'com.swipeabledemo.app'
 const opposite = (side: Side): Side => (side === 'left' ? 'right' : 'left')
 const directionFor = (side: Side): Side => opposite(side)
@@ -26,6 +40,7 @@ async function events(id = 0): Promise<Events> {
 }
 
 async function geometry(id = 0): Promise<{ offset: number; scale: number }> {
+  if (driver.isIOS) return readIOSGeometry(id)
   const frame = await $(selectors.twoSidedFrame(id))
   const anchor = await $(selectors.twoSidedAnchor(id))
   const frameLocation = await driver.getElementRect(await frame.elementId)
@@ -122,6 +137,18 @@ async function scrollWithin(selector: string, direction: 'up' | 'down'): Promise
 }
 
 async function tapControl(name: string): Promise<void> {
+  // The iOS suite explicitly uses XCUITest expanded native observations.
+  if (driver.isIOS) {
+    fastControls ??= createControlsNavigator(driver, {
+      assertOwnerActive() {
+        guardRequest({})
+      },
+      element: async (selector) => $(selector).getElement(),
+      controlSelector: selectors.twoSidedControl,
+      controlsSelector: selectors.twoSidedControls
+    })
+    return fastControls(name)
+  }
   // Controls wrap with large text and scroll independently of the demo rows.
   for (let attempt = 0; attempt < 10; attempt++) {
     const viewport = await $(selectors.twoSidedControls)

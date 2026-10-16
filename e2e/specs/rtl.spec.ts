@@ -2,10 +2,24 @@ import { swipeOnElement } from '../helpers/gestures'
 import { after, before, beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
+import { guardRequest } from '../helpers/command-scope'
+import { createFastGeometryReader } from '../helpers/fast-geometry'
+import { createControlsNavigator } from '../helpers/control-navigation'
 
 type Direction = 'LTR' | 'RTL'
 type Side = 'left' | 'right'
 type Tab = 'commands' | 'localization' | 'recycling'
+let fastReader: ReturnType<typeof createFastGeometryReader> | undefined
+let fastControls: ReturnType<typeof createControlsNavigator> | undefined
+function readIOSGeometry(id: number) {
+  fastReader ??= createFastGeometryReader(driver, {
+    assertOwnerActive() {
+      guardRequest({})
+    }
+  })
+  return fastReader(id)
+}
+
 const APP_ID = 'com.swipeabledemo.app'
 const control = selectors.twoSidedControl
 const label = selectors.twoSidedControlLabel
@@ -75,6 +89,20 @@ async function scrollControls(up: boolean): Promise<void> {
 }
 
 async function tap(name: string): Promise<void> {
+  // The iOS suite explicitly uses XCUITest expanded native observations.
+  if (driver.isIOS) {
+    fastControls ??= createControlsNavigator(driver, {
+      assertOwnerActive() {
+        guardRequest({})
+      },
+      element: async (selector) => $(selector).getElement(),
+      controlSelector: selectors.twoSidedControl,
+      controlsSelector: selectors.twoSidedControls,
+      pointerId: 'rtl-controls',
+      failureMessage: (name) => `RTL control ${name} is outside the viewport`
+    })
+    return fastControls(name)
+  }
   for (let attempt = 0; attempt < 10; attempt++) {
     const viewport = await $(selectors.twoSidedControls)
     const origin = await driver.getElementRect(await viewport.elementId)
@@ -127,6 +155,15 @@ async function requestDirection(direction: Direction): Promise<void> {
 }
 
 async function geometry(id = 0) {
+  if (driver.isIOS) {
+    const current = await readIOSGeometry(id)
+    return {
+      origin: current.frame,
+      size: current.frame,
+      scale: current.scale,
+      offset: current.offset
+    }
+  }
   const frame = await $(selectors.twoSidedFrame(id))
   const anchor = await $(selectors.twoSidedAnchor(id))
   const origin = await driver.getElementRect(await frame.elementId)

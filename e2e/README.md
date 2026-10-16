@@ -43,6 +43,25 @@ specs. Both platform configurations also load the root-hook plugin and request
 guard. A throwing `beforeCommand` hook alone is not a replacement: WebdriverIO
 can catch errors from that hook without stopping HTTP dispatch.
 
+## iOS native observations
+
+The two-sided and RTL suites use fresh XCUITest expanded responses to read row
+geometry and control rectangles. Android retains the direct element-read path.
+These helpers change only E2E observation overhead, not library behavior or API.
+
+- Each observation captures, changes, confirms, restores, and confirms Appium
+  response settings under the existing command-owner guard. Readers share a
+  per-driver lock and reject further observations if restoration is unconfirmed.
+- Exact names, unique native references, rectangles, raw layout text, and row
+  bindings are validated. Geometry is never cached across gestures or lifecycle
+  changes, and malformed results do not silently fall back to another reader.
+- Control navigation retains native visibility checks, normal WDIO click and
+  stale-element recovery, the original gesture budget, and original deadlines.
+  Replacement elements trigger fresh viewport geometry before scrolling.
+- `npm --prefix e2e run test:harness` includes parser, navigation, shared-settings,
+  timeout-isolation, and real installed WDIO recovery regressions. Transport
+  fixtures block external networking; no handset or simulator is required.
+
 ## Timing, geometry, and failure evidence
 
 - Sample an element's rectangle once when both its location and size are needed.
