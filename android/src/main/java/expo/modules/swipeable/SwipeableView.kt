@@ -88,6 +88,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             view.postCommand {
                 if (view.recyclingKey == key) view.close(animated)
             }
+            // A row that unbinds before this close runs must not restore open either.
+            Handler(Looper.getMainLooper()).post {
+                synchronized(registryLock) { if (getView(key) == null) setOpenState(key, null) }
+            }
         }
 
         fun cancelByKey(key: String) = postCommand(key) { it.cancelGesture() }

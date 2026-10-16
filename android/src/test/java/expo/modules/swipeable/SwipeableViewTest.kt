@@ -2215,6 +2215,26 @@ class SwipeableViewTest {
         assertNull(SwipeableView.getOpenSideByKey("unmounted"))
     }
 
+    @Test fun keyedCloseClosesARowThatUnbindsBeforeTheQueuedClose() {
+        for (unbind in listOf("rebind", "detach")) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            assertEquals("left", SwipeableView.getOpenSideByKey("late"))
+            SwipeableView.closeByKey("late")
+            if (unbind == "rebind") row.recyclingKey = "other" else root.removeView(row)
+            settle()
+            assertNull(unbind, SwipeableView.getOpenSideByKey("late"))
+            root.removeView(row)
+            val remounted = row(key = "late")
+            settle()
+            assertEquals(unbind, 0f, content(remounted).translationX, 0f)
+            root.removeView(remounted)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun closeAllClosesRowsThatUnbindBeforeTheQueuedClose() {
         for (unbind in listOf("rebind", "detach")) {
             val row = row(key = "late")
