@@ -114,5 +114,5 @@ only an existing test ID, not an accepted prop or fallback path. Press-counter t
 
 Migrated single-side rows intentionally adopt the canonical engine's disabled-edge,
 state-callback and instant-close/cache behavior. See
-[the assertion migration map](../docs/implementation-issue-15.md#demo-and-assertion-migration-map).
+[the intentional behavior changes](../docs/migration-v1.md#intentional-behavior-changes).
 Historical runs do not establish acceptance of this upcoming release.
