@@ -4,6 +4,178 @@ import XCTest
 final class SwipeMainIntegrationTests: XCTestCase {
     private final class Child {}
 
+    func testNativeFollowupTransferredOpenCancelsCapturedOwnerAfterRebind() {
+        for side in SwipeSide.allCases {
+            for key: String? in [nil, "old"] {
+                var completion = SwipeGestureCompletion()
+                completion.begin(recyclingKey: key, side: side)
+                // Release, same-side imperative open, then animated close each
+                // transfer the original owner without replacing its identity.
+                for _ in 0..<3 {
+                    XCTAssertFalse(completion.invalidate(preserving: true))
+                    XCTAssertTrue(completion.isPending)
+                }
+                var expected = ["side": side.rawValue]
+                if let key = key { expected["recyclingKey"] = key }
+                XCTAssertEqual(completion.cancel(recyclingKey: "replacement", side: nil), expected)
+                XCTAssertNil(completion.cancel(recyclingKey: "replacement", side: .right))
+                completion.begin(recyclingKey: "replacement", side: .right)
+                completion.complete()
+                XCTAssertNil(completion.cancel(recyclingKey: "replacement", side: .right))
+            }
+        }
+    }
+
+    func testNativeFollowupAbandonmentIsQueuedBeforeFreshStartAndSurvivesAsyncDelivery() {
+        for reason in ["fresh gesture", "detach", "rebind", "child removal", "auto-close imperative open"] {
+            var completion = SwipeGestureCompletion()
+            var queued: [(String, [String: String])] = []
+            completion.begin(recyclingKey: "old", side: .left)
+            queued.append(("start", ["recyclingKey": "old", "side": "left"]))
+            let cancelled = completion.cancel(recyclingKey: "new", side: .right)
+            XCTAssertEqual(cancelled, ["recyclingKey": "old", "side": "left"], reason)
+            if let cancelled = cancelled { queued.append(("cancel", cancelled)) }
+            // Reentry/new ownership is allowed only after the old owner is cleared.
+            completion.begin(recyclingKey: "new", side: .right)
+            queued.append(("start", ["recyclingKey": "new", "side": "right"]))
+            XCTAssertEqual(queued.map { $0.0 }, ["start", "cancel", "start"], reason)
+            XCTAssertEqual(queued[1].1, ["recyclingKey": "old", "side": "left"], reason)
+            XCTAssertEqual(completion.cancel(recyclingKey: nil, side: nil),
+                           ["recyclingKey": "new", "side": "right"], reason)
+            XCTAssertNil(completion.cancel(recyclingKey: nil, side: nil), reason)
+        }
+    }
+
+    func testNativeFollowupSameInstanceDetachAndReattachDoNotTransferOldTouchesOrCompletion() {
+        let owner = Child()
+        let original = SwipeCommandTarget(owner)
+        let reattached = SwipeCommandTarget(owner)
+        let held = Child()
+        let fresh = Child()
+        var touches = SwipeTouchBinding<Child>()
+        var completion = SwipeGestureCompletion()
+        touches.begin([held], target: original)
+        completion.begin(recyclingKey: "same-row", side: .left)
+        XCTAssertFalse(completion.invalidate(preserving: true))
+        XCTAssertEqual(completion.cancel(recyclingKey: "same-row", side: .left),
+                       ["recyclingKey": "same-row", "side": "left"])
+        XCTAssertFalse(touches.isCurrent(reattached))
+        XCTAssertNil(completion.cancel(recyclingKey: "same-row", side: .left))
+        touches.end([held])
+        touches.begin([fresh], target: reattached)
+        XCTAssertTrue(touches.isCurrent(reattached))
+        completion.begin(recyclingKey: "same-row", side: .right)
+        completion.complete()
+        XCTAssertNil(completion.cancel(recyclingKey: "same-row", side: .right))
+    }
+
+    func testNativeFollowupPureProgrammaticTakeoversNeverInventCancellation() {
+        var completion = SwipeGestureCompletion()
+        for _ in 0..<3 {
+            XCTAssertFalse(completion.invalidate(preserving: true))
+            XCTAssertNil(completion.cancel(recyclingKey: "row", side: .left))
+        }
+        completion.begin(recyclingKey: "row", side: .left)
+        completion.complete()
+        XCTAssertNil(completion.cancel(recyclingKey: "row", side: .left))
+        completion.begin(recyclingKey: nil, side: .right)
+        XCTAssertEqual(completion.cancel(recyclingKey: "later-key", side: .left), ["side": "right"])
+    }
+
+    func testAnimatedCloseOwnershipSurvivesUntilSilentInterruptionOrRealCompletion() {
+        for side in SwipeSide.allCases {
+            for released in [false, true] {
+                var completion = SwipeGestureCompletion()
+                completion.begin()
+                if released { XCTAssertFalse(completion.invalidate(preserving: true)) }
+                // performClose(animated: true) transfers ownership to its animator.
+                XCTAssertFalse(completion.invalidate(preserving: true))
+                XCTAssertEqual(completion.cancel(recyclingKey: "row", side: side),
+                               ["recyclingKey": "row", "side": side.rawValue])
+                XCTAssertNil(completion.cancel(recyclingKey: "row", side: side))
+                completion.begin()
+                XCTAssertFalse(completion.invalidate(preserving: true))
+                completion.complete()
+                XCTAssertNil(completion.cancel(recyclingKey: "row", side: side))
+            }
+        }
+        var programmatic = SwipeGestureCompletion()
+        XCTAssertFalse(programmatic.invalidate(preserving: true))
+        XCTAssertFalse(programmatic.isPending)
+        XCTAssertNil(programmatic.cancel(recyclingKey: "row", side: .right))
+    }
+
+    func testTouchBindingRejectsPossiblePanAfterRebindAndAcceptsFreshTouch() {
+        let owner = Child()
+        let oldBinding = SwipeCommandTarget(owner)
+        let replacement = SwipeCommandTarget(owner)
+        let oldFinger = Child()
+        let addedFinger = Child()
+        let freshFinger = Child()
+        var touch = SwipeTouchBinding<Child>()
+        touch.begin([oldFinger], target: oldBinding)
+        XCTAssertTrue(touch.isCurrent(oldBinding))
+        // No activation happened before this binding change: the pan is .possible.
+        XCTAssertFalse(touch.isCurrent(replacement))
+        touch.begin([addedFinger], target: replacement)
+        XCTAssertFalse(touch.isCurrent(replacement), "A second finger cannot transfer the old sequence")
+        touch.end([oldFinger])
+        XCTAssertFalse(touch.isCurrent(replacement))
+        touch.end([addedFinger])
+        touch.begin([freshFinger], target: replacement)
+        XCTAssertTrue(touch.isCurrent(replacement), "A fresh gesture must not remain suppressed")
+        touch.end([freshFinger])
+        XCTAssertTrue(touch.isCurrent(replacement), "Queued end actions retain the original identity")
+    }
+
+    func testTouchBindingRejectsRoundTripRebindAndRecoversAfterFinishedTouchPruning() {
+        let owner = Child()
+        let firstBinding = SwipeCommandTarget(owner)
+        let reboundSameOwner = SwipeCommandTarget(owner)
+        let oldFinger = Child()
+        let newFinger = Child()
+        var touch = SwipeTouchBinding<Child>()
+        touch.begin([oldFinger], target: firstBinding)
+        XCTAssertFalse(touch.isCurrent(reboundSameOwner))
+        // UIKit may omit the ended callback after recognition failed. The next
+        // touchesBegan prunes physically ended contacts before capturing ownership.
+        touch.prune(keeping: [Child]())
+        touch.begin([newFinger], target: reboundSameOwner)
+        XCTAssertTrue(touch.isCurrent(reboundSameOwner))
+        touch.end([newFinger])
+        touch.begin([oldFinger], target: reboundSameOwner)
+        XCTAssertTrue(touch.isCurrent(reboundSameOwner))
+    }
+
+    func testSilentCancelCapturesKeyAndSideForActiveAndReleasedOwnershipExactlyOnce() {
+        for side in SwipeSide.allCases {
+            for released in [false, true] {
+                for key: String? in [nil, "row-a"] {
+                    var completion = SwipeGestureCompletion()
+                    completion.begin()
+                    if released { XCTAssertFalse(completion.invalidate(preserving: true)) }
+                    var expected = ["side": side.rawValue]
+                    if let key = key { expected["recyclingKey"] = key }
+                    XCTAssertEqual(completion.cancel(recyclingKey: key, side: side), expected)
+                    XCTAssertFalse(completion.isPending)
+                    XCTAssertNil(completion.cancel(recyclingKey: key, side: side))
+                    completion.begin()
+                    XCTAssertTrue(completion.isPending)
+                    completion.complete()
+                    XCTAssertNil(completion.cancel(recyclingKey: key, side: side))
+                }
+            }
+        }
+    }
+
+    func testSilentCloseDoesNotInventCancellationForProgrammaticWork() {
+        var completion = SwipeGestureCompletion()
+        XCTAssertNil(completion.cancel(recyclingKey: "row-a", side: .left))
+        completion.begin()
+        XCTAssertEqual(completion.cancel(recyclingKey: nil, side: nil), [:])
+        XCTAssertNil(completion.cancel(recyclingKey: "replacement", side: .right))
+    }
+
     func testReleasedGestureOwnershipSurvivesSettleAndCancelsExactlyOnceOnWidthChange() {
         for side in SwipeSide.allCases {
             for opening in [true, false] {

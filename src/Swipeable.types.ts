@@ -3,6 +3,11 @@ import type { StyleProp, ViewProps, ViewStyle } from 'react-native'
 
 export type SwipeSide = 'left' | 'right'
 
+/** Internal native identity; the consumer's onSwipeStart remains zero-argument. */
+export interface SwipeStartEvent {
+  nativeEvent: { recyclingKey?: string; side?: SwipeSide }
+}
+
 export interface ActionsNeededEvent {
   nativeEvent: { side: SwipeSide; recyclingKey?: string }
 }
@@ -41,7 +46,7 @@ export interface SwipeableViewProps extends ViewProps {
   dragOffsetFromEdge?: number
   recyclingKey?: string
   onSwipeProgress?: (event: SwipeProgressEvent) => void
-  onSwipeStart?: () => void
+  onSwipeStart?: (event: SwipeStartEvent) => void
   onSwipeStateChange?: (event: SwipeStateEvent) => void
   onSwipeEnd?: (event: SwipeStateEvent) => void
   autoClose?: boolean

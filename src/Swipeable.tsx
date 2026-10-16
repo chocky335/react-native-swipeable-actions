@@ -29,6 +29,7 @@ import type {
   SwipeableMethods,
   SwipeableStatic,
   SwipeProgressEvent,
+  SwipeStartEvent,
   SwipeStateEvent
 } from './Swipeable.types'
 import { SwipeableActions } from './SwipeableActions'
@@ -160,20 +161,22 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     []
   )
 
-  const handleSwipeStart = useCallback(() => {
-    if (!swipeStartedRef.current) {
-      swipeStartedRef.current = true
-      onSwipeStart?.()
-    }
-  }, [onSwipeStart])
+  const handleSwipeStart = useCallback(
+    (event: SwipeStartEvent) => {
+      // Missing metadata identifies the unkeyed native binding. It must not
+      // bypass identity checks after recycling into a keyed row.
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
+      if (!swipeStartedRef.current) {
+        swipeStartedRef.current = true
+        onSwipeStart?.()
+      }
+    },
+    [normalizedKey, onSwipeStart]
+  )
 
   const handleGestureCancelled = useCallback(
     (event: { nativeEvent: { recyclingKey?: string } }) => {
-      if (
-        event.nativeEvent.recyclingKey !== undefined &&
-        event.nativeEvent.recyclingKey !== normalizedKey
-      )
-        return
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       swipeStartedRef.current = false
     },
     [normalizedKey]
@@ -182,11 +185,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   const handleActionsNeeded = useCallback(
     (event: ActionsNeededEvent) => {
       const side = event.nativeEvent.side
-      if (
-        event.nativeEvent.recyclingKey !== undefined &&
-        event.nativeEvent.recyclingKey !== normalizedKey
-      )
-        return
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       if ((side !== 'left' && side !== 'right') || resolved[side].width <= 0) return
       setRenderedSides((previous) => {
         const current = previous.key === normalizedKey ? previous : initialSides
@@ -198,11 +197,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
 
   const handleSwipeProgress = useCallback(
     (event: SwipeProgressEvent) => {
-      if (
-        event.nativeEvent.recyclingKey !== undefined &&
-        event.nativeEvent.recyclingKey !== normalizedKey
-      )
-        return
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       const newProgress = event.nativeEvent.progress
       const clamped = Math.max(0, Math.min(1, newProgress))
       onProgress?.(clamped)
@@ -212,11 +207,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
 
   const handleSwipeStateChange = useCallback(
     (event: SwipeStateEvent) => {
-      if (
-        event.nativeEvent.recyclingKey !== undefined &&
-        event.nativeEvent.recyclingKey !== normalizedKey
-      )
-        return
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       onSwipeStateChange?.(event.nativeEvent.state)
     },
     [normalizedKey, onSwipeStateChange]
@@ -224,11 +215,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
 
   const handleSwipeEnd = useCallback(
     (event: SwipeStateEvent) => {
-      if (
-        event.nativeEvent.recyclingKey !== undefined &&
-        event.nativeEvent.recyclingKey !== normalizedKey
-      )
-        return
+      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       swipeStartedRef.current = false
       onSwipeEnd?.(event.nativeEvent.state)
       const side = event.nativeEvent.side

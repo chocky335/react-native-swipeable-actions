@@ -58,7 +58,7 @@ it('forwards explicit-side raw-view props, refs and native events through the re
   })
   expect(ref.current?.close).toHaveBeenCalledWith(false)
   expect(ref.current?.cancel).toHaveBeenCalledTimes(1)
-  expect(onSwipeStart).toHaveBeenCalledWith()
+  expect(onSwipeStart).toHaveBeenCalledWith({ nativeEvent: {} })
   expect(onSwipeProgress).toHaveBeenCalledWith({ nativeEvent: { progress: 0.2, translationX: 18 } })
   expect(onSwipeEnd).toHaveBeenCalledWith({ nativeEvent: { state: 'closed' } })
 })
