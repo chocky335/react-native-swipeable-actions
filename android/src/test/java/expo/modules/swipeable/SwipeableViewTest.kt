@@ -2000,6 +2000,34 @@ class SwipeableViewTest {
         assertEquals("Replacement content must match the logically closed row", 0f, replacement.translationX, .01f)
     }
 
+    @Test fun tapDuringAutoCloseWaitKeepsTheTimerAndItsOpenCompletion() {
+        for (dispatch in listOf(false, true)) {
+            val row = row()
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 5000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(120f, 0f)
+            row.handleGestureEnd(120f, 0f)
+            settle()
+            assertEquals(160f, content(row).translationX, .01f)
+            assertTrue(ends().isEmpty())
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                motion(action, 200f, 10f).useEvent {
+                    if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                }
+            }
+            repeat(3) { settle() }
+            assertTrue(named("onGestureCancelled").isEmpty())
+            assertEquals(listOf("open:left"), ends())
+            assertEquals(0f, content(row).translationX, 0f)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.
