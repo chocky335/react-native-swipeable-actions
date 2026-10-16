@@ -19,6 +19,7 @@ import type { Implementation } from './features/list-demo'
 import { BenchmarkHUD } from './PerformanceHUD'
 import { ChatScreen, type ChatScreenRef } from './screens/ChatScreen'
 import { ListScreen, type ListScreenRef } from './screens/ListScreen'
+import { SwipeBackScreen } from './screens/SwipeBackScreen'
 import { TwoSidedScreen } from './screens/TwoSidedScreen'
 import { colors } from './styles'
 
@@ -26,7 +27,24 @@ type RootStackParamList = {
   List: undefined
   Chat: undefined
   TwoSided: undefined
+  SwipeBack: undefined
 }
+
+const DEMO_ROUTES = {
+  list: 'List',
+  chat: 'Chat',
+  'two-sided': 'TwoSided',
+  'swipe-back': 'SwipeBack'
+} as const satisfies Record<DemoType, keyof RootStackParamList>
+
+// These demos do not use the shared list configuration.
+const FIXED_SUBTITLES: Partial<Record<DemoType, string>> = {
+  'two-sided': 'Two-sided / Native Swipeable',
+  'swipe-back': 'Swipe to go back / Native Swipeable'
+}
+
+// The library gesture is the one under test, so the native back gesture is off.
+const SWIPE_BACK_OPTIONS = { gestureEnabled: false }
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
 
@@ -164,8 +182,14 @@ function AppContent() {
 
   const handleDemoChange = useCallback((demo: DemoType) => {
     setActiveDemo(demo)
-    const routes = { list: 'List', chat: 'Chat', 'two-sided': 'TwoSided' } as const
-    navigationRef.current?.navigate(routes[demo])
+    navigationRef.current?.navigate(DEMO_ROUTES[demo])
+  }, [])
+
+  // A swipe back pops the stack without the demo selector, so follow the current route.
+  const handleNavigationStateChange = useCallback(() => {
+    const route = navigationRef.current?.getCurrentRoute()?.name
+    const demo = (Object.keys(DEMO_ROUTES) as DemoType[]).find((key) => DEMO_ROUTES[key] === route)
+    if (demo) setActiveDemo(demo)
   }, [])
 
   const handleConfigToggle = useCallback(() => {
@@ -182,9 +206,8 @@ function AppContent() {
   )
 
   const subtitle =
-    activeDemo === 'two-sided'
-      ? 'Two-sided / Native Swipeable'
-      : `${activeDemo === 'list' ? 'List' : 'Chat'} • ${implementation === 'swipeable' ? 'Swipeable' : 'RNGH'}`
+    FIXED_SUBTITLES[activeDemo] ??
+    `${activeDemo === 'list' ? 'List' : 'Chat'} • ${implementation === 'swipeable' ? 'Swipeable' : 'RNGH'}`
 
   return (
     <GestureHandlerRootView key={implementation} style={styles.container}>
@@ -204,11 +227,16 @@ function AppContent() {
       <View style={styles.flex}>
         <ConfigProvider value={configValue}>
           <EventLogProvider enabled={isEventLogEnabled}>
-            <NavigationContainer ref={navigationRef}>
+            <NavigationContainer ref={navigationRef} onStateChange={handleNavigationStateChange}>
               <Stack.Navigator initialRouteName='List' screenOptions={{ headerShown: false }}>
                 <Stack.Screen name='List'>{() => <ListScreen ref={listScreenRef} />}</Stack.Screen>
                 <Stack.Screen name='Chat'>{() => <ChatScreen ref={chatScreenRef} />}</Stack.Screen>
                 <Stack.Screen name='TwoSided' component={TwoSidedScreen} />
+                <Stack.Screen
+                  name='SwipeBack'
+                  component={SwipeBackScreen}
+                  options={SWIPE_BACK_OPTIONS}
+                />
               </Stack.Navigator>
             </NavigationContainer>
             <EventLogOverlay topOffset={insets.top + HEADER_HEIGHT + 8} />
