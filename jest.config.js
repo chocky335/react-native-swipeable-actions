@@ -4,6 +4,7 @@ module.exports = {
     '^.+\\.jsx?$': 'babel-jest'
   },
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/e2e/logs/'],
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|expo-modules-core|@expo|expo)/)'
   ],
