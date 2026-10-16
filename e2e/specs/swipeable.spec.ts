@@ -338,19 +338,21 @@ describe('Swipeable E2E Tests', () => {
         await configPanel.close()
         await driver.pause(500)
 
+        await expect($(selectors.swipeableRow(0))).toBeDisplayed()
+
         // Scroll down to push items offscreen and trigger detach
         // (removeClippedSubviews → removeViewInLayout → onDetachedFromWindow → unregister)
         for (let i = 0; i < 3; i++) {
           await listDemoPage.scrollDown()
         }
         await driver.pause(500)
+        await expect($(selectors.swipeableRow(0))).not.toBeDisplayed()
 
         // Scroll back up to trigger reattach (onAttachedToWindow)
         // With the fix: re-registers views in the registry
         // Without the fix: views remain unregistered
-        for (let i = 0; i < 4; i++) {
-          await listDemoPage.scrollUp()
-        }
+        // Use the row container, not an action whose visibility is under test.
+        await scrollUpUntilDisplayed(selectors.swipeableRow(0), 10)
         await driver.pause(500)
 
         // Wait for item-0 to be visible after scrolling back

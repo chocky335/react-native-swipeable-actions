@@ -147,6 +147,8 @@ jobs:
 
       - name: Run E2E tests
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/android-evidence
         with:
           api-level: 34
           target: default
@@ -170,6 +172,14 @@ jobs:
         with:
           name: logcat-android
           path: /tmp/logcat.txt
+
+      - name: Upload Android failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-android
+          path: e2e/logs/android-evidence/
+          if-no-files-found: warn
 
   build-ios:
     if: inputs.enable-e2e-ios == true
