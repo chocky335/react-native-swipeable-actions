@@ -146,6 +146,40 @@ It does not mean the row stays open.
 </Swipeable>
 ```
 
+## Swipe to go back
+
+Wrap a whole screen to slide it right with the finger. A full swipe goes back, and
+nothing shows behind the screen. Give the left side empty content as wide as the
+window. Do not pass `null`, because `null` disables the side.
+
+```tsx
+const { width } = useWindowDimensions();
+const screen = useRef<SwipeableMethods>(null);
+const key = useId();
+
+<Swipeable
+  ref={screen}
+  recyclingKey={key}
+  leftActions={<View />}
+  leftActionsWidth={width}
+  dragOffsetFromEdge={20}
+  onSwipeStart={() => hasUnsavedDraft() && screen.current?.cancel()}
+  onSwipeEnd={(state) => state === "open" && navigation.goBack()}
+>
+  <ChatScreen />
+</Swipeable>
+```
+
+- `onSwipeStart` is an optional guard. `cancel()` snaps the screen back, and
+  `onSwipeEnd` does not report `"open"`.
+- `cancel()` needs a `recyclingKey`. Use a new key for each mount of the screen.
+  Then a later mount does not restore the open state of a screen that you swiped away.
+- If the navigator has its own back gesture on that screen, turn it off. For a
+  native stack, set `gestureEnabled: false`.
+
+The example app has a small reusable wrapper,
+[`SwipeToGoBack`](https://github.com/chocky335/react-native-swipeable-actions/blob/main/example/components/SwipeToGoBack.tsx).
+
 ## Commands
 
 ```tsx

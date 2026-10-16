@@ -69,6 +69,29 @@ disable content; numeric `0` is still valid React content. Runtime invalid-width
 handling disables the edge and warns in development rather than enabling fallback.
 A fully disabled configuration can use `leftActions={null} rightActions={false}`.
 
+### Full-width swipe with no visible actions
+
+Some 0.x screens used `actions={null}` with a full-width `actionsWidth` to slide
+the whole screen, for example to swipe back. Before:
+
+```tsx
+<Swipeable actions={null} actionsWidth={width} actionsPosition="left">
+  <Screen />
+</Swipeable>
+```
+
+After:
+
+```tsx
+<Swipeable leftActions={<View />} leftActionsWidth={width}>
+  <Screen />
+</Swipeable>
+```
+
+In v1, `null` disables the side, so the swipe does not start. An empty `<View />`
+keeps the side enabled and shows nothing behind the content. See
+[Swipe to go back](../README.md#swipe-to-go-back) for the full recipe.
+
 ## Types: removed inputs versus retained aliases
 
 `SwipeableProps` is the canonical explicit-side shape.
