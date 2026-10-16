@@ -364,6 +364,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             contentView = null
             isCurrentTouchCancelled = true
             if (!cancelActiveWork()) return
+            // The drag offset left with the removed content. Replacement content
+            // must match the logical state, not the abandoned gesture.
+            val side = openSide
+            currentTranslation = if (isOpen && side != null) side.sign * widthFor(side) else 0f
+            startOffset = 0f
         }
         reconcileSideChildren()
     }

@@ -1976,6 +1976,30 @@ class SwipeableViewTest {
         assertTrue(named("onGestureCancelled").isEmpty())
     }
 
+    @Test fun contentReplacementDuringClosedRowDragRestoresClosedGeometry() {
+        val row = row(key = "content-replacement")
+        settle()
+        row.handleGestureStart()
+        row.handleGestureUpdate(120f, 0f)
+        assertEquals(120f, content(row).translationX, .01f)
+        assertNull(SwipeableView.getOpenSideByKey("content-replacement"))
+
+        row.removeView(content(row))
+        val replacement = FrameLayout(activity)
+        row.addView(replacement)
+        row.layout(0, 0, 400, 64)
+        settle()
+
+        assertSame(replacement, content(row))
+        assertNull(SwipeableView.getOpenSideByKey("content-replacement"))
+        assertHidden(row.getChildAt(0))
+        assertHidden(row.getChildAt(1))
+        assertEquals(listOf(mapOf("side" to "left", "recyclingKey" to "content-replacement")),
+            named("onGestureCancelled"))
+        assertTrue(ends().isEmpty())
+        assertEquals("Replacement content must match the logically closed row", 0f, replacement.translationX, .01f)
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.
