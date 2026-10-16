@@ -187,7 +187,11 @@ public class SwipeableView: ExpoView {
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
     static func closeAll(animated: Bool = true) {
-        let targets = registryQueue.sync { _viewRegistry.map { (key: $0.key, target: $0.value) } }
+        let targets = registryQueue.sync { () -> [(key: String, target: SwipeCommandTarget<SwipeableView>)] in
+            // Rows that are not mounted come back closed, like close(key) for an unbound key.
+            _openStateCache.clearUnbound(bindings: _viewRegistry)
+            return _viewRegistry.map { (key: $0.key, target: $0.value) }
+        }
         DispatchQueue.main.async {
             for entry in targets {
                 performCommand({ view in

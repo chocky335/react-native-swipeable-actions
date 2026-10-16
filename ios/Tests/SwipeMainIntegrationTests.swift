@@ -445,6 +445,24 @@ final class SwipeMainIntegrationTests: XCTestCase {
         XCTAssertEqual(cache.side(for: "a"), .right)
     }
 
+    func testCloseAllClearsOnlyUnboundCachedSides() {
+        let mounted = Child()
+        var expired: Child? = Child()
+        let bindings: [String: SwipeCommandTarget<Child>] = [
+            "mounted": SwipeCommandTarget(mounted),
+            "expired": SwipeCommandTarget(expired!)
+        ]
+        expired = nil
+        var cache = SwipeOpenStateCache(capacity: 4)
+        cache.set(.left, for: "unmounted")
+        cache.set(.right, for: "expired")
+        cache.set(.right, for: "mounted")
+        cache.clearUnbound(bindings: bindings)
+        XCTAssertNil(cache.side(for: "unmounted"))
+        XCTAssertNil(cache.side(for: "expired"))
+        XCTAssertEqual(cache.side(for: "mounted"), .right, "A bound row closes through its own command")
+    }
+
     func testCloseCaptureTreatsDeadWeakTargetAsUnbound() {
         var cache = SwipeOpenStateCache(capacity: 2)
         var view: Child? = Child()

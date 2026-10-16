@@ -92,6 +92,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {
+            synchronized(registryLock) {
+                // Rows that are not mounted come back closed, like closeByKey for an unbound key.
+                openStateCache.snapshot().keys.forEach { key ->
+                    if (getView(key) == null) setOpenState(key, null)
+                }
+            }
             getAllViews().forEach { view ->
                 view.postCommand {
                     // Earlier commands for this binding may still be queued.

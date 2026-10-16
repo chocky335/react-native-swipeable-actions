@@ -2102,6 +2102,28 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun closeAllClosesUnmountedKeyedRowsAndStillClosesMountedRows() {
+        val unmounted = row(key = "unmounted")
+        unmounted.open(SwipeSide.LEFT)
+        settle()
+        root.removeView(unmounted)
+        assertEquals("left", SwipeableView.getOpenSideByKey("unmounted"))
+        val mounted = row(key = "mounted")
+        mounted.open(SwipeSide.RIGHT)
+        settle()
+        events.clear()
+        SwipeableView.closeAll()
+        settle()
+        assertNull(SwipeableView.getOpenSideByKey("unmounted"))
+        assertEquals(0f, content(mounted).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("mounted"))
+        assertEquals(listOf("closed:right"), ends())
+        val remounted = row(key = "unmounted")
+        settle()
+        assertEquals(0f, content(remounted).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("unmounted"))
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.

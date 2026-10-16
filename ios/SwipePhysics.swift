@@ -199,6 +199,13 @@ struct SwipeOpenStateCache {
         return current
     }
 
+    // closeAll's equivalent of an unbound close(key). Bound rows close through their own command.
+    mutating func clearUnbound<View: AnyObject>(bindings: [String: SwipeCommandTarget<View>]) {
+        for key in Array(sides.keys) where bindings[key]?.value == nil {
+            set(nil, for: key)
+        }
+    }
+
     mutating func clearIfUnbound(for key: String, hasCurrentBinding: Bool) {
         guard !hasCurrentBinding else { return }
         set(nil, for: key)
