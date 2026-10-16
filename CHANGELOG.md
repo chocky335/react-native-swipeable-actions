@@ -5,6 +5,11 @@ the entry for the matching version.
 
 ## Unreleased
 
+### Fixed
+
+- `Swipeable.closeAll()` now also closes rows that are not mounted, like
+  `Swipeable.close(key)`.
+
 ## 1.0.0-rc.0 - 2026-10-17
 
 First release candidate for 1.0.0. Install it with

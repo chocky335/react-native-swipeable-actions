@@ -120,6 +120,8 @@ import { FlashList } from "@shopify/flash-list";
 ```
 
 - The key identifies the item, not its index or its current language.
+- A row needs a `recyclingKey` if its open state must survive recycling or a
+  screen change.
 - If a cached side is now disabled, the row restores closed.
 - If a side's width changed, the row restores at the new width.
 - Rows do not close their siblings automatically. Call `Swipeable.closeAll()` or
@@ -234,7 +236,7 @@ not swipes.
 | `open(side?)` | `Swipeable.open(key, side?)` | Open a side. Without a side: right if enabled, else left. |
 | `close(animated = true)` | `Swipeable.close(key, animated = true)` | Close the row. |
 | `cancel()` | `Swipeable.cancel(key)` | Cancel the current gesture or pending open. |
-| - | `Swipeable.closeAll(animated = true)` | Close all rows. |
+| - | `Swipeable.closeAll(animated = true)` | Close all rows, including rows that are not mounted (scrolled off or on a covered screen). Those rows come back closed. |
 
 ### Types
 
