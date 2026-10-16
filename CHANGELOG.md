@@ -49,6 +49,9 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
   from its previous key.
 - A drag that crosses the closed position no longer opens the opposite side.
 - On Android, content replaced during a drag no longer keeps the drag offset.
+- `expo-modules-core` is no longer a peer dependency. A fresh `npm install`
+  could pull a newer expo-modules-core than the app's Expo SDK uses. The app now
+  gets the version its `expo` package brings.
 
 ## 0.1.12 and earlier
 

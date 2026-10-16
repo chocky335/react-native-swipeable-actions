@@ -20,7 +20,6 @@ The package declares these ranges. They are minimums, not a tested matrix.
 | Declaration | Value |
 | --- | --- |
 | `expo` peer | `>=50.0.0` |
-| `expo-modules-core` peer | `>=1.0.0` |
 | `react` peer | `>=18.0.0` |
 | `react-native` peer | `>=0.73.0` |
 | iOS deployment target | 13.4 |
