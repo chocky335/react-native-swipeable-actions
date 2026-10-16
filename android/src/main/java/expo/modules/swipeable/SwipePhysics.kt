@@ -15,12 +15,10 @@ enum class SwipeSide(val value: String, val sign: Float) {
 object SwipePhysics {
     private fun enabled(width: Float): Boolean = width.isFinite() && width > 0f
 
-    fun defaultOpenSide(preferred: SwipeSide, leftWidth: Float, rightWidth: Float): SwipeSide? {
-        val preferredWidth = if (preferred == SwipeSide.LEFT) leftWidth else rightWidth
-        if (enabled(preferredWidth)) return preferred
+    fun defaultOpenSide(leftWidth: Float, rightWidth: Float): SwipeSide? {
         return when {
-            enabled(leftWidth) -> SwipeSide.LEFT
             enabled(rightWidth) -> SwipeSide.RIGHT
+            enabled(leftWidth) -> SwipeSide.LEFT
             else -> null
         }
     }
@@ -46,7 +44,6 @@ object SwipePhysics {
         val clamped = if (side == SwipeSide.LEFT) maxOf(0f, raw) else minOf(0f, raw)
         return applyRubberBand(clamped, width, side == SwipeSide.LEFT)
     }
-
 
     fun applyRubberBand(
         translation: Float,

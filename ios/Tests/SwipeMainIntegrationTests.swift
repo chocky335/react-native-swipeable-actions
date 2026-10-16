@@ -151,10 +151,10 @@ final class SwipeMainIntegrationTests: XCTestCase {
         var children = SwipeReactChildren<Child>()
         children.mount(left, at: 0)
         children.mount(content, at: 1)
-        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count, twoSided: true))
+        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count))
         children.mount(right, at: 1)
 
-        let roles = SwipePhysics.childRoles(count: children.views.count, twoSided: true)!
+        let roles = SwipePhysics.childRoles(count: children.views.count)!
         XCTAssertTrue(children.views[roles.left!] === left)
         XCTAssertTrue(children.views[roles.right!] === right)
         XCTAssertTrue(children.views[roles.content] === content)
@@ -173,50 +173,69 @@ final class SwipeMainIntegrationTests: XCTestCase {
         XCTAssertEqual(children.views.count, 2)
         XCTAssertTrue(children.views[0] === left)
         XCTAssertTrue(children.views[1] === right)
-        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count, twoSided: true))
+        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count))
         children.unmount(Child(), at: 0)
         XCTAssertEqual(children.views.count, 2)
     }
 
     func testRemountDoesNotDuplicateChildAndClampsFabricIndex() {
-        let actions = Child()
+        let left = Child()
+        let right = Child()
         let content = Child()
         var children = SwipeReactChildren<Child>()
         children.mount(content, at: 99)
-        children.mount(actions, at: -1)
+        children.mount(left, at: -1)
         children.mount(content, at: 99)
         XCTAssertEqual(children.views.count, 2)
-        let roles = SwipePhysics.childRoles(count: children.views.count, twoSided: false)!
-        XCTAssertTrue(children.views[roles.actions!] === actions)
+        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count))
+        children.mount(right, at: 1)
+        let roles = SwipePhysics.childRoles(count: children.views.count)!
+        XCTAssertTrue(children.views[roles.left!] === left)
+        XCTAssertTrue(children.views[roles.right!] === right)
         XCTAssertTrue(children.views[roles.content] === content)
-        children.unmount(actions, at: 0)
-        XCTAssertTrue(children.views[0] === content)
+        children.unmount(left, at: 0)
+        XCTAssertTrue(children.views[0] === right)
+        XCTAssertTrue(children.views[1] === content)
+        XCTAssertNil(SwipePhysics.childRoles(count: children.views.count))
     }
 
-    func testOpenWidthResyncRequiresActualPositiveChangeAndIdleOpenRow() {
-        for widths: (CGFloat, CGFloat) in [(80, 120), (120, 80)] {
-            XCTAssertTrue(SwipePhysics.shouldSyncOpenWidth(
-                oldWidth: widths.0, newWidth: widths.1, isOpen: true, isInteracting: false
-            ))
-            XCTAssertFalse(SwipePhysics.shouldSyncOpenWidth(
-                oldWidth: widths.0, newWidth: widths.1, isOpen: true, isInteracting: true
-            ))
-            XCTAssertFalse(SwipePhysics.shouldSyncOpenWidth(
-                oldWidth: widths.0, newWidth: widths.1, isOpen: false, isInteracting: false
-            ))
+    func testWidthReconciliationPreservesEnabledIntentAndDropsDisabledEdge() {
+        for widths: (CGFloat, CGFloat) in [(80, 120), (120, 80), (80, 80)] {
+            for side in SwipeSide.allCases {
+                let open = SwipePhysics.reconcileTwoSidedState(
+                    openSide: side, autoCloseState: nil,
+                    leftWidth: side == .left ? widths.1 : 0,
+                    rightWidth: side == .right ? widths.1 : 0,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: false
+                )
+                XCTAssertEqual(open.openSide, side)
+                XCTAssertNil(open.autoClose)
+                let closed = SwipePhysics.reconcileTwoSidedState(
+                    openSide: nil, autoCloseState: nil,
+                    leftWidth: widths.1, rightWidth: widths.1,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: false
+                )
+                XCTAssertNil(closed.openSide)
+            }
         }
-        for width: CGFloat in [80, 0, -1] {
-            XCTAssertFalse(SwipePhysics.shouldSyncOpenWidth(
-                oldWidth: 80, newWidth: width, isOpen: true, isInteracting: false
-            ))
+        for width: CGFloat in [0, -1] {
+            for side in SwipeSide.allCases {
+                let disabled = SwipePhysics.reconcileTwoSidedState(
+                    openSide: side, autoCloseState: nil,
+                    leftWidth: side == .left ? width : 120,
+                    rightWidth: side == .right ? width : 120,
+                    wasGestureEnabled: true, gestureEnabled: true, autoClose: false
+                )
+                XCTAssertNil(disabled.openSide, "Do not fall back to the enabled opposite edge")
+            }
         }
     }
 
-    func testDetachRestoresOnlySettledTwoSidedIntent() {
-        XCTAssertTrue(SwipePhysics.shouldRestoreAfterDetach(twoSided: true, hasPendingInteraction: false))
-        XCTAssertFalse(SwipePhysics.shouldRestoreAfterDetach(twoSided: true, hasPendingInteraction: true))
-        XCTAssertFalse(SwipePhysics.shouldRestoreAfterDetach(twoSided: false, hasPendingInteraction: false))
-        XCTAssertFalse(SwipePhysics.shouldRestoreAfterDetach(twoSided: false, hasPendingInteraction: true))
+    func testDetachRestoresOnlySettledIntentForEitherSide() {
+        for side in SwipeSide.allCases {
+            XCTAssertTrue(SwipePhysics.shouldRestoreAfterDetach(hasPendingInteraction: false), side.rawValue)
+            XCTAssertFalse(SwipePhysics.shouldRestoreAfterDetach(hasPendingInteraction: true), side.rawValue)
+        }
     }
 
     func testCloseForUnboundRowClearsCachedSideBeforeFutureRestore() {

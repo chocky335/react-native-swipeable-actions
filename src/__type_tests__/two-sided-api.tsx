@@ -31,11 +31,27 @@ export const both = (
     {row}
   </Swipeable>
 )
-export const mixed = (
-  <Swipeable actions={action} actionsWidth={120} leftActions={action} leftActionsWidth={80}>
-    {row}
-  </Swipeable>
-)
+export const mixed: SwipeableComponentProps = {
+  children: row,
+  leftActions: action,
+  leftActionsWidth: 80,
+  // @ts-expect-error Removed legacy props cannot be mixed with the explicit-side API.
+  actions: action,
+  actionsWidth: 120
+}
+export const removedLegacy: SwipeableComponentProps = {
+  children: row,
+  // @ts-expect-error The original action pair is no longer a supported configuration.
+  actions: action,
+  actionsWidth: 120
+}
+export const removedPosition: SwipeableComponentProps = {
+  children: row,
+  rightActions: action,
+  rightActionsWidth: 120,
+  // @ts-expect-error Configure physical edges by their explicit pair, not actionsPosition.
+  actionsPosition: 'left'
+}
 export const disabled = (
   <Swipeable leftActions={null} rightActions={false}>
     {row}

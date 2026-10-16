@@ -25,7 +25,7 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
   it.each<SwipeSide>(['left', 'right'])('aligns the %s slot at its physical edge', (side) => {
     act(() => {
       tree = create(
-        <SwipeableActions slot actionsPosition={side}>
+        <SwipeableActions actionsPosition={side}>
           <Text>Action</Text>
         </SwipeableActions>
       )
@@ -41,7 +41,7 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
   it.each<SwipeSide>([
     'left',
     'right'
-  ])('aligns the legacy %s container at its physical edge', (side) => {
+  ])('aligns a single-side %s container at its physical edge', (side) => {
     act(() => {
       tree = create(
         <SwipeableActions actionsPosition={side}>
@@ -53,7 +53,7 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
     expect(StyleSheet.flatten(view.props.style).justifyContent).toBe(
       (rtl ? side === 'right' : side === 'left') ? 'flex-start' : 'flex-end'
     )
-    expect(view.props.collapsable).toBeUndefined()
+    expect(view.props.collapsable).toBe(false)
   })
 
   it.each<SwipeSide>([
@@ -200,7 +200,7 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
     ])
   })
 
-  it('retains the legacy bridge, callback arity and two-child structure', () => {
+  it('uses the shared bridge, callback arity and stable slots for a right-only row', () => {
     const ref = createRef<SwipeableMethods>()
     const onSwipeEnd = jest.fn()
     const onRightSwipeEnd = jest.fn()
@@ -208,9 +208,9 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
       tree = create(
         <Swipeable
           ref={ref}
-          recyclingKey='legacy'
-          actions={<Text>Delete</Text>}
-          actionsWidth={120}
+          recyclingKey='single-side'
+          rightActions={<Text>Delete</Text>}
+          rightActionsWidth={120}
           onSwipeEnd={onSwipeEnd}
           onRightSwipeEnd={onRightSwipeEnd}
         >
@@ -221,13 +221,15 @@ describe.each([false, true])('global isRTL=%s', (rtl) => {
     act(() => {
       ref.current?.open()
       mock.getLastInstance()?.triggerSwipeStart()
-      mock.getLastInstance()?.triggerSwipeEnd('open')
+      mock.getLastInstance()?.requestActions('right')
+      mock.getLastInstance()?.triggerSwipeEnd('open', 'right')
     })
-    expect(mock.SwipeableModule.openByKey.mock.calls).toEqual([['legacy']])
+    expect(mock.SwipeableModule.openByKey.mock.calls).toEqual([['single-side']])
     expect(mock.SwipeableModule.openByKeyOnSide).not.toHaveBeenCalled()
     expect(onSwipeEnd.mock.calls).toEqual([['open']])
     expect(onRightSwipeEnd.mock.calls).toEqual([['open']])
-    expect(tree!.root.findByType(mock.SwipeableView).props.twoSided).toBe(false)
-    expect(tree!.root.findAllByType(SwipeableActions)).toHaveLength(1)
+    expect(tree!.root.findByType(mock.SwipeableView).props.leftActionsWidth).toBe(0)
+    expect(tree!.root.findByType(mock.SwipeableView).props.rightActionsWidth).toBe(120)
+    expect(tree!.root.findAllByType(SwipeableActions)).toHaveLength(2)
   })
 })

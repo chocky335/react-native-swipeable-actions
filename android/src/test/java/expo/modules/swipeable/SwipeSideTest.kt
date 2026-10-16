@@ -32,11 +32,11 @@ class SwipeSideTest {
         assertNull(SwipePhysics.selectSide(40f, SwipeSide.RIGHT, null, 80f, 0f))
     }
 
-    @Test fun defaultOpenUsesPreferredThenOnlyEnabledEdge() {
-        assertEquals(SwipeSide.RIGHT, SwipePhysics.defaultOpenSide(SwipeSide.RIGHT, 80f, 120f))
-        assertEquals(SwipeSide.LEFT, SwipePhysics.defaultOpenSide(SwipeSide.RIGHT, 80f, 0f))
-        assertEquals(SwipeSide.RIGHT, SwipePhysics.defaultOpenSide(SwipeSide.LEFT, 0f, 120f))
-        assertNull(SwipePhysics.defaultOpenSide(SwipeSide.RIGHT, 0f, 0f))
+    @Test fun defaultOpenUsesRightThenLeftThenNoEnabledEdge() {
+        assertEquals(SwipeSide.RIGHT, SwipePhysics.defaultOpenSide(80f, 120f))
+        assertEquals(SwipeSide.LEFT, SwipePhysics.defaultOpenSide(80f, 0f))
+        assertEquals(SwipeSide.RIGHT, SwipePhysics.defaultOpenSide(0f, 120f))
+        assertNull(SwipePhysics.defaultOpenSide(0f, 0f))
     }
 
     @Test fun closingAcrossZeroClampsBothEdges() {

@@ -467,7 +467,8 @@ describe('Swipeable E2E Tests', () => {
     }
   )
 
-  // Default list props: actionsWidth=144, threshold=0.4, friction=1.0.
+  // The original 25 scenarios now use the same explicit-side engine as two-sided rows.
+  // Default list props: rightActionsWidth=144, threshold=0.4, friction=1.0.
   // Threshold distance = 144 * 0.4 = ~57.6 layout units of translation committed.
   // Density-aware drags below/above 57.6 exercise the same snap decision on both platforms.
   const dismissAlertIfPresent = async () => {
@@ -604,7 +605,7 @@ describe('Swipeable E2E Tests', () => {
           await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
         })
 
-        // Leading direction (separate code path for position='left')
+        // Leading direction (explicit leftActions pair on the same native engine)
         await configPanel.open()
         await configPanel.enableLeadingMode()
         await configPanel.close()

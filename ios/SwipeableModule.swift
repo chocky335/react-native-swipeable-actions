@@ -34,9 +34,6 @@ public class SwipeableModule: Module {
         }
 
         View(SwipeableView.self) {
-            Prop("twoSided") { (view: SwipeableView, value: Bool) in
-                view.twoSided = value
-            }
 
             Prop("leftActionsWidth") { (view: SwipeableView, width: CGFloat) in
                 view.leftActionsWidth = width
@@ -51,13 +48,6 @@ public class SwipeableModule: Module {
             }
 
             // Props
-            Prop("actionsWidth") { (view: SwipeableView, width: CGFloat) in
-                view.actionsWidth = width
-            }
-
-            Prop("actionsPosition") { (view: SwipeableView, position: String) in
-                view.actionsPosition = position
-            }
 
             Prop("friction") { (view: SwipeableView, friction: CGFloat) in
                 view.friction = friction

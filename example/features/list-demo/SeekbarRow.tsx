@@ -50,12 +50,14 @@ export function SeekbarRow({
     transform: [{ translateX: thumbX.value }]
   }))
 
+  const sideProps = isReversed
+    ? { leftActions: <SeekbarActions />, leftActionsWidth: 80 }
+    : { rightActions: <SeekbarActions />, rightActionsWidth: 80 }
+
   return (
     <View testID='seekbar-row'>
       <Swipeable
-        actionsPosition={isReversed ? 'left' : 'right'}
-        actionsWidth={80}
-        actions={<SeekbarActions />}
+        {...sideProps}
         friction={friction}
         threshold={threshold}
         dragOffsetFromEdge={dragOffsetFromEdge}

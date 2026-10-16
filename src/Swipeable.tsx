@@ -17,7 +17,6 @@ import {
   closeAll,
   closeByKey,
   getOpenSideByKey,
-  isOpenByKey,
   openByKey,
   openByKeyOnSide
 } from './nativeModuleUtils'
@@ -28,11 +27,9 @@ import type {
   SwipeSide,
   SwipeableComponentProps,
   SwipeableMethods,
-  SwipeableProps,
   SwipeableStatic,
   SwipeProgressEvent,
-  SwipeStateEvent,
-  TwoSidedSwipeableProps
+  SwipeStateEvent
 } from './Swipeable.types'
 import { SwipeableActions } from './SwipeableActions'
 import { SwipeableView } from './SwipeableView'
@@ -51,15 +48,12 @@ function normalizeRecyclingKey(key: string | number | undefined): string | undef
 const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function Swipeable(
   {
     children,
-    actions,
-    actionsWidth,
     leftActions,
     leftActionsWidth,
     rightActions,
     rightActionsWidth,
     onLeftSwipeEnd,
     onRightSwipeEnd,
-    actionsPosition = SWIPE_DEFAULTS.ACTIONS_POSITION,
     friction = SWIPE_DEFAULTS.FRICTION,
     threshold = SWIPE_DEFAULTS.THRESHOLD,
     gestureEnabled = SWIPE_DEFAULTS.GESTURE_ENABLED,
@@ -80,77 +74,45 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   const resolved = useMemo(
     () =>
       resolveSwipeableActions({
-        actions,
-        actionsPosition,
-        ...(actionsWidth !== undefined ? { actionsWidth } : {}),
         leftActions,
         ...(leftActionsWidth !== undefined ? { leftActionsWidth } : {}),
         rightActions,
         ...(rightActionsWidth !== undefined ? { rightActionsWidth } : {})
       }),
-    [
-      actions,
-      actionsWidth,
-      actionsPosition,
-      leftActions,
-      leftActionsWidth,
-      rightActions,
-      rightActionsWidth
-    ]
+    [leftActions, leftActionsWidth, rightActions, rightActionsWidth]
   )
-  const { twoSided } = resolved
 
   // Normalize recyclingKey before hooks that depend on it
   const normalizedKey = normalizeRecyclingKey(recyclingKey)
   const recyclingKeyRef = useRef<string | undefined>(undefined)
   recyclingKeyRef.current = normalizedKey
 
-  // Initialize from native cache: if this recyclingKey was open, render actions immediately.
-  // This handles FlatList remounting components during data reorder - React state is lost
-  // but native cache preserves the open state.
-  const [hasActionsRendered, setHasActionsRendered] = useState(() => {
-    return !twoSided && normalizedKey != null && isOpenByKey(normalizedKey)
-  })
+  // Hydrate the cached physical edge, including after a keyed list remount.
   const swipeStartedRef = useRef(false)
   const cachedSide = useMemo(
-    () => (twoSided && normalizedKey != null ? getOpenSideByKey(normalizedKey) : null),
-    [twoSided, normalizedKey]
+    () => (normalizedKey != null ? getOpenSideByKey(normalizedKey) : null),
+    [normalizedKey]
   )
   const initialSides = useMemo(
     () => ({
       key: normalizedKey,
-      twoSided,
       left: cachedSide === 'left',
       right: cachedSide === 'right'
     }),
-    [normalizedKey, twoSided, cachedSide]
+    [normalizedKey, cachedSide]
   )
   const [renderedSides, setRenderedSides] = useState(initialSides)
-  const sides =
-    renderedSides.key === normalizedKey && renderedSides.twoSided === twoSided
-      ? renderedSides
-      : initialSides
+  const sides = renderedSides.key === normalizedKey ? renderedSides : initialSides
 
   useEffect(() => {
-    setRenderedSides((previous) =>
-      previous.key === normalizedKey && previous.twoSided === twoSided ? previous : initialSides
-    )
-    if (twoSided) swipeStartedRef.current = false
-  }, [initialSides, normalizedKey, twoSided])
+    setRenderedSides((previous) => (previous.key === normalizedKey ? previous : initialSides))
+    swipeStartedRef.current = false
+  }, [initialSides, normalizedKey])
 
   const warningText = resolved.warnings.join('\n')
   useEffect(() => {
     if (__DEV__ && warningText) console.warn(`[Swipeable] ${warningText}`)
   }, [warningText])
-
-  // When recyclingKey changes (FlatList reorder/recycle), sync hasActionsRendered
-  // with the native cached open state. FlatList reuses component instances without
-  // remounting, so useState initializer doesn't re-run.
-  useEffect(() => {
-    if (twoSided || !normalizedKey) return
-    const cachedOpen = isOpenByKey(normalizedKey)
-    setHasActionsRendered(cachedOpen)
-  }, [normalizedKey, twoSided])
 
   // Development-time validation
   if (__DEV__) {
@@ -199,15 +161,11 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   )
 
   const handleSwipeStart = useCallback(() => {
-    if (!twoSided && !hasActionsRendered) {
-      setHasActionsRendered(true)
-    }
-
     if (!swipeStartedRef.current) {
       swipeStartedRef.current = true
       onSwipeStart?.()
     }
-  }, [hasActionsRendered, onSwipeStart, twoSided])
+  }, [onSwipeStart])
 
   const handleGestureCancelled = useCallback(
     (event: { nativeEvent: { recyclingKey?: string } }) => {
@@ -229,20 +187,18 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
         event.nativeEvent.recyclingKey !== normalizedKey
       )
         return
-      if (!twoSided || (side !== 'left' && side !== 'right') || resolved[side].width <= 0) return
+      if ((side !== 'left' && side !== 'right') || resolved[side].width <= 0) return
       setRenderedSides((previous) => {
-        const current =
-          previous.key === normalizedKey && previous.twoSided === twoSided ? previous : initialSides
+        const current = previous.key === normalizedKey ? previous : initialSides
         return current[side] ? current : { ...current, [side]: true }
       })
     },
-    [initialSides, normalizedKey, resolved, twoSided]
+    [initialSides, normalizedKey, resolved]
   )
 
   const handleSwipeProgress = useCallback(
     (event: SwipeProgressEvent) => {
       if (
-        twoSided &&
         event.nativeEvent.recyclingKey !== undefined &&
         event.nativeEvent.recyclingKey !== normalizedKey
       )
@@ -251,48 +207,43 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       const clamped = Math.max(0, Math.min(1, newProgress))
       onProgress?.(clamped)
     },
-    [normalizedKey, onProgress, twoSided]
+    [normalizedKey, onProgress]
   )
 
   const handleSwipeStateChange = useCallback(
     (event: SwipeStateEvent) => {
       if (
-        twoSided &&
         event.nativeEvent.recyclingKey !== undefined &&
         event.nativeEvent.recyclingKey !== normalizedKey
       )
         return
       onSwipeStateChange?.(event.nativeEvent.state)
     },
-    [normalizedKey, onSwipeStateChange, twoSided]
+    [normalizedKey, onSwipeStateChange]
   )
 
   const handleSwipeEnd = useCallback(
     (event: SwipeStateEvent) => {
       if (
-        twoSided &&
         event.nativeEvent.recyclingKey !== undefined &&
         event.nativeEvent.recyclingKey !== normalizedKey
       )
         return
       swipeStartedRef.current = false
       onSwipeEnd?.(event.nativeEvent.state)
-      const side = event.nativeEvent.side ?? (twoSided ? undefined : actionsPosition)
+      const side = event.nativeEvent.side
       if (side === 'left') onLeftSwipeEnd?.(event.nativeEvent.state)
       if (side === 'right') onRightSwipeEnd?.(event.nativeEvent.state)
     },
-    [actionsPosition, normalizedKey, onLeftSwipeEnd, onRightSwipeEnd, onSwipeEnd, twoSided]
+    [normalizedKey, onLeftSwipeEnd, onRightSwipeEnd, onSwipeEnd]
   )
 
   return (
     <SwipeableView
       ref={nativeRef}
       style={[styles.container, style]}
-      actionsWidth={twoSided ? 0 : (actionsWidth ?? 0)}
-      actionsPosition={actionsPosition}
-      twoSided={twoSided}
-      leftActionsWidth={twoSided ? resolved.left.width : 0}
-      rightActionsWidth={twoSided ? resolved.right.width : 0}
+      leftActionsWidth={resolved.left.width}
+      rightActionsWidth={resolved.right.width}
       onActionsNeeded={handleActionsNeeded}
       friction={friction}
       threshold={threshold}
@@ -308,39 +259,25 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       onSwipeStateChange={handleSwipeStateChange}
       onSwipeEnd={handleSwipeEnd}
     >
-      {twoSided ? (
-        <>
-          <SwipeableActions
-            key='left-slot'
-            slot
-            actionsPosition='left'
-            {...(testID ? { testID: `${testID}-left-actions` } : {})}
-          >
-            <Fragment key={normalizedKey ?? ''}>
-              {sides.left && resolved.left.width > 0 ? resolved.left.node : null}
-            </Fragment>
-          </SwipeableActions>
-          <SwipeableActions
-            key='right-slot'
-            slot
-            actionsPosition='right'
-            {...(testID ? { testID: `${testID}-right-actions` } : {})}
-          >
-            <Fragment key={normalizedKey ?? ''}>
-              {sides.right && resolved.right.width > 0 ? resolved.right.node : null}
-            </Fragment>
-          </SwipeableActions>
-        </>
-      ) : hasActionsRendered ? (
-        <SwipeableActions
-          actionsPosition={actionsPosition}
-          {...(testID ? { testID: `${testID}-actions` } : {})}
-        >
-          {actions}
-        </SwipeableActions>
-      ) : null}
-
-      <View key='content' style={styles.content} {...(twoSided ? { collapsable: false } : {})}>
+      <SwipeableActions
+        key='left-slot'
+        actionsPosition='left'
+        {...(testID ? { testID: `${testID}-left-actions` } : {})}
+      >
+        <Fragment key={normalizedKey ?? ''}>
+          {sides.left && resolved.left.width > 0 ? resolved.left.node : null}
+        </Fragment>
+      </SwipeableActions>
+      <SwipeableActions
+        key='right-slot'
+        actionsPosition='right'
+        {...(testID ? { testID: `${testID}-right-actions` } : {})}
+      >
+        <Fragment key={normalizedKey ?? ''}>
+          {sides.right && resolved.right.width > 0 ? resolved.right.node : null}
+        </Fragment>
+      </SwipeableActions>
+      <View key='content' style={styles.content} collapsable={false}>
         {children}
       </View>
     </SwipeableView>
@@ -362,9 +299,8 @@ Swipeable.displayName = 'Swipeable'
 
 // Static methods for controlling Swipeables by recyclingKey
 type SwipeableWithStatic = ForwardRefExoticComponent<
-  TwoSidedSwipeableProps & RefAttributes<SwipeableMethods>
+  SwipeableComponentProps & RefAttributes<SwipeableMethods>
 > &
-  ForwardRefExoticComponent<SwipeableProps & RefAttributes<SwipeableMethods>> &
   SwipeableStatic
 
 const SwipeableExport = Swipeable as SwipeableWithStatic

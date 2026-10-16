@@ -28,7 +28,7 @@ it('uses the existing native manager and module', () => {
   expect(SwipeableModule).toBe(mock.SwipeableModule)
 })
 
-it('forwards legacy raw-view props, refs and native events through the real adapter', () => {
+it('forwards explicit-side raw-view props, refs and native events through the real adapter', () => {
   const ref = createRef<NativeSwipeableRef>()
   const onSwipeStart = jest.fn()
   const onSwipeProgress = jest.fn()
@@ -37,8 +37,8 @@ it('forwards legacy raw-view props, refs and native events through the real adap
     tree = create(
       <SwipeableView
         ref={ref}
-        actionsWidth={90}
-        actionsPosition='left'
+        leftActionsWidth={90}
+        rightActionsWidth={0}
         onSwipeStart={onSwipeStart}
         onSwipeProgress={onSwipeProgress}
         onSwipeEnd={onSwipeEnd}
@@ -47,8 +47,8 @@ it('forwards legacy raw-view props, refs and native events through the real adap
       </SwipeableView>
     )
   })
-  expect(tree?.root.findByType(mock.SwipeableView).props.actionsWidth).toBe(90)
-  expect(tree?.root.findByType(mock.SwipeableView).props.actionsPosition).toBe('left')
+  expect(tree?.root.findByType(mock.SwipeableView).props.leftActionsWidth).toBe(90)
+  expect(tree?.root.findByType(mock.SwipeableView).props.rightActionsWidth).toBe(0)
   act(() => {
     mock.getLastInstance()?.triggerSwipeStart()
     mock.getLastInstance()?.triggerSwipeProgress(0.2, 18)

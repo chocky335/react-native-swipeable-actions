@@ -1,52 +1,43 @@
 import { resolveSwipeableActions } from '../resolveSwipeableActions'
 
-const legacy = { actions: 'legacy', actionsWidth: 80 }
-
-describe('action configuration resolution', () => {
-  it.each([
-    'left',
-    'right'
-  ] as const)('preserves the legacy %s configuration', (actionsPosition) => {
-    const result = resolveSwipeableActions({ ...legacy, actionsPosition })
-    expect(result.twoSided).toBe(false)
-    expect(result[actionsPosition]).toEqual({ node: 'legacy', width: 80 })
+describe('explicit-side action configuration', () => {
+  it.each(['left', 'right'] as const)('supports the original single-%s-side scenario', (side) => {
+    const result = resolveSwipeableActions({
+      [side + 'Actions']: 'action',
+      [side + 'ActionsWidth']: 80
+    })
+    expect(result[side]).toEqual({ node: 'action', width: 80 })
+    expect(result[side === 'left' ? 'right' : 'left']).toEqual({ node: null, width: 0 })
     expect(result.warnings).toEqual([])
   })
 
-  it('defaults legacy actions to the right', () => {
-    expect(resolveSwipeableActions(legacy).right).toEqual({ node: 'legacy', width: 80 })
-  })
-
-  it('combines an explicit opposite side with the legacy pair', () => {
+  it('keeps independently configured edges and widths', () => {
     const result = resolveSwipeableActions({
-      ...legacy,
-      leftActions: 'replace',
-      leftActionsWidth: 60
-    })
-    expect(result.twoSided).toBe(true)
-    expect(result.left).toEqual({ node: 'replace', width: 60 })
-    expect(result.right).toEqual({ node: 'legacy', width: 80 })
-  })
-
-  it('uses an explicit pair in preference to the same legacy edge', () => {
-    const result = resolveSwipeableActions({
-      ...legacy,
+      leftActions: 'pin',
+      leftActionsWidth: 60,
       rightActions: 'delete',
       rightActionsWidth: 120
     })
+    expect(result.left).toEqual({ node: 'pin', width: 60 })
     expect(result.right).toEqual({ node: 'delete', width: 120 })
   })
 
-  it.each([null, false])('explicit %s disables legacy fallback', (rightActions) => {
-    expect(resolveSwipeableActions({ ...legacy, rightActions }).right).toEqual({
-      node: null,
-      width: 0
+  it('replaces action content without inheriting another edge', () => {
+    const before = { rightActions: 'delete', rightActionsWidth: 120 }
+    expect(resolveSwipeableActions({ ...before, rightActions: 'archive' }).right).toEqual({
+      node: 'archive',
+      width: 120
     })
   })
 
-  it('undefined content retains legacy fallback', () => {
-    const result = resolveSwipeableActions({ ...legacy, rightActions: undefined })
-    expect(result.right).toEqual({ node: 'legacy', width: 80 })
+  it.each([
+    null,
+    false,
+    undefined
+  ])('disables an edge with %s content without fallback', (rightActions) => {
+    const result = resolveSwipeableActions({ rightActions })
+    expect(result.right).toEqual({ node: null, width: 0 })
+    expect(result.left).toEqual({ node: null, width: 0 })
   })
 
   it.each([
@@ -54,37 +45,52 @@ describe('action configuration resolution', () => {
     -1,
     Number.NaN,
     Number.POSITIVE_INFINITY
-  ])('disables an invalid explicit width %s', (width) => {
-    const result = resolveSwipeableActions({
-      ...legacy,
-      rightActions: 'delete',
-      rightActionsWidth: width
-    })
+  ])('disables an invalid width %s', (rightActionsWidth) => {
+    const result = resolveSwipeableActions({ rightActions: 'delete', rightActionsWidth })
     expect(result.right).toEqual({ node: null, width: 0 })
     expect(result.warnings).toHaveLength(1)
   })
 
-  it('requires a width for explicit content instead of inheriting the legacy width', () => {
-    const result = resolveSwipeableActions({ ...legacy, rightActions: 'delete' })
+  it('requires the width of the configured side', () => {
+    const result = resolveSwipeableActions({
+      leftActions: 'pin',
+      leftActionsWidth: 80,
+      rightActions: 'delete'
+    })
     expect(result.right.width).toBe(0)
+    expect(result.left.width).toBe(80)
     expect(result.warnings).toHaveLength(1)
   })
 
-  it('ignores a width supplied without content instead of changing legacy width', () => {
-    const result = resolveSwipeableActions({ ...legacy, rightActionsWidth: 120 })
-    expect(result.right).toEqual({ node: 'legacy', width: 80 })
+  it('does not enable a side with width alone', () => {
+    const result = resolveSwipeableActions({ rightActionsWidth: 120 })
+    expect(result.right).toEqual({ node: null, width: 0 })
     expect(result.warnings).toHaveLength(1)
   })
 
   it('keeps zero-valued React content', () => {
-    const result = resolveSwipeableActions({ leftActions: 0, leftActionsWidth: 80 })
-    expect(result.left).toEqual({ node: 0, width: 80 })
+    expect(resolveSwipeableActions({ leftActions: 0, leftActionsWidth: 80 }).left).toEqual({
+      node: 0,
+      width: 80
+    })
   })
 
-  it('does not add validation to legacy-only inputs', () => {
-    const result = resolveSwipeableActions({ actions: 'legacy', actionsWidth: -1 })
-    expect(result.twoSided).toBe(false)
-    expect(result.right.width).toBe(-1)
-    expect(result.warnings).toHaveLength(0)
+  it('never interprets removed legacy props as a fallback', () => {
+    const oldJavaScriptInput = {
+      actions: 'old',
+      actionsWidth: 80,
+      actionsPosition: 'left',
+      rightActions: undefined
+    }
+    const result = resolveSwipeableActions(oldJavaScriptInput)
+    expect(result.left).toEqual({ node: null, width: 0 })
+    expect(result.right).toEqual({ node: null, width: 0 })
+  })
+
+  it('disables a previously configured side even when its old width remains', () => {
+    expect(resolveSwipeableActions({ rightActions: null, rightActionsWidth: 120 }).right).toEqual({
+      node: null,
+      width: 0
+    })
   })
 })

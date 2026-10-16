@@ -11,29 +11,22 @@ export interface SwipeableActionsProps {
   actionsPosition: 'left' | 'right'
   /** Test ID for e2e testing */
   testID?: string
-  /** Stable physical-edge shell for the two-sided native child protocol. */
-  slot?: boolean
 }
 
 /**
  * SwipeableActions - Internal layout component for swipeable actions
  *
- * Handles entrance animation when children mount.
+ * Provides a stable physical-edge slot while action content mounts lazily.
  */
-export function SwipeableActions({
-  children,
-  actionsPosition,
-  testID,
-  slot
-}: SwipeableActionsProps) {
-  // Both APIs name physical edges; flex row start/end reverse in RTL.
+export function SwipeableActions({ children, actionsPosition, testID }: SwipeableActionsProps) {
+  // Side names are physical edges; flex row start/end reverse in RTL.
   const leading = I18nManager.isRTL ? actionsPosition === 'right' : actionsPosition === 'left'
   return (
     <View
       style={leading ? styles.actionsLeading : styles.actionsTrailing}
       pointerEvents={children ? 'auto' : 'none'}
       testID={testID}
-      {...(slot ? { collapsable: false } : {})}
+      collapsable={false}
     >
       {children}
     </View>

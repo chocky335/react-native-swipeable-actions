@@ -36,18 +36,21 @@ export function SwipeableRowItem({
     onRowPress(item.id)
   }, [item.id, onRowPress])
 
+  const actions = (
+    <View style={styles.actionsContainer}>
+      <MuteAction onPress={handleMute} />
+      <LeaveAction onPress={handleLeave} itemId={item.id} />
+    </View>
+  )
+  const sideProps = isReversed
+    ? { leftActions: actions, leftActionsWidth: 144 }
+    : { rightActions: actions, rightActionsWidth: 144 }
+
   return (
     <Swipeable
       ref={swipeableRef}
-      actionsPosition={isReversed ? 'left' : 'right'}
+      {...sideProps}
       testID={`row-${item.id}`}
-      actionsWidth={144}
-      actions={
-        <View style={styles.actionsContainer}>
-          <MuteAction onPress={handleMute} />
-          <LeaveAction onPress={handleLeave} itemId={item.id} />
-        </View>
-      }
       onSwipeStart={onSwipeStart}
       onSwipeStateChange={onSwipeStateChange}
       onSwipeEnd={onSwipeEnd}
