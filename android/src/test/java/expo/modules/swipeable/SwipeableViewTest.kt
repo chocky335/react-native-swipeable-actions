@@ -1851,7 +1851,7 @@ class SwipeableViewTest {
         }
     }
 
-    @Test fun nativeFollowupPhysicalDownInterruptsSettlementAndDetachConsumesHeldTouch() {
+    @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()
             settle()
@@ -1865,8 +1865,9 @@ class SwipeableViewTest {
             row.handleGestureUpdate(-120f, 0f)
             row.handleGestureEnd(-120f, 0f)
             touch(MotionEvent.ACTION_DOWN, 300f)
-            assertEquals(1, named("onGestureCancelled").size)
+            assertEquals(0, named("onGestureCancelled").size)
             touch(MotionEvent.ACTION_MOVE, 260f)
+            assertEquals(1, named("onGestureCancelled").size)
             touch(MotionEvent.ACTION_MOVE, 160f)
             assertEquals(2, named("onSwipeStart").size)
             root.removeView(row)
@@ -2089,6 +2090,58 @@ class SwipeableViewTest {
             root.removeView(row)
             SwipeableView.clearCache()
             events.clear()
+        }
+    }
+
+    @Test fun tapNeverInterruptsASettlingAnimation() {
+        for (dispatch in listOf(false, true)) {
+            for (phase in listOf("releaseOpen", "releaseClose", "programmaticOpen", "programmaticClose")) {
+                val label = "$phase dispatch=$dispatch"
+                val row = row()
+                settle()
+                if (phase == "releaseClose" || phase == "programmaticClose") {
+                    row.open(SwipeSide.LEFT)
+                    settle()
+                    events.clear()
+                }
+                when (phase) {
+                    "releaseOpen" -> {
+                        row.handleGestureStart()
+                        row.handleGestureUpdate(120f, 0f)
+                        row.handleGestureEnd(120f, 0f)
+                    }
+                    "releaseClose" -> {
+                        row.handleGestureStart()
+                        row.handleGestureUpdate(-120f, 0f)
+                        row.handleGestureEnd(-120f, 0f)
+                    }
+                    "programmaticOpen" -> row.open(SwipeSide.LEFT)
+                    "programmaticClose" -> row.close()
+                }
+                // A programmatic spring starts at the edge. Tap only once it is in flight.
+                for (frame in 0 until 10) {
+                    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                    val x = content(row).translationX
+                    if (x > 0f && x < 160f) break
+                }
+                val opening = phase.endsWith("Open")
+                val target = if (opening) 160f else 0f
+                val midway = content(row).translationX
+                assertTrue(label, midway > 0f && midway < 160f && midway != target)
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    motion(action, 200f, 10f).useEvent {
+                        if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                    }
+                }
+                settle()
+                assertEquals(label, target, content(row).translationX, .01f)
+                assertEquals(label, listOf(if (opening) "open:left" else "closed:left"), ends())
+                assertTrue(label, named("onGestureCancelled").isEmpty())
+                assertEquals(label, if (opening) "left" else null, SwipeableView.getOpenSideByKey("row"))
+                root.removeView(row)
+                SwipeableView.clearCache()
+                events.clear()
+            }
         }
     }
 

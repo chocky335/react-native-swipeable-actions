@@ -467,7 +467,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
 
-                // Handle in onTouchEvent for animation interruption
+                // Track the touch start in onTouchEvent. Only a drag interrupts settling work.
                 onTouchEvent(event)
 
                 // Forward DOWN to children
@@ -545,11 +545,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 touchStartY = event.rawY
                 isIntercepting = false
 
-                // A tap must not cancel a released gesture's auto-close wait or close; activation does.
-                if (isAnimating && autoCloseDeadline == null && autoCloseClosingSide == null) {
-                    interruptAnimation()
-                }
-
+                // Like iOS, only drag activation interrupts settling work. A tap never does.
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
@@ -588,7 +584,6 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.rawX
                 touchStartY = event.rawY
-                if (isAnimating && autoCloseDeadline == null && autoCloseClosingSide == null) interruptAnimation()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -1312,12 +1307,6 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         // Event dispatch is normally asynchronous, but native callbacks can reenter.
         // In that case the newer work owns the view and the caller must stop.
         return generation == workGeneration
-    }
-
-    private fun interruptAnimation() {
-        val side = activeSide
-        if (!cancelActiveWork()) return
-        animationSide = side
     }
 
     private fun postCurrent(action: () -> Unit) {
