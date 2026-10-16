@@ -532,7 +532,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 isIntercepting = false
 
                 // A tap must not cancel a released gesture's auto-close wait; activation does.
-                if (isAnimating) {
+                if (isAnimating && autoCloseDeadline == null) {
                     interruptAnimation()
                 }
 
@@ -574,7 +574,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.rawX
                 touchStartY = event.rawY
-                if (isAnimating) interruptAnimation()
+                if (isAnimating && autoCloseDeadline == null) interruptAnimation()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
