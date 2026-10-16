@@ -146,13 +146,17 @@ export function consumer(tarballInput, destination) {
   const example = path.join(root, 'example')
   copyConsumerSources(example, output)
   const manifest = json(path.join(example, 'package.json'))
-  const lock = json(path.join(example, 'package-lock.json'))
   manifest.dependencies[packageName] = `file:${tarball}`
-  lock.packages[''].dependencies[packageName] = `file:${tarball}`
-  delete lock.packages['..']
-  delete lock.packages[`node_modules/${packageName}`]
   writeJson(path.join(output, 'package.json'), manifest)
-  writeJson(path.join(output, 'package-lock.json'), lock)
+  // The example lockfile is gitignored; a clean checkout resolves like a new consumer.
+  const lockPath = path.join(example, 'package-lock.json')
+  if (existsSync(lockPath)) {
+    const lock = json(lockPath)
+    lock.packages[''].dependencies[packageName] = `file:${tarball}`
+    delete lock.packages['..']
+    delete lock.packages[`node_modules/${packageName}`]
+    writeJson(path.join(output, 'package-lock.json'), lock)
+  }
   writeFileSync(path.join(output, 'metro.config.js'), "const { getDefaultConfig } = require('expo/metro-config')\nmodule.exports = getDefaultConfig(__dirname)\n")
   run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], output)
   const installed = installedConsumerPackage(output)
