@@ -22,7 +22,7 @@ export function BenchmarkHUD({
   // Show running indicator
   if (isRunning) {
     return (
-      <View style={hudStyles}>
+      <View style={hudStyles} testID='benchmark-running'>
         <View style={styles.runningRow}>
           <ActivityIndicator size='small' color={colors.hudSuccess} />
           <Text style={styles.runningText}>Benchmarking...</Text>
@@ -37,14 +37,21 @@ export function BenchmarkHUD({
   }
 
   return (
-    <TouchableOpacity onPress={onDismiss} activeOpacity={0.8} style={hudStyles}>
+    <TouchableOpacity
+      onPress={onDismiss}
+      activeOpacity={0.8}
+      style={hudStyles}
+      testID='benchmark-result'
+    >
       <View style={styles.hudRow}>
         <Text style={styles.label}>Impl:</Text>
         <Text style={styles.value}>{implementation}</Text>
       </View>
       <View style={styles.hudRow}>
         <Text style={styles.label}>Result:</Text>
-        <Text style={styles.value}>{benchmarkResult}</Text>
+        <Text style={styles.value} testID='benchmark-result-text'>
+          {benchmarkResult}
+        </Text>
       </View>
     </TouchableOpacity>
   )

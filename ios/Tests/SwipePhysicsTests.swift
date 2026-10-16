@@ -330,3 +330,219 @@ final class SwipePhysicsTests: XCTestCase {
         XCTAssertFalse(shouldOpen)
     }
 }
+
+final class TwoSidedSwipePhysicsTests: XCTestCase {
+    private final class CommandProbe {
+        var workGeneration = 0
+        var received: [String] = []
+
+        func receive(_ command: String) {
+            workGeneration += 1
+            received.append(command)
+        }
+    }
+
+    func testSameBindingCommandsExecuteInOrderDespiteWorkGenerationChanges() {
+        let sequences = [
+            ["open", "close(false)"],
+            ["close", "open"],
+            ["open(left)", "open(right)"],
+            ["open(left)", "open(right)", "closeAll"]
+        ]
+        for sequence in sequences {
+            let view = CommandProbe()
+            let current = SwipeCommandTarget(view)
+            // Capture every target before executing the first command, as in a JS turn.
+            let queued = sequence.map { command in
+                { current.perform(ifCurrent: current) { $0.receive(command) } }
+            }
+            queued.forEach { $0() }
+            XCTAssertEqual(view.received, sequence)
+            XCTAssertEqual(view.received.last, sequence.last)
+            XCTAssertEqual(view.workGeneration, sequence.count)
+        }
+    }
+
+    func testQueuedCommandRejectsOldBindingAfterAToBToAOnSameView() {
+        let view = CommandProbe()
+        let firstA = SwipeCommandTarget(view)
+        var registry = ["a": firstA]
+        let queued = { firstA.perform(ifCurrent: registry["a"]) { $0.receive("stale open") } }
+        registry.removeValue(forKey: "a")
+        registry["b"] = SwipeCommandTarget(view)
+        registry.removeValue(forKey: "b")
+        registry["a"] = SwipeCommandTarget(view)
+        queued()
+        XCTAssertTrue(view.received.isEmpty)
+        registry["a"]?.perform(ifCurrent: registry["a"]) { $0.receive("fresh close") }
+        XCTAssertEqual(view.received, ["fresh close"])
+    }
+
+    func testQueuedCommandRejectsReattachmentAndReplacementBindings() {
+        let originalView = CommandProbe()
+        let oldBinding = SwipeCommandTarget(originalView)
+        oldBinding.perform(ifCurrent: nil) { $0.receive("detached") }
+        oldBinding.perform(ifCurrent: SwipeCommandTarget(originalView)) { $0.receive("reattached") }
+        let replacementView = CommandProbe()
+        oldBinding.perform(ifCurrent: SwipeCommandTarget(replacementView)) { $0.receive("replaced") }
+        XCTAssertTrue(originalView.received.isEmpty)
+        XCTAssertTrue(replacementView.received.isEmpty)
+    }
+
+    func testQueuedCommandDoesNotRetainUnmountedView() {
+        var view: CommandProbe? = CommandProbe()
+        let target = SwipeCommandTarget(view!)
+        weak var weakView = view
+        view = nil
+        XCTAssertNil(weakView)
+        target.perform(ifCurrent: target) { _ in XCTFail("Deallocated view received a command") }
+    }
+
+    func testCloseAllIncludesClosingLegOfOppositeSideOpen() {
+        XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
+            isOpen: false, isAnimating: true, hasPendingInteraction: false
+        ))
+        XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
+            isOpen: false, isAnimating: false, hasPendingInteraction: true
+        ))
+        XCTAssertFalse(SwipePhysics.shouldCloseForCloseAll(
+            isOpen: false, isAnimating: false, hasPendingInteraction: false
+        ))
+    }
+
+    func testCloseAllIncludesPendingWorkForEveryRow() {
+        for isAnimating in [false, true] {
+            for pending in [false, true] {
+                XCTAssertEqual(isAnimating || pending, SwipePhysics.shouldCloseForCloseAll(
+                    isOpen: false, isAnimating: isAnimating, hasPendingInteraction: pending
+                ))
+                XCTAssertTrue(SwipePhysics.shouldCloseForCloseAll(
+                    isOpen: true, isAnimating: isAnimating, hasPendingInteraction: pending
+                ))
+            }
+        }
+    }
+
+    func testPhysicalSideSelectionAndDisabledEdges() {
+        XCTAssertEqual(SwipePhysics.latchedSide(openSide: nil, translation: 1, leftWidth: 80, rightWidth: 120), .left)
+        XCTAssertEqual(SwipePhysics.latchedSide(openSide: nil, translation: -1, leftWidth: 80, rightWidth: 120), .right)
+        XCTAssertNil(SwipePhysics.latchedSide(openSide: nil, translation: 0, leftWidth: 80, rightWidth: 120))
+        XCTAssertNil(SwipePhysics.latchedSide(openSide: nil, translation: 50, leftWidth: 0, rightWidth: 120))
+        XCTAssertNil(SwipePhysics.latchedSide(openSide: nil, translation: -50, leftWidth: 80, rightWidth: .infinity))
+    }
+
+    func testOpenSideStaysLatchedThroughDirectionReversal() {
+        for side in SwipeSide.allCases {
+            XCTAssertEqual(SwipePhysics.latchedSide(openSide: side, translation: -side.sign * 200, leftWidth: 80, rightWidth: 120), side)
+            XCTAssertEqual(SwipePhysics.constrainToSide(translation: -side.sign * 100, actionsWidth: 80, side: side), 0)
+        }
+        XCTAssertNil(SwipePhysics.latchedSide(openSide: .left, translation: -100, leftWidth: 0, rightWidth: 120))
+    }
+
+    func testUnequalWidthsRubberBandIndependently() {
+        XCTAssertEqual(SwipePhysics.constrainToSide(translation: 110, actionsWidth: 80, side: .left), 90)
+        XCTAssertEqual(SwipePhysics.constrainToSide(translation: -150, actionsWidth: 120, side: .right), -130)
+        XCTAssertEqual(SwipePhysics.constrainToSide(translation: -100, actionsWidth: 120, side: .right), -100)
+        XCTAssertEqual(SwipePhysics.constrainToSide(translation: 50, actionsWidth: 0, side: .left), 0)
+    }
+
+    func testMirroredReleaseVectorsPreserveRelativeDisplacement() {
+        // Magnitudes are in the opening direction; closing displacement/velocity are negative.
+        let vectors: [(CGFloat, CGFloat, CGFloat, CGFloat, Bool, Bool)] = [
+            (80, 32, 0, 1, false, false),
+            (80, 33, 0, 1, false, true),
+            (120, 48, 0, 1, false, false),
+            (120, 49, 0, 1, false, true),
+            (80, 0, 220, 1, false, true),
+            (120, 0, 220, 1, false, false),
+            (80, 60, 0, 0.5, false, false),
+            (80, 66, 0, 0.5, false, true),
+            (80, -31, 0, 1, true, true),
+            (80, -32, 0, 1, true, false),
+            (120, -47, 0, 1, true, true),
+            (120, -48, 0, 1, true, false),
+            (80, 0, -220, 1, true, false),
+            (80, -50, 0, 0.5, true, true),
+            (80, -66, 0, 0.5, true, false),
+            (80, 100, 500, 0, false, false),
+            (80, -100, -500, 0, true, true)
+        ]
+        for side in SwipeSide.allCases {
+            for (width, translation, velocity, friction, startingOpen, expected) in vectors {
+                XCTAssertEqual(SwipePhysics.shouldOpenOnSide(
+                    translation: side.sign * translation, velocity: side.sign * velocity,
+                    friction: friction, actionsWidth: width, threshold: 0.4,
+                    side: side, isCurrentlyOpen: startingOpen
+                ), expected, "\(side), width \(width), displacement \(translation), startingOpen \(startingOpen)")
+            }
+        }
+    }
+
+    func testOpenRowStartOffsetIsAppliedOnlyToRendering() {
+        for side in SwipeSide.allCases {
+            let start = side.sign * 80
+            let relative = -side.sign * 40
+            XCTAssertEqual(SwipePhysics.constrainToSide(translation: start + relative, actionsWidth: 80, side: side), side.sign * 40)
+            XCTAssertFalse(SwipePhysics.shouldOpenOnSide(
+                translation: relative, velocity: 0, friction: 1, actionsWidth: 80,
+                threshold: 0.4, side: side, isCurrentlyOpen: true
+            ))
+        }
+    }
+
+    func testNewWidthsRejectNonfiniteAndNonpositiveValues() {
+        for width: CGFloat in [0, -1, .nan, .infinity, -.infinity] {
+            XCTAssertEqual(SwipePhysics.validWidth(width), 0)
+        }
+        XCTAssertEqual(SwipePhysics.validWidth(80), 80)
+    }
+
+    func testIncompleteTwoSidedSlotsNeverHaveContentRole() {
+        for count in [0, 1, 2, 4] { XCTAssertNil(SwipePhysics.childRoles(count: count)) }
+        let roles = SwipePhysics.childRoles(count: 3)
+        XCTAssertEqual(roles?.left, 0)
+        XCTAssertEqual(roles?.right, 1)
+        XCTAssertEqual(roles?.content, 2)
+        XCTAssertNotEqual(roles?.left, roles?.right)
+    }
+
+    func testSingleSideRowsRequireTheSameCompleteChildProtocol() {
+        XCTAssertNil(SwipePhysics.childRoles(count: 0))
+        XCTAssertNil(SwipePhysics.childRoles(count: 1))
+        XCTAssertNil(SwipePhysics.childRoles(count: 2))
+        XCTAssertNil(SwipePhysics.childRoles(count: 4))
+        let roles = SwipePhysics.childRoles(count: 3)
+        XCTAssertEqual(roles?.left, 0)
+        XCTAssertEqual(roles?.right, 1)
+        XCTAssertEqual(roles?.content, 2)
+    }
+
+    func testCacheRestoresExactSideAndEvictsOldestOpenKey() {
+        var cache = SwipeOpenStateCache(capacity: 2)
+        cache.set(.left, for: "a")
+        cache.set(.right, for: "b")
+        XCTAssertEqual(cache.side(for: "a"), .left)
+        XCTAssertEqual(cache.side(for: "b"), .right)
+        cache.set(.right, for: "a")
+        cache.set(.left, for: "c")
+        XCTAssertNil(cache.side(for: "a"))
+        XCTAssertEqual(cache.side(for: "b"), .right)
+        XCTAssertEqual(cache.side(for: "c"), .left)
+    }
+
+    func testClosingAndReopeningDoesNotLeaveDuplicateEvictionEntries() {
+        var cache = SwipeOpenStateCache(capacity: 2)
+        for _ in 0..<10 {
+            cache.set(.left, for: "a")
+            cache.set(nil, for: "a")
+        }
+        cache.set(.right, for: "b")
+        cache.set(.left, for: "a")
+        XCTAssertEqual(cache.side(for: "b"), .right)
+        XCTAssertEqual(cache.side(for: "a"), .left)
+        cache.set(.right, for: "c")
+        XCTAssertNil(cache.side(for: "b"))
+        XCTAssertEqual(cache.side(for: "a"), .left)
+    }
+
+}

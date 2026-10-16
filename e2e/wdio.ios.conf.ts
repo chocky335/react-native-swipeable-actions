@@ -1,23 +1,46 @@
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Options } from '@wdio/types'
+import { finishCommandScope, guardRequest } from './helpers/command-scope'
 import { setPlatform } from './helpers/selectors'
+
+const appiumPort = Number(process.env.APPIUM_PORT || 4723)
+
+const resultsDirectory = path.resolve(__dirname, 'logs', 'ios-results')
+const resultsFile = path.join(resultsDirectory, `worker-${process.pid}-${Date.now()}.ndjson`)
+
+function failureDetails(error: unknown) {
+  if (error == null) return
+  const details = error as { name?: string; message?: string; stack?: string }
+  return {
+    name: details.name,
+    message: details.message ?? String(error),
+    stack: details.stack
+  }
+}
+
+async function recordResult(record: Record<string, unknown>) {
+  await mkdir(resultsDirectory, { recursive: true })
+  await appendFile(
+    resultsFile,
+    `${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      pid: process.pid,
+      worker: process.env.WDIO_WORKER_ID,
+      ...record
+    })}\n`
+  )
+}
 
 const defaultAppPath = path.resolve(
   process.env.HOME || '',
   'Library/Developer/Xcode/DerivedData/SwipeableDemo-bknrgygfzufodcftotebryellxrc/Build/Products/Release-iphonesimulator/SwipeableDemo.app'
 )
 
-export const config: Options.Testrunner = {
+export const config: WebdriverIO.Config = {
   runner: 'local',
-  autoCompileOpts: {
-    autoCompile: true,
-    tsNodeOpts: {
-      transpileOnly: true,
-      project: './tsconfig.json'
-    }
-  },
-
-  specs: ['./specs/**/*.spec.ts'],
+  hostname: '127.0.0.1',
+  port: appiumPort,
+  specs: [path.resolve(__dirname, 'specs/**/*.spec.ts')],
   exclude: [],
 
   maxInstances: 1,
@@ -38,13 +61,20 @@ export const config: Options.Testrunner = {
       'appium:showXcodeLog': true,
       'appium:noReset': false,
       'appium:isHeadless': true,
-      ...(process.env.IOS_PREBUILT_WDA
+      // CI supplies the full build-for-testing output so Xcode launches XCTest.
+      // Keep the existing standalone package option for local callers.
+      ...(process.env.IOS_WDA_DERIVED_DATA_PATH
         ? {
-            'appium:usePreinstalledWDA': true,
-            'appium:prebuiltWDAPath': process.env.IOS_PREBUILT_WDA,
-            'appium:updatedWDABundleId': 'com.facebook.WebDriverAgentRunner'
+            'appium:usePrebuiltWDA': true,
+            'appium:derivedDataPath': process.env.IOS_WDA_DERIVED_DATA_PATH
           }
-        : {})
+        : process.env.IOS_PREBUILT_WDA
+          ? {
+              'appium:usePreinstalledWDA': true,
+              'appium:prebuiltWDAPath': process.env.IOS_PREBUILT_WDA,
+              'appium:updatedWDABundleId': 'com.facebook.WebDriverAgentRunner'
+            }
+          : {})
     }
   ],
 
@@ -53,18 +83,103 @@ export const config: Options.Testrunner = {
   waitforTimeout: 10000,
   connectionRetryTimeout: 600000,
   connectionRetryCount: 3,
+  transformRequest: guardRequest,
 
-  services: [['appium', { logPath: './logs' }]],
+  services: [
+    [
+      'appium',
+      {
+        logPath: path.resolve(__dirname, 'logs', `ios-${appiumPort}`),
+        args: { address: '127.0.0.1', port: appiumPort }
+      }
+    ]
+  ],
 
   framework: 'mocha',
   reporters: ['spec'],
 
   mochaOpts: {
     ui: 'bdd',
-    timeout: 120000
+    timeout: 120000,
+    require: [path.resolve(__dirname, 'helpers/command-scope.ts')]
   },
 
-  before: async () => {
+  before: async (_capabilities, specs) => {
     setPlatform('iOS')
-  }
+    await recordResult({ event: 'worker-start', specs })
+  },
+
+  beforeTest: async (test) => {
+    await recordResult({
+      event: 'test-start',
+      file: test.file,
+      title: test.title,
+      parent: test.parent,
+      fullTitle: test.fullTitle,
+      attempt: test._currentRetry ?? 0
+    })
+  },
+
+  afterHook: finishCommandScope(async (test, _context, result, hookName) => {
+    const { error, duration, passed } = result
+    // WDIO's Mocha adapter supplies skipped at runtime, but its shared type omits it.
+    const skipped = (result as typeof result & { skipped?: boolean }).skipped === true
+    if (passed && !error && !skipped) return
+    await recordResult({
+      // A skipped hook is evidence about that hook, not a count of skipped tests.
+      // An actual error always wins, even if the adapter also marks it skipped.
+      event: skipped && !error ? 'hook-skipped' : 'hook-failure',
+      hook: hookName,
+      file: test?.file,
+      title: test?.title,
+      parent: test?.parent,
+      duration,
+      error: failureDetails(error)
+    })
+  }),
+
+  after: async (result, _capabilities, specs) => {
+    await recordResult({ event: 'worker-end', result, specs })
+  },
+
+  afterTest: finishCommandScope(async (test, _context, { passed, error, duration, retries }) => {
+    let status = 'failed'
+    if (!error && test.pending) {
+      status = 'skipped'
+    } else if (!error && passed) {
+      status = 'passed'
+    }
+    // Persist the outcome before screenshots/XML, even if evidence capture hangs.
+    // A start without a result remains unfinished; never synthesize a pass.
+    await recordResult({
+      event: 'test-result',
+      file: test.file,
+      title: test.title,
+      parent: test.parent,
+      fullTitle: test.fullTitle,
+      attempt: test._currentRetry ?? 0,
+      status,
+      duration,
+      retries,
+      error: failureDetails(error)
+    })
+    const directory = process.env.E2E_ARTIFACT_DIR
+    if (passed || test.pending || !directory) return
+    const title = test.title.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 120)
+    const base = path.resolve(directory, `ios-${process.pid}-${Date.now()}-${title}`)
+    try {
+      await mkdir(path.dirname(base), { recursive: true })
+      const captures = await Promise.allSettled([
+        driver.saveScreenshot(`${base}.png`),
+        driver.getPageSource().then((source) => writeFile(`${base}.xml`, source))
+      ])
+      for (const capture of captures) {
+        if (capture.status === 'rejected') {
+          console.warn('iOS failure evidence could not be captured:', capture.reason)
+        }
+      }
+    } catch (error) {
+      console.warn('iOS failure evidence directory could not be created:', error)
+    }
+  })
 }

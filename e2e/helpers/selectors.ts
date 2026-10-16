@@ -18,9 +18,17 @@ export function setPlatform(platform: string): void {
  */
 function byTestId(id: string): string {
   if (isIOS) {
-    return `//*[@name="${id}"]`
+    // Match the same exact name natively, without serializing the UI tree for XPath.
+    return `-ios predicate string:name == ${JSON.stringify(id)}`
   }
-  return `//*[contains(@resource-id, "${id}")]`
+  // The driver disables resource-ID prefixing for React Native's raw testIDs.
+  // Direct IDs avoid XML dumps and cannot confuse a row with its action slots.
+  return `id=${id}`
+}
+
+// Keep the explicit exact-ID helper for the two-sided demo's named slots.
+function byExactTestId(id: string): string {
+  return byTestId(id)
 }
 
 /**
@@ -60,6 +68,31 @@ export const selectors = {
   get selectDemoList() {
     return byTestId('select-demo-list')
   },
+  get selectDemoTwoSided() {
+    return byExactTestId('select-demo-two-sided')
+  },
+  get twoSidedDemo() {
+    return byExactTestId('two-sided-demo')
+  },
+  get twoSidedControls() {
+    return byExactTestId('two-sided-controls')
+  },
+  get twoSidedList() {
+    return byExactTestId('two-sided-list')
+  },
+  twoSidedControl: (name: string) => byExactTestId(`two-sided-${name}`),
+  twoSidedControlLabel: (name: string) => byExactTestId(`two-sided-${name}-label`),
+  twoSidedRow: (id: number) => byExactTestId(`two-sided-row-${id}`),
+  twoSidedFrame: (id: number) => byExactTestId(`two-sided-frame-${id}`),
+  twoSidedAnchor: (id: number) => byExactTestId(`two-sided-anchor-${id}`),
+  twoSidedLayout: (id: number) => byExactTestId(`two-sided-layout-${id}`),
+  twoSidedActions: (id: number, side: 'left' | 'right') =>
+    byExactTestId(`two-sided-row-${id}-${side}-actions`),
+  twoSidedAction: (id: number, action: 'left' | 'right' | 'more' | 'legacy') =>
+    byExactTestId(`two-sided-action-${action}-${id}`),
+  twoSidedPresses: (id: number) => byExactTestId(`two-sided-presses-${id}`),
+  twoSidedEvents: (id: number) => byExactTestId(`two-sided-events-${id}`),
+  twoSidedLastEnd: (id: number) => byExactTestId(`two-sided-last-end-${id}`),
   get selectSwipeable() {
     return byTestId('select-swipeable')
   },
@@ -138,6 +171,44 @@ export const selectors = {
   // Reorder regression
   get simulateReorderButton() {
     return byTestId('simulate-reorder-button')
+  },
+
+  // Reset All (exercises instance ref close(false))
+  get resetAllButton() {
+    return byTestId('reset-all-button')
+  },
+
+  // Threshold prop controls
+  get setThresholdLow() {
+    return byTestId('set-threshold-low')
+  },
+  get setThresholdMedium() {
+    return byTestId('set-threshold-medium')
+  },
+  get setThresholdHigh() {
+    return byTestId('set-threshold-high')
+  },
+
+  // Drag offset prop controls
+  get setOffsetZero() {
+    return byTestId('set-offset-zero')
+  },
+  get setOffsetHigh() {
+    return byTestId('set-offset-high')
+  },
+
+  // Benchmark
+  get runBenchmarkButton() {
+    return byTestId('run-benchmark')
+  },
+  get benchmarkRunning() {
+    return byTestId('benchmark-running')
+  },
+  get benchmarkResult() {
+    return byTestId('benchmark-result')
+  },
+  get benchmarkResultText() {
+    return byTestId('benchmark-result-text')
   }
 }
 

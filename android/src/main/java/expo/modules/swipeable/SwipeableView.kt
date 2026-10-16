@@ -12,7 +12,9 @@ import androidx.collection.LruCache
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.events.NativeGestureUtil
+import com.facebook.react.views.view.ReactViewGroup
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
@@ -26,7 +28,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         private const val GESTURE_TIMEOUT_MS = 5000L
 
         /** Thread-safe LRU cache for open state - prevents unbounded memory growth */
-        private val openStateCache = LruCache<String, Boolean>(MAX_CACHE_SIZE)
+        private val openStateCache = LruCache<String, SwipeSide>(MAX_CACHE_SIZE)
 
         /** View registry for static method access by recyclingKey */
         private val viewRegistry = mutableMapOf<String, WeakReference<SwipeableView>>()
@@ -34,11 +36,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         /** Lock for thread-safe registry access */
         private val registryLock = Any()
 
-        // Thread-safe accessors (LruCache is already synchronized internally)
-        private fun getOpenState(key: String): Boolean = openStateCache[key] ?: false
+        // LruCache synchronizes access internally; absence represents closed.
+        private fun getOpenState(key: String): Boolean = openStateCache[key] != null
 
-        private fun setOpenState(key: String, isOpen: Boolean) {
-            openStateCache.put(key, isOpen)
+        private fun setOpenState(key: String, side: SwipeSide?) {
+            if (side == null) openStateCache.remove(key) else openStateCache.put(key, side)
         }
 
         private fun getView(key: String): SwipeableView? = synchronized(registryLock) {
@@ -49,44 +51,53 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             viewRegistry[key] = WeakReference(view)
         }
 
-        private fun unregisterView(key: String) = synchronized(registryLock) {
-            viewRegistry.remove(key)
+        private fun unregisterView(view: SwipeableView, key: String) = synchronized(registryLock) {
+            if (viewRegistry[key]?.get() === view) viewRegistry.remove(key)
         }
 
         private fun getAllViews(): List<SwipeableView> = synchronized(registryLock) {
             viewRegistry.values.mapNotNull { it.get() }
         }
 
-        // Static methods (by recyclingKey)
-        fun openByKey(key: String) {
-            getView(key)?.let { view ->
-                view.post { view.open() }
+        private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
+            val view = getView(key) ?: return
+            view.postCommand {
+                if (view.recyclingKey == key) action(view)
             }
         }
+
+        // Keep the existing command signatures unchanged.
+        fun openByKey(key: String) = postCommand(key) { it.open() }
+
+        fun openByKeyOnSide(key: String, side: SwipeSide?) {
+            if (side != null) postCommand(key) { it.open(side) }
+        }
+
+        fun getOpenSideByKey(key: String): String? = openStateCache[key]?.value
 
         fun closeByKey(key: String, animated: Boolean = true) {
-            getView(key)?.let { view ->
-                view.post { view.close(animated) }
+            val view = synchronized(registryLock) {
+                getView(key).also { current ->
+                    // Clear unbound intent before a remount can restore it. Queue no
+                    // work in this case: a future binding owns its own cached intent.
+                    if (current == null) setOpenState(key, null)
+                }
+            } ?: return
+            view.postCommand {
+                if (view.recyclingKey == key) view.close(animated)
             }
         }
 
-        fun cancelByKey(key: String) {
-            getView(key)?.let { view ->
-                view.post { view.cancelGesture() }
-            }
-        }
+        fun cancelByKey(key: String) = postCommand(key) { it.cancelGesture() }
 
-        /** Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views. */
+        /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {
             getAllViews().forEach { view ->
-                if (animated) {
-                    // Only close open views when animated
-                    if (view.isOpen) {
-                        view.post { view.close(animated = true) }
-                    }
-                } else {
-                    // Reset all views when not animated
-                    view.post { view.close(animated = false) }
+                view.postCommand {
+                    // Earlier commands for this binding may still be queued.
+                    val activeInteraction = (view.isAnimating || view.isDragging ||
+                        view.directGesturePending || view.restorePending)
+                    if (!animated || view.isOpen || activeInteraction) view.close(animated)
                 }
             }
         }
@@ -102,30 +113,31 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     private val density = context.resources.displayMetrics.density
 
-    var actionsWidth: Float = 0f
-        set(value) {
-            val validated = maxOf(0f, value)
-            val previous = field
-            if (previous == validated) return
-            field = validated
-            if (shouldSyncOpenLayoutForPropChange(previous, validated)) {
-                syncOpenStateToCurrentWidth()
-            }
-            requestLayout()
-        }
-
     private val actionsWidthPx: Float
-        get() = actionsWidth * density
+        get() = activeSide?.let(::widthFor) ?: 0f
 
-    var actionsPosition: String = "right"
+    var leftActionsWidth: Float = 0f
         set(value) {
-            val validated = if (value == "left" || value == "right") value else "right"
-            if (field == validated) return
-            field = validated
-            requestLayout()
+            val width = validWidth(value)
+            if (field == width) return
+            field = width
+            leftWidthPx = width * density
+            configurationChanged()
         }
 
-    val isLeading: Boolean get() = actionsPosition == "left"
+    var rightActionsWidth: Float = 0f
+        set(value) {
+            val width = validWidth(value)
+            if (field == width) return
+            field = width
+            rightWidthPx = width * density
+            configurationChanged()
+        }
+
+    private var leftWidthPx = 0f
+    private var rightWidthPx = 0f
+
+    val isLeading: Boolean get() = activeSide == SwipeSide.LEFT
 
     var friction: Float = 1.0f
         set(value) { field = value.coerceIn(0f, 1f) }
@@ -137,13 +149,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         set(value) {
             if (field == value) return
             field = value
-
-            if (!value) {
-                abortActiveGesture()
-                if (isOpen || currentTranslation != 0f) {
-                    close(animated = false)
-                }
-            }
+            pendingGestureDisable = !value
+            configurationChanged()
         }
 
     /**
@@ -155,27 +162,17 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      * gesture activation (before any horizontal motion is detected).
      */
     fun cancelGesture() {
-        abortActiveGesture()
         isCurrentTouchCancelled = true
-
-        if (isOpen || currentTranslation != 0f) {
-            close(animated = false)
-        }
+        velocityTracker?.recycle()
+        velocityTracker = null
+        // Cancel even at zero: a side may be pending activation, restoration,
+        // or the first spring frame. Do not apply a pending restore first.
+        closeInternal(animated = false)
     }
 
-    private fun abortActiveGesture() {
-        isBlockingChildEvents = false
-        isIntercepting = false
-
-        if (isDragging || isGestureActivated) {
-            isDragging = false
-            isGestureActivated = false
-            gestureStartTranslation = 0f
-            cancelGestureTimeout()
-            stopProgressUpdates()
-            velocityTracker?.recycle()
-            velocityTracker = null
-        }
+    private fun suppressCancelledTouch(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) isCurrentTouchCancelled = false
+        return isCurrentTouchCancelled
     }
 
     var dragOffsetFromEdge: Float = 0f
@@ -189,38 +186,40 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private val dragOffsetFromEdgePx: Float
         get() = dragOffsetFromEdge * density
 
-    /** Key for recycling detection - when this changes, view saves/restores state from cache */
+    /** A rebind invalidates old work before restoring from the complete prop transaction. */
     var recyclingKey: String? = null
         set(value) {
             val oldValue = field
             if (oldValue == value) return
-            field = value
-
-            // Thread-safe read of new key's state
-            val shouldOpen = value?.let { getOpenState(it) } ?: false
-            pendingShouldOpen = shouldOpen
-
-            // Thread-safe write of old key's state and unregister
+            val cancelled = takeGestureCancellation()
+            bindingGeneration++
+            val restoredSide = value?.let { openStateCache[it] }
             if (oldValue != null) {
-                setOpenState(oldValue, isOpen)
-                unregisterView(oldValue)
+                if (getView(oldValue) === this) {
+                    setOpenState(oldValue, if (isOpen) openSide else null)
+                }
+                unregisterView(this, oldValue)
             }
-
-            // Thread-safe register with new key
-            if (value != null) {
-                registerView(this, value)
-            }
-
-            close(animated = false)
-
-            // Apply using local shouldOpen (pendingShouldOpen was cleared by close).
-            // Set recycleSnapPending so onViewAdded can position actions immediately
-            // when React renders them (isOpenByKey initializes hasActionsRendered=true
-            // before snapToOpen runs on the next frame).
-            recycleSnapPending = shouldOpen
-            if (shouldOpen) {
-                post { snapToOpen() }
-            }
+            // A rebind consumes even a not-yet-activated physical sequence.
+            // cancelActiveWork clears activation, so suppress before clearing it.
+            isCurrentTouchCancelled = true
+            velocityTracker?.recycle()
+            velocityTracker = null
+            cancelActiveWork()
+            isOpen = false
+            openSide = null
+            animationSide = null
+            resetPosition()
+            requestedActions.clear()
+            observedSlotCounts.clear()
+            field = value
+            value?.let { registerView(this, it) }
+            pendingRestoreSide = restoredSide
+            restorePending = true
+            configurationChanged()
+            // Finish registry bookkeeping before a synchronous callback can issue
+            // another command; the payload still belongs to the pre-rebind start.
+            if (cancelled != null) onGestureCancelled(cancelled)
         }
 
     private var currentTranslation: Float = 0f
@@ -230,26 +229,43 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var isAnimating: Boolean = false
     private var gestureStartTranslation: Float = 0f
     private var isGestureActivated: Boolean = false
+    // Release ends touch activation, not ownership of the eventual completion.
+    private var gestureCompletionPending = false
+    private var gestureCompletionMetadata: Map<String, Any>? = null
     private var lastEmittedProgress: Float = -1f
-    private var pendingShouldOpen: Boolean = false
-    /** Tracks pending snapToOpen from recyclingKey setter. Unlike pendingShouldOpen,
-     *  this survives close(animated:false) so onViewAdded can position actions correctly. */
-    private var recycleSnapPending: Boolean = false
     private var lastEmittedWillEndState: String? = null
 
-    // Track if open animation was explicitly interrupted by close() for autoClose
-    private var openAnimationInterruptedByClose: Boolean = false
+    private var openSide: SwipeSide? = null
+    private var gestureSide: SwipeSide? = null
+    private var animationSide: SwipeSide? = null
+    private var directGesturePending = false
+    private var workGeneration = 0
+    // Commands in the same binding execute in order, even as they cancel animations.
+    @Volatile private var bindingGeneration = 0L
+    private var configurationDirty = false
+    private var pendingGestureDisable = false
+    private var pendingRestoreSide: SwipeSide? = null
+    private var restorePending = false
+    private var restoreCacheOnAttach = false
+    private val requestedActions = mutableSetOf<SwipeSide>()
+    private val observedSlotCounts = mutableMapOf<SwipeSide, Int>()
+    private val configurationRunnable = Runnable { applyPendingConfiguration() }
 
-    // Override onSwipeEnd state when autoClose triggers close() (emit "open" instead of "closed")
-    private var autoCloseEndEventOverride: Boolean = false
+    private val activeSide: SwipeSide?
+        get() = gestureSide ?: animationSide ?: openSide ?: defaultOpenSide()
 
     private var contentView: View? = null
-    private var actionsView: View? = null
+    private var leftActionsView: View? = null
+    private var rightActionsView: View? = null
+    private val actionsView: View?
+        get() = railFor(activeSide)
 
     private val onSwipeProgress by EventDispatcher<Map<String, Any>>()
     private val onSwipeStart by EventDispatcher<Map<String, Any>>()
     private val onSwipeStateChange by EventDispatcher<Map<String, Any>>()
     private val onSwipeEnd by EventDispatcher<Map<String, Any>>()
+    private val onActionsNeeded by EventDispatcher<Map<String, Any>>()
+    private val onGestureCancelled by EventDispatcher<Map<String, Any>>()
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var velocityTracker: VelocityTracker? = null
@@ -273,6 +289,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     // Auto-close runnable for tracking and cancellation
     private var autoCloseRunnable: Runnable? = null
+    private var autoCloseDeadline: Long? = null
+    private var autoCloseClosingSide: SwipeSide? = null
 
     // Track when a child (e.g. RNGH gesture handler) claims the touch
     private var childRequestedDisallowIntercept: Boolean = false
@@ -334,67 +352,30 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     override fun onViewAdded(child: View?) {
         super.onViewAdded(child)
         child ?: return
-
-        val wasActionsNil = actionsView == null
-        val wasContentNil = contentView == null
-
-        // With lazy Actions rendering:
-        // - When Actions not mounted: only content at index 0
-        // - When Actions mounted: actions at index 0, content at index 1
-        // Always re-evaluate all children since React may add them in any order
-        if (childCount == 1) {
-            // Only one child - it's content (Actions not mounted yet)
-            contentView = getChildAt(0)
-            actionsView = null
-        } else if (childCount >= 2) {
-            // Always check both positions - React may have reordered children
-            actionsView = getChildAt(0)
-            contentView = getChildAt(1)
-        }
-
-        if (wasContentNil && contentView != null && (isOpen || currentTranslation != 0f)) {
-            contentView?.translationX = currentTranslation
-        }
-
-        if (wasActionsNil && actionsView != null) {
-            // Prevent child clipping: Yoga lays out children for absoluteFill (full parent width)
-            // but our onLayout overrides the actionsView bounds to actionsWidth. Without this,
-            // children positioned by Yoga's flex-end would be clipped beyond the narrower bounds.
-            (actionsView as? ViewGroup)?.clipChildren = false
-            (actionsView as? ViewGroup)?.clipToPadding = false
-
-            if (isOpen || isAnimating) {
-                actionsView?.visibility = View.VISIBLE
-                actionsView?.translationX = 0f
-            }
-            else if (isDragging) {
-                actionsView?.visibility = View.VISIBLE
-                updateActionsTransform()
-            }
-            else if (pendingShouldOpen) {
-                pendingShouldOpen = false
-                post { snapToOpen() }
-            }
-            else if (recycleSnapPending) {
-                // Actions were rendered by React (via isOpenByKey) before native snapToOpen ran.
-                // Position them immediately so they're visible when UIAutomator checks.
-                recycleSnapPending = false
-                actionsView?.visibility = View.VISIBLE
-                actionsView?.translationX = 0f
-            }
-        }
+        reconcileSideChildren()
     }
 
     override fun onViewRemoved(child: View?) {
         super.onViewRemoved(child)
-        if (child === actionsView) {
-            actionsView = null
-        } else if (child === contentView) {
-            contentView = null
+        if (child === leftActionsView || child === rightActionsView) {
+            (child as? ReactViewGroup)?.pointerEvents = PointerEvents.AUTO
         }
+        if (child === contentView) {
+            contentView = null
+            isCurrentTouchCancelled = true
+            if (!cancelActiveWork()) return
+            // The drag offset left with the removed content. Replacement content
+            // must match the logical state, not the abandoned gesture.
+            val side = openSide
+            currentTranslation = if (isOpen && side != null) side.sign * widthFor(side) else 0f
+            startOffset = 0f
+        }
+        reconcileSideChildren()
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        applyPendingConfiguration()
+        reconcileSideChildren()
         val width = right - left
         val height = bottom - top
 
@@ -408,7 +389,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             child.layout(0, 0, width, height)
         }
 
-        if (!isDragging && !isAnimating && currentTranslation == 0f && actionsWidthPx > 0f && !recycleSnapPending) {
+        updateActionsTransform()
+
+        if (!isDragging && !isAnimating && currentTranslation == 0f && actionsWidthPx > 0f) {
             val actionsOffset = if (isLeading) -actionsWidthPx else actionsWidthPx
             actionsView?.translationX = actionsOffset
         }
@@ -417,7 +400,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         // prop reconciliation after a list reorder. The post {} ensures we run after
         // Fabric finishes applying all mutations in the current frame.
         if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
-            post {
+            postCurrent {
                 if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
                     contentView?.translationX = currentTranslation
                     updateActionsTransform()
@@ -444,21 +427,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      * - UP: If blocking → consume (children never see UP, no onPress)
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!gestureEnabled || actionsWidth <= 0f) {
+        // Every native touch entry point shares the same cancellation boundary.
+        if (suppressCancelledTouch(event)) return true
+        if (!gestureEnabled || !hasEnabledSide()) {
             return super.dispatchTouchEvent(event)
-        }
-
-        // After cancelGesture(), swallow the rest of the touch sequence so the user
-        // can't reactivate the swipe by continuing to drag the same finger down.
-        if (isCurrentTouchCancelled) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> isCurrentTouchCancelled = false
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    isCurrentTouchCancelled = false
-                    return true
-                }
-                else -> return true
-            }
         }
 
         when (event.actionMasked) {
@@ -502,13 +474,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     }
 
                     val horizontalDelta = event.rawX - dispatchTouchStartX
-                    val isCorrectDirection = if (isOpen) {
-                        true
-                    } else {
-                        if (isLeading) horizontalDelta > 0 else horizontalDelta < 0
-                    }
+                    val isCorrectDirection = selectGestureSide(horizontalDelta) != null
 
-                    if (isCorrectDirection) {
+                    val meetsOffset = dragOffsetFromEdgePx <= 0f || dx >= dragOffsetFromEdgePx
+                    if (isCorrectDirection && meetsOffset && !childRequestedDisallowIntercept) {
                         // Swipe detected - cancel React touches, start blocking
                         isBlockingChildEvents = true
                         cancelReactTouches(event)
@@ -547,7 +516,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        if (!gestureEnabled || actionsWidth <= 0f) return false
+        if (suppressCancelledTouch(event)) return false
+        if (!gestureEnabled || !hasEnabledSide()) return false
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -555,9 +525,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 touchStartY = event.rawY
                 isIntercepting = false
 
-                if (isAnimating) {
-                    contentSpringAnimation?.cancel()
-                    isAnimating = false
+                if (isAnimating || gestureCompletionPending) {
+                    interruptAnimation()
                 }
 
                 velocityTracker?.recycle()
@@ -570,14 +539,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 val verticalDelta = event.rawY - touchStartY
 
                 if (abs(horizontalDelta) > touchSlop && abs(horizontalDelta) > abs(verticalDelta)) {
-                    val isCorrectDirection = if (isOpen) {
-                        true
-                    } else {
-                        if (isLeading) horizontalDelta > 0 else horizontalDelta < 0
-                    }
+                    val isCorrectDirection = selectGestureSide(horizontalDelta) != null
                     val meetsOffset = dragOffsetFromEdgePx <= 0f || abs(horizontalDelta) >= dragOffsetFromEdgePx
 
-                    if (isCorrectDirection && meetsOffset) {
+                    if (isCorrectDirection && meetsOffset && !childRequestedDisallowIntercept) {
                         isIntercepting = true
                         parent?.requestDisallowInterceptTouchEvent(true)
                         return true
@@ -593,7 +558,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!gestureEnabled || actionsWidth <= 0f) return false
+        if (suppressCancelledTouch(event)) return true
+        if (!gestureEnabled || !hasEnabledSide()) return false
 
         velocityTracker?.addMovement(event)
 
@@ -601,6 +567,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.rawX
                 touchStartY = event.rawY
+                if (isAnimating || gestureCompletionPending) interruptAnimation()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -608,7 +575,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
                 if (!isGestureActivated) {
                     val meetsOffset = dragOffsetFromEdgePx <= 0f || abs(horizontalDelta) >= dragOffsetFromEdgePx
-                    if (meetsOffset) {
+                    val meetsActivation = (abs(horizontalDelta) > touchSlop && abs(horizontalDelta) > abs(event.rawY - touchStartY))
+                    if (meetsOffset && meetsActivation) {
                         activateGesture(horizontalDelta)
                     } else {
                         return true
@@ -621,7 +589,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 if (isGestureActivated) {
                     velocityTracker?.computeCurrentVelocity(1000)
                     val horizontalDelta = event.rawX - touchStartX
-                    handlePanEnd(horizontalDelta, velocityTracker?.xVelocity ?: 0f)
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                        isCurrentTouchCancelled = true
+                        reconcileLogicalState()
+                    } else {
+                        handlePanEnd(horizontalDelta, velocityTracker?.xVelocity ?: 0f)
+                    }
                 }
                 velocityTracker?.recycle()
                 velocityTracker = null
@@ -632,34 +605,41 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     private fun activateGesture(initialTranslation: Float) {
-        // Cancel any running animations and capture current position
-        contentSpringAnimation?.let { anim ->
-            if (anim.isRunning) {
-                currentTranslation = contentView?.translationX ?: currentTranslation
-                anim.cancel()
-            }
-        }
-        actionsSpringAnimation?.cancel()
-        isAnimating = false
-
+        if (isCurrentTouchCancelled) return
+        applyPendingConfiguration()
+        if (isCurrentTouchCancelled) return
+        val side = selectGestureSide(initialTranslation) ?: return
+        val blockingChildren = isBlockingChildEvents
+        val intercepting = isIntercepting
+        if (!cancelActiveWork()) return
+        isBlockingChildEvents = blockingChildren
+        isIntercepting = intercepting
+        gestureSide = side
+        animationSide = null
         isGestureActivated = true
         isDragging = true
         startOffset = currentTranslation
         gestureStartTranslation = initialTranslation
         lastEmittedWillEndState = if (isOpen) "open" else "closed"
-
+        val generation = workGeneration
         actionsView?.visibility = View.VISIBLE
-        parent?.requestDisallowInterceptTouchEvent(true)  // Prevent parent from stealing gesture
-
-        onSwipeStart(emptyMap())
+        requestActions(side, retryEmptySlot = true)
+        if (generation != workGeneration || !isGestureActivated) return
+        refreshRailVisibility()
+        parent?.requestDisallowInterceptTouchEvent(true)
+        gestureCompletionPending = true
+        gestureCompletionMetadata = sideMetadata(side)
+        onSwipeStart(gestureCompletionMetadata!!)
+        if (generation != workGeneration || !isGestureActivated) return
         startProgressUpdates()
         startGestureTimeout()
     }
 
     private fun startGestureTimeout() {
         cancelGestureTimeout()
+        val generation = workGeneration
         gestureTimeoutRunnable = Runnable {
-            if (isGestureActivated) {
+            if (generation == workGeneration && isGestureActivated) {
                 // Force gesture end if stuck
                 handlePanEnd(0f, 0f)
             }
@@ -675,29 +655,33 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private fun cancelAutoClose() {
         autoCloseRunnable?.let { removeCallbacks(it) }
         autoCloseRunnable = null
+        autoCloseDeadline = null
     }
 
-    private fun scheduleAutoClose() {
+    private fun scheduleAutoClose(deadline: Long = SystemClock.uptimeMillis() + maxOf(0L, autoCloseTimeout.toLong())) {
         cancelAutoClose()
-        val delay = if (autoCloseTimeout > 0) autoCloseTimeout.toLong() else 0L
+        autoCloseDeadline = deadline
+        val generation = workGeneration
+        val key = recyclingKey
+        val side = openSide
         autoCloseRunnable = Runnable {
             autoCloseRunnable = null
-            // Emit "open" state when autoClose completes - user's swipe intent was achieved
-            autoCloseEndEventOverride = true
-            close()
+            autoCloseDeadline = null
+            if (generation == workGeneration && key == recyclingKey && isOpen && openSide == side && autoClose) {
+                closeInternal(animated = true, autoCloseCompletion = true)
+            }
         }
-        postDelayed(autoCloseRunnable, delay)
+        postDelayed(autoCloseRunnable, maxOf(0L, deadline - SystemClock.uptimeMillis()))
     }
 
     private fun handlePanUpdate(translationX: Float) {
-        if (!isGestureActivated || actionsWidth <= 0f) return
+        if (!isGestureActivated || actionsWidthPx <= 0f) return
 
         val effectiveTranslation = translationX - gestureStartTranslation
 
-        val rawTranslation = startOffset + (effectiveTranslation * friction)
-        // Always clamp: never allow translation past closed position (0)
-        val clampedTranslation = if (isLeading) maxOf(0f, rawTranslation) else minOf(0f, rawTranslation)
-        val targetTranslation = SwipePhysics.applyRubberBand(clampedTranslation, actionsWidthPx, isLeading)
+        val targetTranslation = SwipePhysics.applyLatchedTranslation(
+            startOffset, effectiveTranslation, friction, actionsWidthPx, gestureSide ?: return
+        )
 
         currentTranslation = targetTranslation
         contentView?.translationX = targetTranslation
@@ -705,17 +689,19 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         // Emit onSwipeStateChange when threshold crossing changes intended state
         val thresholdDistance = actionsWidthPx * threshold
-        val wouldOpen = SwipePhysics.shouldSnapToOpen(targetTranslation, thresholdDistance, isOpen, isLeading)
+        val decisionTranslation = effectiveTranslation * friction
+        val wouldOpen = SwipePhysics.shouldSnapToOpen(decisionTranslation, thresholdDistance, isOpen, isLeading)
         val intendedState = if (wouldOpen) "open" else "closed"
         if (lastEmittedWillEndState != intendedState) {
             lastEmittedWillEndState = intendedState
-            onSwipeStateChange(mapOf("state" to intendedState))
+            onSwipeStateChange(stateEvent(intendedState))
         }
     }
 
     private fun handlePanEnd(translationX: Float, velocityX: Float) {
         if (!isGestureActivated) return
 
+        val generation = workGeneration
         val effectiveTranslation = translationX - gestureStartTranslation
 
         isGestureActivated = false
@@ -733,9 +719,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         val intendedState = if (shouldOpen) "open" else "closed"
         if (lastEmittedWillEndState != intendedState) {
             lastEmittedWillEndState = intendedState
-            onSwipeStateChange(mapOf("state" to intendedState))
+            onSwipeStateChange(stateEvent(intendedState))
         }
 
+        if (generation != workGeneration || isCurrentTouchCancelled) return
         if (shouldOpen) {
             // Only use velocity if it's in the opening direction (prevents backward bounce)
             val openingVelocity = if (isLeading) {
@@ -743,9 +730,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             } else {
                 if (velocityX < 0) velocityX else 0f  // Trailing: negative velocity opens
             }
-            open(openingVelocity)
+            // A release settles its latch; an argumentless command uses the configured default.
+            openInternal(gestureSide ?: return, openingVelocity, preserveGestureCompletion = true)
             // Schedule auto-close if enabled
-            if (autoClose) {
+            if (autoClose && isOpen && !isCurrentTouchCancelled) {
                 scheduleAutoClose()
             }
         } else {
@@ -755,48 +743,55 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             } else {
                 if (velocityX > 0) velocityX else 0f  // Trailing: positive velocity closes
             }
-            close(velocity = closingVelocity)
+            applyPendingConfiguration()
+            closeInternal(animated = true, velocity = closingVelocity, preserveGestureCompletion = true)
         }
     }
 
     private fun updateActionsTransform() {
-        val actions = actionsView ?: return
-        if (actionsWidthPx <= 0f) return
-
-        val progress = minOf(abs(currentTranslation) / actionsWidthPx, 1f)
-        val offset = if (isLeading) -actionsWidthPx else actionsWidthPx
-        val actionsTranslateX = offset * (1f - progress)
-
-        actions.translationX = actionsTranslateX
-    }
-
-    private fun shouldSyncOpenLayoutForPropChange(oldValue: Float, newValue: Float): Boolean {
-        if (oldValue == newValue) return false
-        if (!isOpen || isDragging || isAnimating || isGestureActivated) return false
-        return newValue > 0f
-    }
-
-    private fun syncOpenStateToCurrentWidth() {
-        val targetX = if (isLeading) actionsWidthPx else -actionsWidthPx
-        currentTranslation = targetX
-        contentView?.translationX = targetX
-
-        if (actionsView != null) {
-            actionsView?.visibility = View.VISIBLE
-            actionsView?.translationX = 0f
-        } else {
-            onSwipeStart(emptyMap())
+        for (side in SwipeSide.values()) {
+            val rail = railFor(side) ?: continue
+            val width = widthFor(side)
+            val progress = if (side == activeSide && width > 0f) minOf(abs(currentTranslation) / width, 1f) else 0f
+            rail.translationX = -side.sign * width * (1f - progress)
         }
-
-        startLayoutGuard()
-        emitFinalProgress(1f, targetX)
+        refreshRailVisibility()
     }
 
     fun open(velocity: Float = 0f) {
+        applyPendingConfiguration()
+        val side = defaultOpenSide() ?: return
+        open(side, velocity)
+    }
+
+    fun open(side: SwipeSide, velocity: Float = 0f) {
+        openInternal(side, velocity)
+    }
+
+    private fun openInternal(side: SwipeSide, velocity: Float, preserveGestureCompletion: Boolean = false) {
+        applyPendingConfiguration()
+        if (!isSideEnabled(side)) return
+        if (!preserveGestureCompletion && (isGestureActivated || directGesturePending)) {
+            isCurrentTouchCancelled = true
+        }
+        val previousSide = gestureSide ?: animationSide ?: openSide
+        if (previousSide != null && previousSide != side &&
+            (isOpen || currentTranslation != 0f || isAnimating || gestureCompletionPending)) {
+            closeInternal(animated = true, afterClose = { open(side, velocity) })
+            return
+        }
+        // An ordinary open can deliver the pending end. An imperative auto-close
+        // open neither schedules a timer nor emits an end, so it abandons ownership.
+        if (!cancelActiveWork(preserveGestureCompletion || !autoClose)) return
+        animationSide = side
+        openSide = side
+        val generation = workGeneration
+        requestActions(side, retryEmptySlot = true)
+        if (generation != workGeneration) return
         isOpen = true
         isAnimating = true
         // Thread-safe persist to static cache for FlashList recycling
-        recyclingKey?.let { key -> setOpenState(key, true) }
+        persistOpenSide(side)
         // Note: actionsView visibility is already set during drag phase
         if (actionsView?.visibility != View.VISIBLE) {
             actionsView?.visibility = View.VISIBLE
@@ -808,18 +803,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         // Start progress updates to emit progress during animation
         startProgressUpdates()
 
-        // Reset the flag - close() will set it to true if it interrupts us
-        openAnimationInterruptedByClose = false
-        contentSpringAnimation?.cancel()
-        actionsSpringAnimation?.cancel()
-
         val content = contentView
-        val actions = actionsView
 
         if (content == null) {
             currentTranslation = targetX
             isAnimating = false
             emitFinalProgress(1f, targetX)
+            if (generation != workGeneration) return
+            if (!autoClose) emitSwipeEnd("open", side)
+            if (generation != workGeneration) return
+            refreshRailVisibility()
             return
         }
 
@@ -849,20 +842,19 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             setMaxValue(maxBound)
             setStartVelocity(effectiveVelocity)
             addUpdateListener { _, value, _ ->
+                if (generation != workGeneration) return@addUpdateListener
                 currentTranslation = value
                 updateActionsTransform()
             }
-            addEndListener { _, _, _, _ ->
-                if (openAnimationInterruptedByClose) {
-                    // Animation was interrupted by close() (e.g., autoClose)
-                    return@addEndListener
-                }
+            addEndListener { _, canceled, _, _ ->
+                if (canceled || generation != workGeneration) return@addEndListener
                 isAnimating = false
                 startLayoutGuard()
                 emitFinalProgress(1f, targetX)
+                if (generation != workGeneration) return@addEndListener
                 // With autoClose, let close() emit onSwipeEnd("open") instead
                 if (!autoClose) {
-                    onSwipeEnd(mapOf("state" to "open"))
+                    emitSwipeEnd("open", side)
                 }
             }
             start()
@@ -870,168 +862,150 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         // Actions are now driven by updateActionsTransform() called from content's update listener
     }
 
-    /** Instantly snap to open state without animation (for recycling) */
+    /** Snaps to the current edge, or the canonical default enabled edge. */
     fun snapToOpen() {
-        contentSpringAnimation?.cancel()
-        actionsSpringAnimation?.cancel()
+        applyPendingConfiguration()
+        val side = openSide ?: defaultOpenSide() ?: return
+        snapToOpen(side)
+    }
 
+    private fun snapToOpen(side: SwipeSide) {
+        if (!isSideEnabled(side)) return
+        if (isGestureActivated || directGesturePending) isCurrentTouchCancelled = true
+        if (!cancelActiveWork()) return
         isOpen = true
-        isAnimating = false
-        val targetX = if (isLeading) actionsWidthPx else -actionsWidthPx
-        currentTranslation = targetX
-
-        // Set content translation immediately
-        contentView?.translationX = targetX
-
+        openSide = side
+        animationSide = side
+        currentTranslation = side.sign * widthFor(side)
+        contentView?.translationX = currentTranslation
+        val generation = workGeneration
+        requestActions(side, retryEmptySlot = true)
+        if (generation != workGeneration) return
         if (actionsView != null) {
-            // Actions already mounted - position them
             actionsView?.visibility = View.VISIBLE
             actionsView?.translationX = 0f
-        } else {
-            // Actions not mounted yet (React lazy rendering)
-            // Trigger onSwipeStart so React renders SwipeableActions
-            // onViewAdded will handle positioning when actions are added
-            onSwipeStart(emptyMap())
         }
-
+        if (generation != workGeneration) return
+        updateActionsTransform()
         startLayoutGuard()
-
-        // Emit final progress
-        emitFinalProgress(1f, targetX)
+        emitFinalProgress(1f, currentTranslation)
     }
 
     fun close(animated: Boolean = true, velocity: Float = 0f) {
-        cancelAutoClose()
-        stopProgressUpdates()
-        stopLayoutGuard()
+        applyPendingConfiguration()
+        closeInternal(animated, velocity)
+    }
 
-        // Cancel any running animations
-        openAnimationInterruptedByClose = true
-        contentSpringAnimation?.cancel()
-        actionsSpringAnimation?.cancel()
-
-        // Clear gesture state (unified from reset)
-        isDragging = false
-        isGestureActivated = false
-        gestureStartTranslation = 0f
-        pendingShouldOpen = false
-
+    private fun closeInternal(
+        animated: Boolean,
+        velocity: Float = 0f,
+        autoCloseCompletion: Boolean = false,
+        preserveGestureCompletion: Boolean = false,
+        afterClose: (() -> Unit)? = null
+    ) {
+        val side = activeSide ?: SwipeSide.RIGHT
+        val width = widthFor(side)
+        if (isGestureActivated || directGesturePending) {
+            isCurrentTouchCancelled = true
+        }
+        // An animated close takes over the pending gesture's eventual end.
+        // Keep ownership until that end or a later silent interruption.
+        if (!cancelActiveWork(animated || preserveGestureCompletion || autoCloseCompletion)) return
+        val generation = workGeneration
+        animationSide = side
+        autoCloseClosingSide = if (autoCloseCompletion) side else null
         isOpen = false
-        // Only persist to cache when animated (user action), not when resetting (recycling)
-        if (animated) {
-            recyclingKey?.let { key -> setOpenState(key, false) }
+        openSide = null
+        restorePending = false
+        pendingRestoreSide = null
+        persistOpenSide(null)
+
+        if (!animated) {
+            animationSide = null
+            resetPosition()
+            return
+        }
+        isAnimating = true
+        startProgressUpdates()
+        val content = contentView
+        if (content == null) {
+            currentTranslation = 0f
+            actionsView?.translationX = -side.sign * width
+            isAnimating = false
+            emitFinalProgress(0f, 0f)
+            if (generation != workGeneration) return
+            autoCloseClosingSide = null
+            emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
+            if (generation != workGeneration) return
+            animationSide = null
+            refreshRailVisibility()
+            if (generation == workGeneration) afterClose?.invoke()
+            return
         }
 
-        val actionsOffset = if (isLeading) -actionsWidthPx else actionsWidthPx
-
-        if (animated) {
-            // Animated close with spring physics
-            isAnimating = true
-            startProgressUpdates()
-
-            val springVelocity = SwipePhysics.calculateSpringVelocity(velocity)
-            val content = contentView
-
-            if (content == null) {
-                currentTranslation = 0f
-                actionsView?.translationX = actionsOffset
+        val minBound = if (side == SwipeSide.LEFT) 0f else -width
+        val maxBound = if (side == SwipeSide.LEFT) width else 0f
+        val clampedStart = content.translationX.coerceIn(minBound, maxBound)
+        val wasClamped = content.translationX != clampedStart
+        if (wasClamped) {
+            content.translationX = clampedStart
+            currentTranslation = clampedStart
+        }
+        val springVelocity = SwipePhysics.calculateSpringVelocity(velocity)
+        val effectiveVelocity = if (wasClamped && clampedStart == 0f) 0f else springVelocity
+        contentSpringAnimation = SpringAnimation(content, DynamicAnimation.TRANSLATION_X, 0f).apply {
+            spring = SpringForce(0f).apply {
+                stiffness = SwipeConstants.CLOSE_STIFFNESS
+                dampingRatio = SwipeConstants.CLOSE_DAMPING_RATIO
+            }
+            setMinValue(minBound)
+            setMaxValue(maxBound)
+            setStartVelocity(effectiveVelocity)
+            addUpdateListener { _, value, _ ->
+                if (generation != workGeneration) return@addUpdateListener
+                currentTranslation = value
+                updateActionsTransform()
+            }
+            addEndListener { _, canceled, _, _ ->
+                if (canceled || generation != workGeneration) return@addEndListener
                 isAnimating = false
-                openAnimationInterruptedByClose = false
+                currentTranslation = 0f
+                actionsView?.visibility = View.INVISIBLE
                 emitFinalProgress(0f, 0f)
-                return
+                if (generation != workGeneration) return@addEndListener
+                autoCloseClosingSide = null
+                emitSwipeEnd(if (autoCloseCompletion) "open" else "closed", side)
+                if (generation != workGeneration) return@addEndListener
+                animationSide = null
+                refreshRailVisibility()
+                if (generation == workGeneration) afterClose?.invoke()
             }
-
-            // Define bounds and clamp starting position
-            val minBound = if (isLeading) 0f else -actionsWidthPx
-            val maxBound = if (isLeading) actionsWidthPx else 0f
-
-            val clampedStart = content.translationX.coerceIn(minBound, maxBound)
-            val wasClamped = content.translationX != clampedStart
-            if (wasClamped) {
-                content.translationX = clampedStart
-                currentTranslation = clampedStart
-            }
-
-            val effectiveVelocity = if (wasClamped && clampedStart == 0f) 0f else springVelocity
-
-            contentSpringAnimation = SpringAnimation(content, DynamicAnimation.TRANSLATION_X, 0f).apply {
-                spring = SpringForce(0f).apply {
-                    stiffness = SwipeConstants.CLOSE_STIFFNESS
-                    dampingRatio = SwipeConstants.CLOSE_DAMPING_RATIO
-                }
-                setMinValue(minBound)
-                setMaxValue(maxBound)
-                setStartVelocity(effectiveVelocity)
-                addUpdateListener { _, value, _ ->
-                    currentTranslation = value
-                    updateActionsTransform()
-                }
-                addEndListener { _, _, _, _ ->
-                    isAnimating = false
-                    openAnimationInterruptedByClose = false
-                    actionsView?.visibility = View.INVISIBLE
-                    emitFinalProgress(0f, 0f)
-                    // Emit "open" when autoClose completes - user's swipe intent was achieved
-                    val endState = if (autoCloseEndEventOverride) "open" else "closed"
-                    autoCloseEndEventOverride = false
-                    onSwipeEnd(mapOf("state" to endState))
-                }
-                start()
-            }
-        } else {
-            // Instant close (formerly reset)
-            isAnimating = false
-            openAnimationInterruptedByClose = false
-            currentTranslation = 0f
-            startOffset = 0f
-            lastEmittedProgress = -1f
-
-            contentView?.translationX = 0f
-            actionsView?.translationX = actionsOffset
-            actionsView?.visibility = View.INVISIBLE
+            start()
         }
     }
 
     fun handleGestureStart() {
-        if (!gestureEnabled || actionsWidth <= 0f) return
-
-        isDragging = true
-        startOffset = currentTranslation
-        gestureStartTranslation = 0f
-        isGestureActivated = true
-        lastEmittedWillEndState = if (isOpen) "open" else "closed"
-        onSwipeStart(emptyMap())
-        startProgressUpdates()
+        applyPendingConfiguration()
+        if (!gestureEnabled || !hasEnabledSide()) return
+        // The direct API start is the equivalent of a fresh ACTION_DOWN.
+        isCurrentTouchCancelled = false
+        if (!cancelActiveWork()) return
+        directGesturePending = true
     }
 
     fun handleGestureUpdate(translationX: Float, velocityX: Float) {
-        if (actionsWidth <= 0f || !isGestureActivated) return
-
-        val rawTranslation = startOffset + (translationX * friction)
-        val targetTranslation = SwipePhysics.applyRubberBand(rawTranslation, actionsWidthPx, isLeading)
-
-        currentTranslation = targetTranslation
-        contentView?.translationX = targetTranslation
-        updateActionsTransform()
+        if (isCurrentTouchCancelled) return
+        if (directGesturePending && abs(translationX) > touchSlop && abs(translationX) >= dragOffsetFromEdgePx) {
+            activateGesture(translationX)
+            if (isGestureActivated) gestureStartTranslation = 0f
+        }
+        handlePanUpdate(translationX)
     }
 
     fun handleGestureEnd(translationX: Float, velocityX: Float) {
-        if (!isGestureActivated) return
-
-        isGestureActivated = false
-        gestureStartTranslation = 0f
-        isDragging = false
-        stopProgressUpdates()
-
-        val projectedX = SwipePhysics.projectFinalPosition(translationX, velocityX, friction)
-        val thresholdDistance = actionsWidthPx * threshold
-        val shouldOpen = SwipePhysics.shouldSnapToOpen(projectedX, thresholdDistance, isOpen, isLeading)
-
-        if (shouldOpen) {
-            open(velocityX)
-        } else {
-            close(velocity = velocityX)
-        }
+        if (isCurrentTouchCancelled) return
+        directGesturePending = false
+        handlePanEnd(translationX, velocityX)
     }
 
     private fun startProgressUpdates() {
@@ -1076,7 +1050,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             onSwipeProgress(mapOf(
                 "progress" to progress.toDouble(),
                 "translationX" to translation.toDouble()
-            ))
+            ) + sideMetadata())
         }
     }
 
@@ -1086,44 +1060,298 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         onSwipeProgress(mapOf(
             "progress" to progress.toDouble(),
             "translationX" to translationX.toDouble()
-        ))
+        ) + sideMetadata())
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         recyclingKey?.let { registerView(this, it) }
-
+        if (restoreCacheOnAttach) {
+            restoreCacheOnAttach = false
+            recyclingKey?.let { key ->
+                // Detached commands can change cached intent without a registered
+                // view. The same instance must restore that intent too.
+                pendingRestoreSide = openStateCache[key]
+                restorePending = true
+                isOpen = false
+                openSide = null
+                animationSide = null
+                configurationChanged()
+            }
+        }
+        applyPendingConfiguration()
+        reconcileSideChildren()
+        if (isOpen) openSide?.let(::requestActions)
         if (isOpen && currentTranslation != 0f) {
-            post {
+            postCurrent {
                 if (isOpen && currentTranslation != 0f && !isDragging && !isAnimating) {
                     contentView?.translationX = currentTranslation
                     updateActionsTransform()
                     actionsView?.visibility = View.VISIBLE
                 }
             }
-
-            // Restart autoClose timer if it was cancelled during detach
-            if (autoClose) {
-                scheduleAutoClose()
-            }
         }
     }
 
     override fun onDetachedFromWindow() {
+        val cancelled = takeGestureCancellation()
+        bindingGeneration++
+        restoreCacheOnAttach = true
+        isCurrentTouchCancelled = true
         super.onDetachedFromWindow()
-        stopProgressUpdates()
-        stopLayoutGuard()
-        cancelGestureTimeout()
-        cancelAutoClose()
-        contentSpringAnimation?.cancel()
-        actionsSpringAnimation?.cancel()
+        removeCallbacks(configurationRunnable)
         velocityTracker?.recycle()
         velocityTracker = null
-        // Reset state
+        requestedActions.clear()
+        observedSlotCounts.clear()
+        recyclingKey?.let { unregisterView(this, it) }
+        cancelActiveWork()
+        reconcileLogicalState(restartLayoutGuard = false)
+        if (cancelled != null) onGestureCancelled(cancelled)
+    }
+
+    private fun validWidth(value: Float): Float = if (value.isFinite() && value > 0f) value else 0f
+
+    private fun widthFor(side: SwipeSide): Float =
+        if (side == SwipeSide.LEFT) leftWidthPx else rightWidthPx
+
+    private fun isSideEnabled(side: SwipeSide): Boolean = widthFor(side) > 0f
+
+    private fun hasEnabledSide(): Boolean = leftWidthPx > 0f || rightWidthPx > 0f
+
+    private fun defaultOpenSide(): SwipeSide? =
+        SwipePhysics.defaultOpenSide(leftWidthPx, rightWidthPx)
+
+    private fun selectGestureSide(translation: Float): SwipeSide? = SwipePhysics.selectSide(
+        translation, openSide ?: animationSide, gestureSide, leftWidthPx, rightWidthPx
+    )
+
+    private fun railFor(side: SwipeSide?): View? = when (side) {
+        SwipeSide.LEFT -> leftActionsView
+        SwipeSide.RIGHT -> rightActionsView
+        null -> null
+    }
+
+    private fun sideMetadata(side: SwipeSide? = activeSide): Map<String, Any> {
+        if (side == null) return emptyMap()
+        val key = recyclingKey
+        return if (key != null) mapOf("side" to side.value, "recyclingKey" to key)
+            else mapOf("side" to side.value)
+    }
+
+    private fun stateEvent(state: String, side: SwipeSide? = activeSide): Map<String, Any> =
+        mapOf("state" to state) + sideMetadata(side)
+
+    private fun emitSwipeEnd(state: String, side: SwipeSide) {
+        gestureCompletionPending = false
+        gestureCompletionMetadata = null
+        onSwipeEnd(stateEvent(state, side))
+    }
+
+    private fun requestActions(side: SwipeSide, retryEmptySlot: Boolean = false) {
+        // A slot may be emptied without changing this view's own layout bounds.
+        if (retryEmptySlot && (railFor(side) as? ViewGroup)?.childCount == 0) {
+            requestedActions.remove(side)
+        }
+        if (isSideEnabled(side) && requestedActions.add(side)) {
+            onActionsNeeded(mapOf("side" to side.value) + sideMetadata(side))
+        }
+    }
+
+    private fun configurationChanged() {
+        // Invalidates callbacks immediately, but commits related widths/key together.
+        workGeneration++
+        configurationDirty = true
+        removeCallbacks(configurationRunnable)
+        post(configurationRunnable)
+        requestLayout()
+    }
+
+    internal fun applyPendingConfiguration() {
+        if (!configurationDirty) return
+        configurationDirty = false
+        removeCallbacks(configurationRunnable)
+        if (isGestureActivated || directGesturePending) {
+            // Configuration changes consume the remainder of this physical/direct gesture.
+            isCurrentTouchCancelled = true
+        }
+        reconcileSideChildren()
+        if (pendingGestureDisable && !gestureEnabled) {
+            if (!cancelActiveWork()) return
+            isOpen = false
+            openSide = null
+            animationSide = null
+            pendingRestoreSide = null
+            resetPosition()
+            persistOpenSide(null)
+        }
+        pendingGestureDisable = false
+        if (restorePending) {
+            val restored = pendingRestoreSide
+            restorePending = false
+            pendingRestoreSide = null
+            if (restored != null && isSideEnabled(restored)) {
+                snapToOpen(restored)
+            } else {
+                persistOpenSide(null)
+                reconcileLogicalState()
+            }
+        } else {
+            reconcileLogicalState()
+        }
+    }
+
+    private fun reconcileLogicalState(restartLayoutGuard: Boolean = true) {
+        val side = openSide
+        val deadline = autoCloseDeadline
+        val closingSide = autoCloseClosingSide
+        val resumesCompletion = autoClose && (
+            closingSide != null && isSideEnabled(closingSide) ||
+                isOpen && side != null && isSideEnabled(side) && deadline != null
+            )
+        if (!cancelActiveWork(preserveGestureCompletion = resumesCompletion)) return
+        animationSide = null
+        if (autoClose && closingSide != null && isSideEnabled(closingSide)) {
+            // Continue an actual auto-close animation, preserving its original side/intent.
+            animationSide = closingSide
+            closeInternal(animated = true, autoCloseCompletion = true)
+            return
+        }
+        if (isOpen && side != null && isSideEnabled(side)) {
+            openSide = side
+            currentTranslation = openSide!!.sign * widthFor(openSide!!)
+            contentView?.translationX = currentTranslation
+            updateActionsTransform()
+            if (restartLayoutGuard) startLayoutGuard()
+        } else {
+            isOpen = false
+            openSide = null
+            resetPosition()
+        }
+        persistOpenSide(openSide)
+        if (autoClose && isOpen && deadline != null) scheduleAutoClose(deadline)
+    }
+
+    private fun persistOpenSide(side: SwipeSide?) {
+        recyclingKey?.let { key ->
+            if (getView(key) === this) setOpenState(key, side)
+        }
+    }
+
+    private fun resetPosition() {
+        currentTranslation = 0f
+        startOffset = 0f
+        contentView?.translationX = 0f
+        updateActionsTransform()
+    }
+
+    private fun takeGestureCancellation(): Map<String, Any>? {
+        val cancelled = if (gestureCompletionPending) gestureCompletionMetadata else null
+        gestureCompletionPending = false
+        gestureCompletionMetadata = null
+        return cancelled
+    }
+
+    private fun cancelActiveWork(preserveGestureCompletion: Boolean = false): Boolean {
+        // Capture the original start's identity before any reset/rebind. Dispatch
+        // after clearing ownership, but before the caller can emit a replacement start.
+        val cancelled = if (!preserveGestureCompletion) takeGestureCancellation() else null
+        workGeneration++
+        val generation = workGeneration
+        currentTranslation = contentView?.translationX ?: currentTranslation
+        contentSpringAnimation?.cancel()
+        contentSpringAnimation = null
+        actionsSpringAnimation?.cancel()
+        actionsSpringAnimation = null
+        cancelAutoClose()
+        autoCloseClosingSide = null
+        cancelGestureTimeout()
+        stopProgressUpdates()
+        stopLayoutGuard()
         isAnimating = false
         isDragging = false
         isGestureActivated = false
-        // Thread-safe deregister from view registry
-        recyclingKey?.let { unregisterView(it) }
+        directGesturePending = false
+        gestureSide = null
+        gestureStartTranslation = 0f
+        lastEmittedWillEndState = null
+        isBlockingChildEvents = false
+        isIntercepting = false
+        childRequestedDisallowIntercept = false
+        parent?.requestDisallowInterceptTouchEvent(false)
+        if (cancelled != null) onGestureCancelled(cancelled)
+        // Event dispatch is normally asynchronous, but native callbacks can reenter.
+        // In that case the newer work owns the view and the caller must stop.
+        return generation == workGeneration
     }
+
+    private fun interruptAnimation() {
+        val side = activeSide
+        if (!cancelActiveWork()) return
+        animationSide = side
+    }
+
+    private fun postCurrent(action: () -> Unit) {
+        val generation = workGeneration
+        val key = recyclingKey
+        post { if (generation == workGeneration && key == recyclingKey) action() }
+    }
+
+    internal fun postCommand(action: () -> Unit) {
+        val generation = bindingGeneration
+        val key = recyclingKey
+        post {
+            if (generation == bindingGeneration && key == recyclingKey &&
+                (key == null || getView(key) === this)) {
+                action()
+            }
+        }
+    }
+
+    private fun reconcileSideChildren() {
+        val previousContent = contentView
+        val previousLeft = leftActionsView
+        val previousRight = rightActionsView
+        if (childCount == 3) {
+            leftActionsView = getChildAt(0)
+            rightActionsView = getChildAt(1)
+            contentView = getChildAt(2)
+        } else {
+            // Retain only known identities. A rail must never become content mid-transaction.
+            if (contentView?.parent !== this) contentView = null
+            if (leftActionsView?.parent !== this) leftActionsView = null
+            if (rightActionsView?.parent !== this) rightActionsView = null
+        }
+        for (side in SwipeSide.values()) {
+            val rail = railFor(side)
+            val previous = if (side == SwipeSide.LEFT) previousLeft else previousRight
+            val count = (rail as? ViewGroup)?.childCount ?: 0
+            if (rail !== previous || (observedSlotCounts[side] ?: 0) > 0 && count == 0) requestedActions.remove(side)
+            observedSlotCounts[side] = count
+            (rail as? ViewGroup)?.apply {
+                clipChildren = false
+                clipToPadding = false
+            }
+        }
+        if (contentView !== previousContent) contentView?.translationX = currentTranslation
+        if (isOpen || isDragging || isAnimating) activeSide?.let(::requestActions)
+        updateActionsTransform()
+    }
+
+    private fun refreshRailVisibility() {
+        for (side in SwipeSide.values()) {
+            val visible = childCount == 3 && isSideEnabled(side) && side == activeSide &&
+                (isOpen || isDragging || isAnimating) && (currentTranslation != 0f || isOpen)
+            railFor(side)?.apply {
+                visibility = if (visible) View.VISIBLE else View.INVISIBLE
+                // RN's TouchTargetHelper ignores Android visibility. An empty
+                // zero-width rail still spans the row and otherwise steals taps
+                // from the exposed opposite action, even with no descendants.
+                (this as? ReactViewGroup)?.pointerEvents = if (visible) PointerEvents.AUTO else PointerEvents.NONE
+                importantForAccessibility = if (visible) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }
+        }
+    }
+
 }
