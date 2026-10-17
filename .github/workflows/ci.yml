@@ -480,7 +480,9 @@ jobs:
           trap 'kill "$TOP_PID" 2>/dev/null || true; [ -n "$VIDEO_PID" ] && kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true' EXIT
           cd e2e
           if [ -n "$IOS_GREP" ]; then
-            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1 --mochaOpts.grep "$IOS_GREP"
+            # Mocha reads grep as a regular expression. Match the text of the input only.
+            GREP_PATTERN=$(node helpers/test-filter.mjs "$IOS_GREP")
+            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1 --mochaOpts.grep "$GREP_PATTERN"
           else
             npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
           fi
