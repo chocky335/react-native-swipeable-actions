@@ -259,6 +259,35 @@ export function artifactName(context, id) {
   return ['ios-shard', context.sha, context.runId, context.runAttempt, id].join('-')
 }
 
+/** The gate checks for one shard: its receipt, its step outcomes and its worker evidence. */
+export function validateShard(shard, { receipt, workers }, context) {
+  assert.equal(receipt.version, 1)
+  for (const key of identityKeys) assert.equal(receipt[key], context[key], 'Stale receipt: ' + key)
+  for (const key of ['id', 'spec', 'sourceHash'])
+    assert.equal(receipt[key], shard[key], 'Wrong receipt: ' + key)
+  assert.equal(receipt.wdioOutcome, 'success', 'WDIO step did not succeed')
+  assert.equal(
+    receipt.maestroOutcome,
+    shard.maestro ? 'success' : 'skipped',
+    'Maestro outcome mismatch'
+  )
+  assert.equal(workers.length, 1, 'Exactly one worker evidence file per shard required')
+  return validateRecords(shard, workers[0])
+}
+
+/** Reads one shard artifact the way the gate does. */
+export async function loadShardBundle(root) {
+  const receipt = JSON.parse(await readFile(path.join(root, 'ios-shard-receipt.json'), 'utf8'))
+  const results = path.join(root, 'ios-results')
+  const files = await readdir(results, { withFileTypes: true })
+  assert.equal(files.length, 1, 'Missing/duplicate worker artifacts')
+  assert.ok(files[0].isFile() && files[0].name.endsWith('.ndjson'), 'Invalid worker artifact')
+  return {
+    receipt,
+    workers: [parseRecords(await readFile(path.join(results, files[0].name), 'utf8'))]
+  }
+}
+
 export function validateAggregate(manifest, bundles, context) {
   validateManifest(manifest)
   for (const key of identityKeys)
@@ -272,22 +301,7 @@ export function validateAggregate(manifest, bundles, context) {
     'Missing/extra shard artifacts'
   )
   let passed = 0
-  for (const shard of manifest.shards) {
-    const { receipt, workers } = bundles[shard.id]
-    assert.equal(receipt.version, 1)
-    for (const key of identityKeys)
-      assert.equal(receipt[key], context[key], 'Stale receipt: ' + key)
-    for (const key of ['id', 'spec', 'sourceHash'])
-      assert.equal(receipt[key], shard[key], 'Wrong receipt: ' + key)
-    assert.equal(receipt.wdioOutcome, 'success', 'WDIO step did not succeed')
-    assert.equal(
-      receipt.maestroOutcome,
-      shard.maestro ? 'success' : 'skipped',
-      'Maestro outcome mismatch'
-    )
-    assert.equal(workers.length, 1, 'Exactly one worker evidence file per shard required')
-    passed += validateRecords(shard, workers[0])
-  }
+  for (const shard of manifest.shards) passed += validateShard(shard, bundles[shard.id], context)
   assert.equal(passed, TOTAL)
   return { ...identity(context), passed, shards: manifest.shards.length, maestro: 'success' }
 }
@@ -359,16 +373,9 @@ async function main([command, ...args]) {
     )
     const bundles = {}
     for (const shard of manifest.shards) {
-      const root = path.join(directory, artifactName(context, shard.id))
-      const receipt = JSON.parse(await readFile(path.join(root, 'ios-shard-receipt.json'), 'utf8'))
-      const results = path.join(root, 'ios-results')
-      const files = await readdir(results, { withFileTypes: true })
-      assert.equal(files.length, 1, 'Missing/duplicate worker artifacts')
-      assert.ok(files[0].isFile() && files[0].name.endsWith('.ndjson'), 'Invalid worker artifact')
-      bundles[shard.id] = {
-        receipt,
-        workers: [parseRecords(await readFile(path.join(results, files[0].name), 'utf8'))]
-      }
+      bundles[shard.id] = await loadShardBundle(
+        path.join(directory, artifactName(context, shard.id))
+      )
     }
     console.log(
       JSON.stringify(

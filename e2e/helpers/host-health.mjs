@@ -1,6 +1,7 @@
-import { appendFile, readdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { artifactName, loadShardBundle, validateShard } from './ios-shards.mjs'
 
 // Classifies the CI host only. It never changes a shard or gate result.
 const APP_SCENE = 'sceneID:com.swipeabledemo.app'
@@ -219,15 +220,16 @@ export function describeHealth(health) {
   return 'host unknown: no gestures in the simulator log'
 }
 
-function shardResult(receipt, maestro) {
-  if (!receipt) return 'no receipt'
-  const wdio = receipt.wdioOutcome || 'missing'
-  const seekbar = receipt.maestroOutcome || 'missing'
-  if (wdio === 'success' && seekbar === (maestro ? 'success' : 'skipped')) return 'passed'
-  return maestro ? `failed (wdio ${wdio}, maestro ${seekbar})` : `failed (wdio ${wdio})`
+/** The gate's own checks for one shard. The gate also needs the plan, the build and every shard. */
+async function shardResult(manifest, shard, root) {
+  try {
+    const passed = validateShard(shard, await loadShardBundle(root), manifest)
+    return `passed (${passed} cases)`
+  } catch (error) {
+    if (error?.code === 'ENOENT') return `rejected: missing ${path.relative(root, error.path)}`
+    return `rejected: ${String(error?.message ?? error).split('\n')[0]}`
+  }
 }
-
-const artifactPattern = /^ios-shard-[a-f0-9]{40}-\d+-\d+-(.+)$/
 
 async function optionalJson(filename) {
   const text = await optionalText(filename)
@@ -239,21 +241,28 @@ async function optionalJson(filename) {
   }
 }
 
-/** One row for each planned shard, in plan order, with its result and host class. */
-export async function summarize(manifest, directory) {
-  const roots = new Map()
-  for (const name of await readdir(directory).catch(() => [])) {
-    const id = name.match(artifactPattern)?.[1]
-    if (id) roots.set(id, path.join(directory, name))
+async function exists(filename) {
+  try {
+    await stat(filename)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
   }
+}
+
+/** One row for each planned shard, in plan order, with its gate checks and host class. */
+export async function summarize(manifest, directory) {
   const rows = []
   for (const shard of manifest.shards) {
-    const root = roots.get(shard.id)
-    const receipt = root && (await optionalJson(path.join(root, 'ios-shard-receipt.json')))
-    const health = root && (await optionalJson(path.join(root, 'ios-evidence', HEALTH_FILE)))
+    const root = path.join(directory, artifactName(manifest, shard.id))
+    const found = await exists(root)
+    const health = found
+      ? await optionalJson(path.join(root, 'ios-evidence', HEALTH_FILE))
+      : undefined
     rows.push({
       id: shard.id,
-      result: root ? shardResult(receipt, shard.maestro) : 'no evidence',
+      result: found ? await shardResult(manifest, shard, root) : 'no evidence',
       host: describeHealth(health),
       failures: health?.failures ?? null,
       latentRoutedInFailures: health?.latentRoutedInFailures ?? null,
@@ -267,14 +276,18 @@ export async function summarize(manifest, directory) {
 }
 
 export function summaryMarkdown(rows) {
-  const cell = (value) => (value === null || value === undefined ? 'n/a' : String(value))
+  const cell = (value) =>
+    value === null || value === undefined
+      ? 'n/a'
+      : String(value).replaceAll('\n', ' ').replaceAll('|', '\\|')
   return [
     '### iOS shard host health',
     '',
     'The host class does not change the gate result.',
+    "Gate checks runs the gate's checks for one shard. The gate also needs the plan, the build and every shard.",
     'Host trouble needs a latent-routed gesture inside the window of each failure.',
     '',
-    '| Shard | Result | Host | Failures | Latent in failures | Latent total | Gestures | Max load | Min idle % |',
+    '| Shard | Gate checks | Host | Failures | Latent in failures | Latent total | Gestures | Max load | Min idle % |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...rows.map(
       (row) =>
