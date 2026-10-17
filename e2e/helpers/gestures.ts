@@ -99,12 +99,14 @@ export async function scrollUpUntilDisplayed(
 ): Promise<void> {
   for (let i = 0; i < maxScrolls; i++) {
     const el = await $(selector)
-    if (await el.isDisplayed().catch(() => false)) {
+    if (await el.isDisplayed()) {
       return
     }
     await scrollUp()
     await driver.pause(300)
   }
+  // The final permitted gesture can reveal the target too; do not scroll again.
+  if (await $(selector).isDisplayed()) return
   throw new Error(`Element "${selector}" not visible after ${maxScrolls} scroll attempts`)
 }
 
@@ -117,8 +119,8 @@ export async function swipeOnElement(
   duration: number = 300,
   distance: number = 0.8
 ): Promise<void> {
-  const location = await element.getLocation()
-  const size = await element.getSize()
+  const location = await driver.getElementRect(await element.elementId)
+  const size = location
 
   // distance <= 1: coefficient of element width; > 1: pixel distance
   const swipePx = distance <= 1 ? size.width * distance : distance
@@ -149,4 +151,22 @@ export async function swipeOnElement(
   ])
 
   await driver.releaseActions()
+}
+
+/**
+ * Swipe a distance expressed in React Native layout units (dp / iOS points).
+ * Android W3C pointer coordinates are physical pixels; iOS uses points.
+ * Keep swipeOnElement's existing pixel/fraction contract unchanged.
+ */
+export async function swipeOnElementInLayoutUnits(
+  element: WebdriverIO.Element,
+  direction: 'left' | 'right',
+  duration: number,
+  distance: number
+): Promise<void> {
+  const scale = driver.isAndroid ? (await driver.getDisplayDensity()) / 160 : 1
+  if (!Number.isFinite(scale) || scale <= 0 || distance * scale <= 1) {
+    throw new Error(`Invalid layout-unit swipe: distance=${distance}, scale=${scale}`)
+  }
+  await swipeOnElement(element, direction, duration, distance * scale)
 }

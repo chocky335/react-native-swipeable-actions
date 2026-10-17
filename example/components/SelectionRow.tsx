@@ -14,11 +14,14 @@ export interface SelectionRowProps<T> {
   onChange: (value: T) => void
 }
 
+// Wrap pills that do not fit, so none sits off screen on narrow phones.
+const wrapStyle = { flexShrink: 1, flexWrap: 'wrap' as const, justifyContent: 'flex-end' as const }
+
 export function SelectionRow<T>({ label, options, value, onChange }: SelectionRowProps<T>) {
   return (
     <View style={layoutStyles.controlRow}>
       <Text style={layoutStyles.controlLabel}>{label}</Text>
-      <View style={layoutStyles.pickerRow}>
+      <View style={[layoutStyles.pickerRow, wrapStyle]}>
         {options.map((option) => {
           const isActive = option.value === value
           return (

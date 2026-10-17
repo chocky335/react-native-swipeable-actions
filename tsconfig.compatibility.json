@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src/__type_tests__/**/*.ts", "src/__type_tests__/**/*.tsx"],
+  "exclude": ["node_modules", "build", "ios", "android", "src/__tests__", "src/__mocks__"]
+}

@@ -1,6 +1,12 @@
-import { scrollUpUntilDisplayed, swipeOnElement } from '../helpers/gestures'
+import {
+  scrollUpUntilDisplayed,
+  swipeOnElement,
+  swipeOnElementInLayoutUnits
+} from '../helpers/gestures'
+import { afterEach, it } from '../helpers/scoped-mocha'
 import { compareImages, takeViewportScreenshot } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
+import { relaunchApp } from '../helpers/touch-readiness'
 import { chatPage } from '../pages/chatPage'
 import { configPanel } from '../pages/configPanel'
 import { listDemoPage } from '../pages/listDemoPage'
@@ -14,9 +20,7 @@ const ENABLED_TESTS: number[] = process.env.ENABLED_TESTS
 const shouldRun = (testNum: number) => ENABLED_TESTS.length === 0 || ENABLED_TESTS.includes(testNum)
 describe('Swipeable E2E Tests', () => {
   afterEach(async () => {
-    const appId = 'com.swipeabledemo.app'
-    await driver.terminateApp(appId)
-    await driver.activateApp(appId)
+    await relaunchApp('com.swipeabledemo.app')
     await listDemoPage.waitForDisplayed()
   })
   const numberOfRows = 5
@@ -333,19 +337,21 @@ describe('Swipeable E2E Tests', () => {
         await configPanel.close()
         await driver.pause(500)
 
+        await expect($(selectors.swipeableRow(0))).toBeDisplayed()
+
         // Scroll down to push items offscreen and trigger detach
         // (removeClippedSubviews → removeViewInLayout → onDetachedFromWindow → unregister)
         for (let i = 0; i < 3; i++) {
           await listDemoPage.scrollDown()
         }
         await driver.pause(500)
+        await expect($(selectors.swipeableRow(0))).not.toBeDisplayed()
 
         // Scroll back up to trigger reattach (onAttachedToWindow)
         // With the fix: re-registers views in the registry
         // Without the fix: views remain unregistered
-        for (let i = 0; i < 4; i++) {
-          await listDemoPage.scrollUp()
-        }
+        // Use the row container, not an action whose visibility is under test.
+        await scrollUpUntilDisplayed(selectors.swipeableRow(0), 10)
         await driver.pause(500)
 
         // Wait for item-0 to be visible after scrolling back
@@ -459,4 +465,203 @@ describe('Swipeable E2E Tests', () => {
       })
     }
   )
+
+  // The original 25 scenarios now use the same explicit-side engine as two-sided rows.
+  // Default list props: rightActionsWidth=144, threshold=0.4, friction=1.0.
+  // Threshold distance = 144 * 0.4 = ~57.6 layout units of translation committed.
+  // Density-aware drags below/above 57.6 exercise the same snap decision on both platforms.
+  const dismissAlertIfPresent = async () => {
+    const ok = await $(selectors.okButton)
+    if (await ok.isExisting()) {
+      await ok.click()
+      await driver.pause(300)
+    }
+  }
+  ;(shouldRun(17) ? describe : describe.skip)(
+    'Test 17: Release below threshold snaps back closed',
+    () => {
+      it('should not open when swipe translates less than threshold distance', async () => {
+        const element = await $(selectors.swipeableRow(0))
+        // 35 layout units << threshold distance 57.6. Slow release (500ms) keeps
+        // velocity projection (~10.5 layout units) from pushing us past threshold.
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          35
+        )
+        await driver.pause(500)
+
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+      })
+    }
+  )
+  ;(shouldRun(18) ? describe : describe.skip)(
+    'Test 18: Release above threshold snaps fully open',
+    () => {
+      it('should open even when swipe translates only slightly past threshold', async () => {
+        const element = await $(selectors.swipeableRow(0))
+        // 85 layout units > threshold distance 57.6. Animation completes open.
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          85
+        )
+        await driver.pause(500)
+
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(19) ? describe : describe.skip)(
+    'Test 19: threshold prop changes the snap-point',
+    () => {
+      it('should require larger drag with high threshold than with low threshold', async () => {
+        // Low threshold: 0.2 * 144 = 28.8 layout units commits the swipe
+        await configPanel.open()
+        await configPanel.setThresholdLow()
+        await configPanel.close()
+
+        let element = await $(selectors.swipeableRow(0))
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          50
+        )
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        // Reset row via instance ref close(false)
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        // High threshold: 0.7 * 144 = 100.8 layout units required
+        await configPanel.setThresholdHigh()
+        await configPanel.close()
+
+        element = await $(selectors.swipeableRow(0))
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          50
+        )
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+      })
+    }
+  )
+  ;(shouldRun(20) ? describe : describe.skip)(
+    'Test 20: dragOffsetFromEdge blocks drags shorter than the offset',
+    () => {
+      it('should activate gesture only after drag exceeds offset', async () => {
+        await configPanel.open()
+        await configPanel.setDragOffsetHigh() // 50 layout units
+        await configPanel.close()
+
+        // Short drag (40 layout units) is below the offset - gesture never activates,
+        // touch falls through to child onPress (alert may appear).
+        let element = await $(selectors.swipeableRow(0))
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          40
+        )
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).not.toBeDisplayed()
+        await dismissAlertIfPresent()
+
+        // Long drag (150 layout units) absorbs 50 offset then translates 100 effective,
+        // well above default threshold 57.6 layout units.
+        element = await $(selectors.swipeableRow(0))
+        await swipeOnElementInLayoutUnits(
+          element as unknown as WebdriverIO.Element,
+          'left',
+          500,
+          150
+        )
+        await driver.pause(500)
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(21) ? describe : describe.skip)(
+    'Test 21: Reset All (instance ref close(false)) closes every row instantly',
+    () => {
+      it('should close all open rows via instance ref close without animation', async () => {
+        // Trailing direction
+        await testSwipeOpen(numberOfRows, 'left')
+
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        await configPanel.close()
+
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+
+        // Leading direction (explicit leftActions pair on the same native engine)
+        await configPanel.open()
+        await configPanel.enableLeadingMode()
+        await configPanel.close()
+
+        await testSwipeOpen(numberOfRows, 'right')
+
+        await configPanel.open()
+        await configPanel.tapResetAll()
+        await configPanel.close()
+
+        await mapRows(async (index) => {
+          await expect($(selectors.leaveButtonForItem(index))).not.toBeDisplayed()
+        })
+      })
+    }
+  )
+  ;(shouldRun(22) ? describe : describe.skip)(
+    'Test 22: Sibling swipeables remain open independently (no implicit group close)',
+    () => {
+      it('should keep row 0 open while opening row 1', async () => {
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+
+        await listDemoPage.swipeRowOpen(1, 'left')
+        await expect($(selectors.leaveButtonForItem(1))).toBeDisplayed()
+
+        // Row 0 must still be open - the library does not implement
+        // "only one row open at a time" behavior.
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(23) ? describe : describe.skip)(
+    'Test 23: closeAll is a no-op on fresh launch with nothing open',
+    () => {
+      it('should not crash when closeAll is called before any swipe', async () => {
+        await configPanel.open()
+        await configPanel.tapCloseAll()
+        await configPanel.close()
+
+        // App still responsive: can swipe a row open afterwards.
+        await listDemoPage.swipeRowOpen(0, 'left')
+        await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      })
+    }
+  )
+  ;(shouldRun(24) ? describe : describe.skip)('Test 24: Leading action tap triggers alert', () => {
+    it('should fire action when tapping revealed button in leading mode', async () => {
+      await configPanel.open()
+      await configPanel.enableLeadingMode()
+      await configPanel.close()
+
+      await listDemoPage.swipeRowOpen(0, 'right')
+      await expect($(selectors.leaveButtonForItem(0))).toBeDisplayed()
+      await listDemoPage.tapLeaveAction(0)
+      await expect($(selectors.alertForItem(0))).toBeDisplayed()
+      await listDemoPage.dismissAlert(0)
+    })
+  })
 })

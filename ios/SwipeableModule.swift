@@ -25,15 +25,37 @@ public class SwipeableModule: Module {
             SwipeableView.getOpenState(for: key)
         }
 
+        Function("openByKeyOnSide") { (key: String, side: String) in
+            SwipeableView.openByKeyOnSide(key, side: side)
+        }
+
+        Function("getOpenSideByKey") { (key: String) -> String? in
+            SwipeableView.getOpenSide(for: key)
+        }
+
         View(SwipeableView.self) {
-            // Props
-            Prop("actionsWidth") { (view: SwipeableView, width: CGFloat) in
-                view.actionsWidth = width
+
+            Prop("leftActionsWidth") { (view: SwipeableView, width: CGFloat) in
+                view.leftActionsWidth = width
             }
 
-            Prop("actionsPosition") { (view: SwipeableView, position: String) in
-                view.actionsPosition = position
+            Prop("rightActionsWidth") { (view: SwipeableView, width: CGFloat) in
+                view.rightActionsWidth = width
             }
+
+            Prop("appearance") { (view: SwipeableView, value: String) in
+                view.appearance = value
+            }
+
+            Prop("hapticFeedback") { (view: SwipeableView, value: Bool?) in
+                view.hapticFeedback = value
+            }
+
+            OnViewDidUpdateProps { (view: SwipeableView) in
+                view.commitProps()
+            }
+
+            // Props
 
             Prop("friction") { (view: SwipeableView, friction: CGFloat) in
                 view.friction = friction
@@ -64,24 +86,24 @@ public class SwipeableModule: Module {
             }
 
             // Events
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd")
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded", "onGestureCancelled")
 
             // Imperative methods
             AsyncFunction("close") { (view: SwipeableView, animated: Bool?) in
-                DispatchQueue.main.async {
-                    view.close(animated: animated ?? true)
+                view.enqueueCommand {
+                    $0.close(animated: animated ?? true)
                 }
             }
 
             AsyncFunction("open") { (view: SwipeableView) in
-                DispatchQueue.main.async {
-                    view.open()
+                view.enqueueCommand {
+                    $0.open()
                 }
             }
 
             AsyncFunction("cancel") { (view: SwipeableView) in
-                DispatchQueue.main.async {
-                    view.cancelGesture()
+                view.enqueueCommand {
+                    $0.cancelGesture()
                 }
             }
 

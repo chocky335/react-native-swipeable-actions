@@ -3,26 +3,64 @@ name: Publish to npm
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version bump type'
+      operation:
+        description: 'Verify only, or publish an already prepared and tested release'
         required: true
+        default: verify
         type: choice
-        options:
-          - patch
-          - minor
-          - major
-          - prerelease
+        options: [verify, publish]
+      source_sha:
+        description: 'Full prepared source SHA; must be the main revision running this workflow'
+        required: true
+        type: string
+      version:
+        description: 'Exact committed version: 1.0.0-rc.N or 1.0.0 (never a bump type)'
+        required: true
+        type: string
+      ci_runs:
+        description: 'Two distinct successful full CI run IDs for this exact SHA, comma separated'
+        required: true
+        type: string
+      acceptance_comment:
+        description: 'GitHub issue comment ID containing maintainer physical acceptance JSON'
+        required: true
+        type: string
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
 
 jobs:
-  publish:
+  release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm-release
     permissions:
       contents: write
+      actions: read
+      issues: read
       id-token: write
+    env:
+      RELEASE_SOURCE: ${{ inputs.source_sha }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_RUNS: ${{ inputs.ci_runs }}
+      RELEASE_ACCEPTANCE: ${{ inputs.acceptance_comment }}
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Recheck remote main after environment approval
+        run: |
+          set -euo pipefail
+          REMOTE_MAIN=$(git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --heads origin refs/heads/main)
+          test "$REMOTE_MAIN" = "$(printf '%s\trefs/heads/main' "$RELEASE_SOURCE")"
 
       - uses: actions/setup-node@v4
         with:
@@ -30,50 +68,61 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - uses: actions/setup-java@v4
+      - name: Install inventory parser without lifecycle scripts
+        run: npm --prefix e2e ci --ignore-scripts
+
+      - name: Test readiness gate offline
+        run: node --test scripts/release-readiness.test.mjs
+
+      - name: Verify source, actual mobile evidence, package and physical acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/release-readiness.mjs
+          --source "$RELEASE_SOURCE" --version "$RELEASE_VERSION"
+          --runs "$RELEASE_RUNS" --acceptance "$RELEASE_ACCEPTANCE"
+          --out "$RUNNER_TEMP/verified-release"
+
+      - name: Preserve verified release report and tested tarball
+        uses: actions/upload-artifact@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          name: verified-release-${{ inputs.version }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/verified-release/
+          if-no-files-found: error
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install example dependencies
-        run: cd example && npm i --ignore-scripts
-
-      - name: Generate example Android project
-        run: cd example && npx expo prebuild --platform android --no-install
-
-      - name: Run tests
-        run: SKIP_E2E=1 ./scripts/test-all.sh
-
-      - name: Configure git
+      - name: Require an unpublished npm version
+        if: inputs.operation == 'publish'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          node --input-type=module <<'NODE'
+          const response = await fetch('https://registry.npmjs.org/react-native-swipeable-actions/' + process.env.RELEASE_VERSION)
+          if (response.status !== 404) throw new Error('Version exists or registry check failed; inspect npm before recovery')
+          NODE
 
-      - name: Bump version
-        env:
-          VERSION_TYPE: ${{ inputs.version }}
+      - name: Establish immutable source tag before publishing
+        if: inputs.operation == 'publish'
         run: |
-          if [ "$VERSION_TYPE" = "prerelease" ]; then
-            npm version prerelease --preid=canary -m "Pre-release %s"
+          set -euo pipefail
+          TAG="v$RELEASE_VERSION"
+          REMOTE_TAG=$(git -C "$GITHUB_WORKSPACE" ls-remote --tags origin "refs/tags/$TAG")
+          if [ -n "$REMOTE_TAG" ]; then
+            git -C "$GITHUB_WORKSPACE" fetch --no-tags origin "refs/tags/$TAG"
+            test "$(git -C "$GITHUB_WORKSPACE" rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_SOURCE"
           else
-            npm version "$VERSION_TYPE" -m "Release %s"
+            REMOTE_MAIN=$(git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --heads origin refs/heads/main)
+            test "$REMOTE_MAIN" = "$(printf '%s\trefs/heads/main' "$RELEASE_SOURCE")"
+            git -C "$GITHUB_WORKSPACE" tag "$TAG" "$RELEASE_SOURCE"
+            REMOTE_MAIN=$(git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --heads origin refs/heads/main)
+            test "$REMOTE_MAIN" = "$(printf '%s\trefs/heads/main' "$RELEASE_SOURCE")"
+            git -C "$GITHUB_WORKSPACE" push origin "refs/tags/$TAG"
           fi
 
-      - name: Build
-        run: npm run build
-
-      - name: Publish to npm
-        env:
-          VERSION_TYPE: ${{ inputs.version }}
+      - name: Publish exactly the tested tarball
+        if: inputs.operation == 'publish'
         run: |
-          if [ "$VERSION_TYPE" = "prerelease" ]; then
-            npm publish --tag canary --provenance
-          else
-            npm publish --provenance
-          fi
-
-      - name: Push version commit and tag
-        run: git push --follow-tags
+          set -euo pipefail
+          cd "$RUNNER_TEMP/verified-release"
+          DIST_TAG=latest
+          if [[ "$RELEASE_VERSION" == *-rc.* ]]; then DIST_TAG=next; fi
+          REMOTE_MAIN=$(git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --heads origin refs/heads/main)
+          test "$REMOTE_MAIN" = "$(printf '%s\trefs/heads/main' "$RELEASE_SOURCE")"
+          npm publish ./package.tgz --tag "$DIST_TAG" --ignore-scripts --provenance

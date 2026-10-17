@@ -17,8 +17,43 @@ on:
         required: false
         type: boolean
         default: false
+      ios-suite:
+        description: 'Diagnosis only: run one iOS suite (a partial run never passes the e2e-ios gate)'
+        required: false
+        type: choice
+        default: all
+        options: [all, swipeable, two-sided, rtl, swipe-back, performance]
+      ios-grep:
+        description: 'Diagnosis only: run iOS tests whose title contains this text'
+        required: false
+        type: string
+        default: ''
+      ios-video:
+        description: 'Record the iOS simulator screen for each shard'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - run: npm ci
+      - name: Test release and package guards
+        run: node --test scripts/package-artifact.test.mjs scripts/release-readiness.test.mjs scripts/jest-setup.test.mjs
+      - name: Build and validate consumer artifact
+        run: node scripts/package-artifact.mjs pack "$RUNNER_TEMP/swipeable-package"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-${{ github.sha }}
+          path: ${{ runner.temp }}/swipeable-package/
+          if-no-files-found: error
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -67,15 +102,28 @@ jobs:
       - name: Generate example Android project
         run: cd example && npx expo prebuild --platform android --no-install
 
+      - name: Install E2E harness dependencies
+        run: cd e2e && npm ci
+
+      - name: Test iOS shard readiness offline
+        run: node --test e2e/helpers/ios-shards.test.mjs
+
+      - name: Test E2E command isolation
+        run: cd e2e && npm run test:harness
+
       - name: Run tests
         run: SKIP_E2E=1 ./scripts/test-all.sh
 
   e2e-android:
     if: inputs.enable-e2e-android == true
+    needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - name: Locate the clean consumer
+        run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -93,11 +141,23 @@ jobs:
       - name: Install E2E dependencies
         run: cd e2e && npm ci
 
-      - name: Install example dependencies
-        run: cd example && npm i --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package-${{ github.sha }}
+          path: ${{ runner.temp }}/swipeable-package/
 
-      - name: Generate example Android project
-        run: cd example && npx expo prebuild --platform android --no-install
+      - name: Install and check packed module in a clean consumer
+        run: node scripts/package-artifact.mjs consumer "$RUNNER_TEMP"/swipeable-package/*.tgz "$SWIPEABLE_CONSUMER"
+
+      - name: Generate consumer Android project
+        run: cd "$SWIPEABLE_CONSUMER" && npx expo prebuild --platform android --no-install
+
+      - name: Upload consumer acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-consumer-android-${{ github.sha }}
+          path: ${{ env.SWIPEABLE_CONSUMER }}/consumer-acceptance.json
+          if-no-files-found: error
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -105,11 +165,15 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('example/android/**/*.gradle*', 'example/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
+          key: gradle-consumer-${{ runner.os }}-${{ hashFiles('example/package.json', 'android/build.gradle') }}
+          restore-keys: gradle-consumer-${{ runner.os }}-
 
       - name: Build release APK
-        run: cd example/android && NODE_ENV=production ./gradlew assembleRelease
+        run: |
+          cd "$SWIPEABLE_CONSUMER/android"
+          NODE_ENV=production ./gradlew assembleRelease
+          mkdir -p "$GITHUB_WORKSPACE/example/android/app/build/outputs/apk/release"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/example/android/app/build/outputs/apk/release/"
 
       - name: Enable KVM
         run: |
@@ -141,6 +205,8 @@ jobs:
 
       - name: Run E2E tests
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/android-evidence
         with:
           api-level: 34
           target: default
@@ -165,10 +231,137 @@ jobs:
           name: logcat-android
           path: /tmp/logcat.txt
 
-  e2e-ios:
+      - name: Upload Android failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence-android
+          path: e2e/logs/android-evidence/
+          if-no-files-found: warn
+
+  ios-plan:
     if: inputs.enable-e2e-ios == true
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install E2E harness dependencies
+        run: npm --prefix e2e ci
+      - name: Test shard readiness offline
+        run: node --test e2e/helpers/ios-shards.test.mjs
+      - name: Discover complete iOS inventory
+        id: plan
+        run: node e2e/helpers/ios-shards.mjs plan ios-plan/manifest.json
+      - name: Select the requested iOS suite
+        id: select
+        env:
+          MATRIX: ${{ steps.plan.outputs.matrix }}
+          SUITE: ${{ inputs.ios-suite || 'all' }}
+        run: |
+          SELECTED=$(jq -c --arg s "$SUITE" \
+            'if $s == "all" then . else {include: [.include[] | select(.id == $s)]} end' <<< "$MATRIX")
+          test "$(jq '.include | length' <<< "$SELECTED")" -gt 0
+          echo "matrix=$SELECTED" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ios-plan/
+          if-no-files-found: error
+
+  build-ios:
+    if: inputs.enable-e2e-ios == true
+    needs: package
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate the clean consumer
+        run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
+
+      - name: Check pinned iOS toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package-${{ github.sha }}
+          path: ${{ runner.temp }}/swipeable-package/
+
+      - name: Install and check packed module in a clean consumer
+        run: node scripts/package-artifact.mjs consumer "$RUNNER_TEMP"/swipeable-package/*.tgz "$SWIPEABLE_CONSUMER"
+
+      - name: Generate consumer iOS project
+        run: cd "$SWIPEABLE_CONSUMER" && npx expo prebuild --platform ios --no-install
+
+      - name: Upload consumer acceptance
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-consumer-ios-${{ github.sha }}
+          path: ${{ env.SWIPEABLE_CONSUMER }}/consumer-acceptance.json
+          if-no-files-found: error
+
+      - name: Install CocoaPods
+        run: cd "$SWIPEABLE_CONSUMER/ios" && pod install
+
+      - name: Build release app
+        run: |
+          cd "$SWIPEABLE_CONSUMER/ios"
+          xcodebuild \
+            -workspace SwipeableDemo.xcworkspace \
+            -scheme SwipeableDemo \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ./build \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
+            -quiet
+
+      - name: Package release app and toolchain identity
+        run: |
+          mkdir -p ios-build-artifact
+          printf '%s\n' "${{ github.sha }}" > ios-build-artifact/source-sha.txt
+          xcodebuild -version > ios-build-artifact/xcode-version.txt
+          uname -m > ios-build-artifact/architecture.txt
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$SWIPEABLE_CONSUMER/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app" \
+            ios-build-artifact/SwipeableDemo.zip
+
+      - name: Upload release app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-${{ github.sha }}
+          path: ios-build-artifact/
+          if-no-files-found: error
+
+  e2e-ios-shard:
+    name: iOS / ${{ matrix.id }}
+    if: inputs.enable-e2e-ios == true
+    needs: [build-ios, ios-plan]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.ios-plan.outputs.matrix) }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
@@ -183,25 +376,31 @@ jobs:
       - name: Install E2E dependencies
         run: cd e2e && npm ci
 
-      - name: Install example dependencies
-        run: cd example && npm i --ignore-scripts
+      - name: Download expected inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ios-plan/
 
-      - name: Generate example iOS project
-        run: cd example && npx expo prebuild --platform ios --no-install
+      - name: Check inventory against this checkout
+        run: node e2e/helpers/ios-shards.mjs verify-plan ios-plan/manifest.json
 
-      - name: Install CocoaPods
-        run: cd example/ios && pod install
+      - name: Download release app
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-${{ github.sha }}
+          path: ios-build-artifact/
 
-      - name: Build release app
+      - name: Check toolchain and unpack release app
         run: |
-          cd example/ios
-          xcodebuild \
-            -workspace SwipeableDemo.xcworkspace \
-            -scheme SwipeableDemo \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -derivedDataPath ./build \
-            -quiet
+          test "$(uname -m)" = arm64
+          test "$(cat ios-build-artifact/source-sha.txt)" = "${{ github.sha }}"
+          test "$(cat ios-build-artifact/architecture.txt)" = "$(uname -m)"
+          test "$(cat ios-build-artifact/xcode-version.txt)" = "$(xcodebuild -version)"
+          APP_DIR=example/ios/build/Build/Products/Release-iphonesimulator
+          mkdir -p "$APP_DIR"
+          ditto -x -k ios-build-artifact/SwipeableDemo.zip "$APP_DIR"
+          test -d "$APP_DIR/SwipeableDemo.app"
 
       - name: Detect simulator
         id: sim
@@ -231,6 +430,12 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "device_name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
           echo "Detected simulator: $DEVICE_NAME ($UDID)"
+          RUNTIME=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          print(next(r for r, devs in devices.items() if any(d['udid'] == '$UDID' for d in devs)))
+          ")
+          echo "Simulator runtime: $RUNTIME"
 
       - name: Boot simulator
         run: |
@@ -248,36 +453,124 @@ jobs:
             -quiet
 
       - name: Run E2E tests
+        id: wdio
         env:
+          E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/ios-evidence
           IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
-          IOS_PREBUILT_WDA: ${{ github.workspace }}/wda-build/Build/Products/Debug-iphonesimulator/WebDriverAgentRunner-Runner.app
-        run: cd e2e && npm run test:ios
+          # Run the build-for-testing output through XCTest, not as a standalone app.
+          IOS_WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-build
+          IOS_GREP: ${{ inputs.ios-grep }}
+          IOS_VIDEO: ${{ inputs.ios-video }}
+        run: |
+          # The simulator can stall early in this step. Keep its logs from this point on,
+          # and sample host load for the first two minutes, to explain a lost touch.
+          echo "IOS_TEST_START=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          top -l 24 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
+          TOP_PID=$!
+          VIDEO_PID=
+          if [ "$IOS_VIDEO" = true ]; then
+            mkdir -p "$RUNNER_TEMP/ios-video"
+            xcrun simctl io "$IOS_UDID" recordVideo --codec h264 --force "$RUNNER_TEMP/ios-video/simulator.mp4" &
+            VIDEO_PID=$!
+          fi
+          # SIGINT lets simctl finish the movie file.
+          trap 'kill "$TOP_PID" 2>/dev/null || true; [ -n "$VIDEO_PID" ] && kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true' EXIT
+          cd e2e
+          if [ -n "$IOS_GREP" ]; then
+            # Mocha reads grep as a regular expression. Match the text of the input only.
+            GREP_PATTERN=$(node helpers/test-filter.mjs "$IOS_GREP")
+            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1 --mochaOpts.grep "$GREP_PATTERN"
+          else
+            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
+          fi
+
+      - name: Upload simulator video
+        if: always() && inputs.ios-video
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-video-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: ${{ runner.temp }}/ios-video/
+          if-no-files-found: warn
 
       - name: Install Maestro
+        if: matrix.maestro
         run: curl -Ls "https://get.maestro.mobile.dev" | bash
 
       - name: Run Maestro seekbar regression test
+        id: maestro
+        if: matrix.maestro
         run: |
           export PATH="$PATH:$HOME/.maestro/bin"
           maestro test e2e/maestro/seekbar-regression.yaml
 
-      - name: Upload Appium logs
+      - name: Record shard step outcomes
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: appium-log-ios
-          path: e2e/logs/
+        env:
+          IOS_WDIO_OUTCOME: ${{ steps.wdio.outcome }}
+          IOS_MAESTRO_OUTCOME: ${{ steps.maestro.outcome }}
+        run: >-
+          node e2e/helpers/ios-shards.mjs receipt "${{ matrix.id }}"
+          ios-plan/manifest.json e2e/logs/ios-shard-receipt.json
 
       - name: Capture simulator logs
         if: always()
         run: |
-          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --predicate 'subsystem == "com.swipeabledemo.app"' > /tmp/simulator-log.txt 2>&1 || true
+          if [ -n "${IOS_TEST_START:-}" ]; then WINDOW=(--start "$IOS_TEST_START"); else WINDOW=(--last 10m); fi
+          mkdir -p e2e/logs/ios-evidence
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show "${WINDOW[@]}" --style compact \
+            --predicate 'subsystem == "com.swipeabledemo.app" OR process == "SwipeableDemo" OR process == "backboardd" OR process == "SpringBoard" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
+            > e2e/logs/ios-evidence/simulator-log.txt 2>&1 || true
 
-      - name: Upload simulator logs
+      # Classifies the host for triage. It never changes the shard or gate result.
+      - name: Classify host health
+        if: always()
+        continue-on-error: true
+        run: node e2e/helpers/host-health.mjs report e2e/logs/ios-evidence e2e/logs/ios-results
+
+      - name: Upload Appium logs and required shard evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: simulator-log-ios
-          path: /tmp/simulator-log.txt
+          name: ios-shard-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: e2e/logs/
+          if-no-files-found: error
+
+  # Keep the original required-check job name; matrix success alone is insufficient.
+  e2e-ios:
+    if: always() && inputs.enable-e2e-ios == true
+    needs: [ios-plan, build-ios, e2e-ios-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Install E2E harness dependencies
+        run: npm --prefix e2e ci
+      - name: Download expected inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ios-plan/
+      - name: Download all shard evidence separately
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ios-shard-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: ios-shards/
+          merge-multiple: false
+      # Classifies each shard host for triage. The next step alone decides the gate.
+      - name: Summarize host health per shard
+        if: always()
+        continue-on-error: true
+        run: node e2e/helpers/host-health.mjs summary ios-plan/manifest.json ios-shards
+      - name: Require complete successful same-run evidence
+        env:
+          IOS_PLAN_RESULT: ${{ needs.ios-plan.result }}
+          IOS_BUILD_RESULT: ${{ needs.build-ios.result }}
+          IOS_SHARDS_RESULT: ${{ needs.e2e-ios-shard.result }}
+        run: node e2e/helpers/ios-shards.mjs aggregate ios-plan/manifest.json ios-shards

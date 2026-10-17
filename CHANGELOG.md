@@ -1,0 +1,61 @@
+# Changelog
+
+All notable changes to this package are recorded here. GitHub release notes use
+the entry for the matching version.
+
+## Unreleased
+
+## 1.0.0-rc.0 - 2026-10-17
+
+First release candidate for 1.0.0. Install it with
+`npm install react-native-swipeable-actions@next`. Rebuild the iOS and Android
+apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
+
+### BREAKING CHANGES
+
+- Removed `actions`, `actionsWidth` and `actionsPosition`. Pass explicit pairs:
+  `rightActions` + `rightActionsWidth` and/or `leftActions` + `leftActionsWidth`
+  ([#15](https://github.com/chocky335/react-native-swipeable-actions/issues/15)).
+- Removed `SWIPE_DEFAULTS.ACTIONS_POSITION`. There is no default side.
+- Removed `actionsWidth` and `actionsPosition` from the raw `SwipeableView` props.
+- `SwipeableProps` is now a union type of valid side configurations, not an
+  interface. Use `SwipeableProps & { ... }` for wrapper props.
+- Every row uses one native engine. Rows migrated from the single-sided API take
+  its behavior:
+  - A drag toward a disabled side stays closed and does not start a swipe. The
+    old wrong-direction rubber band is gone.
+  - `onSwipeStateChange` follows the active side. Do not depend on the old
+    callback cadence.
+  - `close(false)` and `cancel()` also clear the cached open state for the key.
+  - Cache restoration and width updates are not swipes. Do not use the swipe
+    callbacks to detect them.
+- `open()` with no side opens the right side if it is enabled, else the left side.
+
+### Added
+
+- Independent left and right actions on one row, each with its own width.
+- `open(side)` and `Swipeable.open(key, side)`.
+- `onLeftSwipeEnd` and `onRightSwipeEnd`. They run after `onSwipeEnd`.
+- Opt-in `appearance="ios26"` iOS action motion, and the `hapticFeedback`
+  prop for the iOS threshold haptic. Reduce Motion removes the motion scaling
+  ([#19](https://github.com/chocky335/react-native-swipeable-actions/issues/19)).
+- Type exports `SwipeSide`, `SwipeAppearance`, and the aliases
+  `TwoSidedSwipeableProps` and `SwipeableComponentProps`.
+
+### Fixed
+
+- Action alignment on the physical edge in RTL layouts.
+- A recycled or rebound row no longer receives commands, callbacks or open state
+  from its previous key.
+- A drag that crosses the closed position no longer opens the opposite side.
+- On Android, content replaced during a drag no longer keeps the drag offset.
+- `Swipeable.closeAll()` now also closes rows that are not mounted (scrolled off
+  or on a covered screen), like `Swipeable.close(key)`.
+- `expo-modules-core` is no longer a peer dependency. A fresh `npm install`
+  could pull a newer expo-modules-core than the app's Expo SDK uses. The app now
+  gets the version its `expo` package brings.
+
+## 0.1.12 and earlier
+
+Not recorded in this file. See the
+[GitHub releases](https://github.com/chocky335/react-native-swipeable-actions/releases).

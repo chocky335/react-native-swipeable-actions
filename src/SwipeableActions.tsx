@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { I18nManager, StyleSheet, View } from 'react-native'
 
 /**
  * Props for SwipeableActions component
@@ -16,14 +16,17 @@ export interface SwipeableActionsProps {
 /**
  * SwipeableActions - Internal layout component for swipeable actions
  *
- * Handles entrance animation when children mount.
+ * Provides a stable physical-edge slot while action content mounts lazily.
  */
 export function SwipeableActions({ children, actionsPosition, testID }: SwipeableActionsProps) {
+  // Side names are physical edges; flex row start/end reverse in RTL.
+  const leading = I18nManager.isRTL ? actionsPosition === 'right' : actionsPosition === 'left'
   return (
     <View
-      style={actionsPosition === 'left' ? styles.actionsLeading : styles.actionsTrailing}
+      style={leading ? styles.actionsLeading : styles.actionsTrailing}
       pointerEvents={children ? 'auto' : 'none'}
       testID={testID}
+      collapsable={false}
     >
       {children}
     </View>

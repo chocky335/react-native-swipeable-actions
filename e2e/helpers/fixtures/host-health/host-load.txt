@@ -1,0 +1,14 @@
+Processes: 796 total, 73 running, 130 stuck, 593 sleeping, 3027 threads 
+2026/10/17 18:01:14
+Load Avg: 512.16, 408.38, 214.28 
+CPU usage: 43.96% user, 56.3% sys, 0.0% idle 
+14122  top              0.0  00:00.28 1/1 0   18     3905K 0B   0B    960   14112 running  *0[1]  0.00000 0.00000    0   1521   65   221685  110842  4166   116358  1326 6       0     0.0   0      0      180    root   N/A    N/A   N/A   N/A   N/A   N/A  
+14112  bash             0.0  00:00.01 1   0   11     1217K 0B   0B    960   1738  sleeping *0[1]  0.00000 0.00000    501 568    162  58      29      402    130     56   11      0     0.0   0      0      180    runner N/A    N/A   N/A   N/A   N/A   N/A  
+Processes: 805 total, 31 running, 127 stuck, 647 sleeping, 3098 threads 
+2026/10/17 18:01:48
+Load Avg: 358.33, 380.74, 210.97 
+CPU usage: 53.31% user, 42.54% sys, 4.13% idle 
+Processes: 804 total, 86 running, 90 stuck, 628 sleeping, 3195 threads 
+2026/10/17 18:02:02
+Load Avg: 348.67, 376.95, 212.55 
+CPU usage: 53.77% user, 46.17% sys, 0.4% idle 

@@ -20,7 +20,9 @@ export interface SwipeableRowItemProps {
   onRowPress: (id: string) => void
   swipeableRef: React.RefObject<SwipeableMethods | null>
   onSwipeStart?: () => void
+  onSwipeStateChange?: (state: 'open' | 'closed') => void
   onSwipeEnd?: (state: 'open' | 'closed') => void
+  onProgress?: (value: number) => void
   friction?: number
   threshold?: number
   dragOffsetFromEdge?: number

@@ -12,6 +12,10 @@ class SwipeableModule : Module() {
             SwipeableView.openByKey(key)
         }
 
+        Function("openByKeyOnSide") { key: String, side: String? ->
+            SwipeableView.openByKeyOnSide(key, SwipeSide.fromValue(side))
+        }
+
         Function("closeByKey") { key: String, animated: Boolean? ->
             SwipeableView.closeByKey(key, animated ?: true)
         }
@@ -28,13 +32,12 @@ class SwipeableModule : Module() {
             SwipeableView.isOpenByKey(key)
         }
 
+        Function("getOpenSideByKey") { key: String ->
+            SwipeableView.getOpenSideByKey(key)
+        }
+
         View(SwipeableView::class) {
-            Prop("actionsWidth") { view: SwipeableView, width: Float ->
-                view.actionsWidth = width
-            }
-            Prop("actionsPosition") { view: SwipeableView, position: String ->
-                view.actionsPosition = position
-            }
+
             Prop("friction") { view: SwipeableView, friction: Float ->
                 view.friction = friction.coerceIn(0f, 1f)
             }
@@ -57,16 +60,27 @@ class SwipeableModule : Module() {
                 view.autoCloseTimeout = timeout
             }
 
-            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd")
+            Prop("leftActionsWidth") { view: SwipeableView, width: Float ->
+                view.leftActionsWidth = width
+            }
+            Prop("rightActionsWidth") { view: SwipeableView, width: Float ->
+                view.rightActionsWidth = width
+            }
+
+            OnViewDidUpdateProps { view: SwipeableView ->
+                view.applyPendingConfiguration()
+            }
+
+            Events("onSwipeProgress", "onSwipeStart", "onSwipeStateChange", "onSwipeEnd", "onActionsNeeded", "onGestureCancelled")
 
             AsyncFunction("close") { view: SwipeableView, animated: Boolean? ->
-                view.post { view.close(animated ?: true) }
+                view.postCommand { view.close(animated ?: true) }
             }
             AsyncFunction("open") { view: SwipeableView ->
-                view.post { view.open() }
+                view.postCommand { view.open() }
             }
             AsyncFunction("cancel") { view: SwipeableView ->
-                view.post { view.cancelGesture() }
+                view.postCommand { view.cancelGesture() }
             }
 
             AsyncFunction("handleGestureStart") { view: SwipeableView ->
