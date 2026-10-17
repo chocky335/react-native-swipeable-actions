@@ -1851,7 +1851,7 @@ class SwipeableViewTest {
         }
     }
 
-    @Test fun nativeFollowupPhysicalDownInterruptsSettlementAndDetachConsumesHeldTouch() {
+    @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()
             settle()
@@ -1865,8 +1865,9 @@ class SwipeableViewTest {
             row.handleGestureUpdate(-120f, 0f)
             row.handleGestureEnd(-120f, 0f)
             touch(MotionEvent.ACTION_DOWN, 300f)
-            assertEquals(1, named("onGestureCancelled").size)
+            assertEquals(0, named("onGestureCancelled").size)
             touch(MotionEvent.ACTION_MOVE, 260f)
+            assertEquals(1, named("onGestureCancelled").size)
             touch(MotionEvent.ACTION_MOVE, 160f)
             assertEquals(2, named("onSwipeStart").size)
             root.removeView(row)
@@ -2092,6 +2093,58 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun tapNeverInterruptsASettlingAnimation() {
+        for (dispatch in listOf(false, true)) {
+            for (phase in listOf("releaseOpen", "releaseClose", "programmaticOpen", "programmaticClose")) {
+                val label = "$phase dispatch=$dispatch"
+                val row = row()
+                settle()
+                if (phase == "releaseClose" || phase == "programmaticClose") {
+                    row.open(SwipeSide.LEFT)
+                    settle()
+                    events.clear()
+                }
+                when (phase) {
+                    "releaseOpen" -> {
+                        row.handleGestureStart()
+                        row.handleGestureUpdate(120f, 0f)
+                        row.handleGestureEnd(120f, 0f)
+                    }
+                    "releaseClose" -> {
+                        row.handleGestureStart()
+                        row.handleGestureUpdate(-120f, 0f)
+                        row.handleGestureEnd(-120f, 0f)
+                    }
+                    "programmaticOpen" -> row.open(SwipeSide.LEFT)
+                    "programmaticClose" -> row.close()
+                }
+                // A programmatic spring starts at the edge. Tap only once it is in flight.
+                for (frame in 0 until 10) {
+                    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+                    val x = content(row).translationX
+                    if (x > 0f && x < 160f) break
+                }
+                val opening = phase.endsWith("Open")
+                val target = if (opening) 160f else 0f
+                val midway = content(row).translationX
+                assertTrue(label, midway > 0f && midway < 160f && midway != target)
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    motion(action, 200f, 10f).useEvent {
+                        if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                    }
+                }
+                settle()
+                assertEquals(label, target, content(row).translationX, .01f)
+                assertEquals(label, listOf(if (opening) "open:left" else "closed:left"), ends())
+                assertTrue(label, named("onGestureCancelled").isEmpty())
+                assertEquals(label, if (opening) "left" else null, SwipeableView.getOpenSideByKey("row"))
+                root.removeView(row)
+                SwipeableView.clearCache()
+                events.clear()
+            }
+        }
+    }
+
     @Test fun rebindDuringAutoCloseWaitRestoresTheOldKeyClosed() {
         for (side in SwipeSide.values()) {
             val row = row(key = "auto-wait")
@@ -2252,6 +2305,266 @@ class SwipeableViewTest {
             root.removeView(remounted)
             SwipeableView.clearCache()
             events.clear()
+        }
+    }
+
+    @Test fun commandedCloseHoldsWhenTheKeyRebindsBeforeTheQueuedClose() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            for (rebind in listOf("newView", "sameView", "reattach")) {
+                val label = "$command $rebind"
+                val row = row(key = "late")
+                row.open(SwipeSide.LEFT)
+                settle()
+                assertEquals(label, "left", SwipeableView.getOpenSideByKey("late"))
+                if (command == "closeByKey") SwipeableView.closeByKey("late") else SwipeableView.closeAll()
+                // The key binds again before the main looper runs the queued close.
+                val bound = when (rebind) {
+                    "newView" -> {
+                        row.recyclingKey = "other"
+                        row(key = "late")
+                    }
+                    "sameView" -> {
+                        row.recyclingKey = "other"
+                        row.recyclingKey = "late"
+                        row.applyPendingConfiguration()
+                        row
+                    }
+                    else -> {
+                        root.removeView(row)
+                        root.addView(row, FrameLayout.LayoutParams(400, 64))
+                        row.layout(0, 0, 400, 64)
+                        row
+                    }
+                }
+                settle()
+                assertEquals(label, 0f, content(bound).translationX, 0f)
+                assertNull(label, SwipeableView.getOpenSideByKey("late"))
+                root.removeAllViews()
+                SwipeableView.clearCache()
+                events.clear()
+            }
+        }
+    }
+
+    @Test fun commandedCloseClearsBoundCachedIntentAtCommandTime() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            settle()
+            assertEquals(command, 0f, content(row).translationX, 0f)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun commandedCloseHoldsInEveryBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 0f, content(bound).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            // A later binding, after every queued command ran, restores closed too.
+            root.removeAllViews()
+            val remounted = row(key = "late")
+            settle()
+            assertEquals(label, 0f, content(remounted).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun openAfterTheCloseCommandPersistsInEveryBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            // A later intent on the main thread, before the queued close runs.
+            row.open(SwipeSide.LEFT)
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 160f, content(bound).translationX, .01f)
+            assertEquals(label, "left", SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedOpenIssuedBeforeTheCloseCannotOutliveItInAnyBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            settle()
+            SwipeableView.openByKeyOnSide("late", SwipeSide.LEFT)
+            closeLate(command)
+            // Only the earlier open runs before the key rebinds.
+            shadowOf(Looper.getMainLooper()).runOneTask()
+            assertTrue(label, named("onActionsNeeded").any { it["side"] == "left" })
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 0f, content(bound).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedOpenCannotLandOnABindingThatChangedBeforeItsPost() {
+        for (change in listOf("roundTrip", "roundTripAfterUnrelatedClose", "reattach")) {
+            val row = row(key = "late")
+            settle()
+            // The command thread read the target and intent, then the main thread rebinds.
+            SwipeableView.afterOpenCapture = {
+                SwipeableView.afterOpenCapture = null
+                if (change == "roundTripAfterUnrelatedClose") SwipeableView.closeByKey("unrelated")
+                rebindLate(row, if (change == "reattach") "reattach" else "roundTrip")
+            }
+            try {
+                SwipeableView.openByKeyOnSide("late", SwipeSide.LEFT)
+            } finally {
+                SwipeableView.afterOpenCapture = null
+            }
+            settle()
+            assertEquals(change, 0f, content(row).translationX, 0f)
+            assertNull(change, SwipeableView.getOpenSideByKey("late"))
+            assertTrue(change, named("onActionsNeeded").none { it["side"] == "left" })
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun openIssuedAfterTheCloseCommandWinsOverTheQueuedCloseWithoutARebind() {
+        for (command in listOf("closeByKey", "closeAll")) for (opener in listOf("sameSide", "otherSide")) {
+            val label = "$command $opener"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            // A later intent on the main thread, before the queued close runs.
+            if (opener == "sameSide") row.open(SwipeSide.LEFT) else row.open(SwipeSide.RIGHT)
+            settle()
+            val (offset, side) = if (opener == "sameSide") 160f to "left" else -240f to "right"
+            assertEquals(label, offset, content(row).translationX, .01f)
+            assertEquals(label, side, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedCloseKeepsItsEpochAfterManyOtherClosesWithPerViewMemory() {
+        val row = row(key = "late")
+        row.open(SwipeSide.LEFT)
+        settle()
+        SwipeableView.closeByKey("late")
+        val before = staticStateSizes()
+        assertTrue(before.containsKey("openStateCache"))
+        // More distinct closed keys than the cache holds, before the queued close runs.
+        repeat(1100) { SwipeableView.closeByKey("gone-$it") }
+        // Keyed closes keep no per-key state: memory stays per live view.
+        staticStateSizes().forEach { (name, size) -> assertTrue(name, size <= before.getValue(name)) }
+        // The earlier close still makes the pre-close open stale.
+        row.recyclingKey = "other"
+        val bound = row(key = "late")
+        settle()
+        assertEquals(0f, content(bound).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("late"))
+    }
+
+    @Test fun neverClosedOpenRowStaysOpenAfterMoreKeyedClosesThanTheCacheHolds() {
+        for (order in BINDING_ORDERS) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            // Closes of other keys, more than the cache holds, never stale this open.
+            repeat(1100) { SwipeableView.closeByKey("gone-$it") }
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(order, 160f, content(bound).translationX, .01f)
+            assertEquals(order, "left", SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun commandedCloseStalesAPendingRestoreOnAViewThatLostTheRegistry() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            val first = row(key = "late")
+            first.open(SwipeSide.LEFT)
+            settle()
+            root.removeView(first)
+            assertEquals(command, "left", SwipeableView.getOpenSideByKey("late"))
+            // This binding reads the open side. Its restore waits for the next frame.
+            val pending = row(key = "other")
+            pending.recyclingKey = "late"
+            // A newer binding takes the registry entry before the close.
+            val replacement = row(key = "late")
+            closeLate(command)
+            replacement.recyclingKey = "elsewhere"
+            settle()
+            assertEquals(command, 0f, content(pending).translationX, 0f)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    /** The size of every static collection the view class keeps. */
+    private fun staticStateSizes(): Map<String, Int> = SwipeableView::class.java.declaredFields
+        .filter { java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        .mapNotNull { field ->
+            field.isAccessible = true
+            when (val value = field.get(null)) {
+                is Map<*, *> -> field.name to value.size
+                is Collection<*> -> field.name to value.size
+                is androidx.collection.LruCache<*, *> -> field.name to value.size()
+                else -> null
+            }
+        }.toMap()
+
+    private val BINDING_ORDERS = listOf(
+        "oldUnbindsFirst", "newBindsFirst", "newBindsFirstThenOldDetaches", "roundTrip", "reattach"
+    )
+
+    private fun closeLate(command: String) {
+        if (command == "closeByKey") SwipeableView.closeByKey("late") else SwipeableView.closeAll()
+    }
+
+    /** Moves key "late" to a new binding before the main looper runs queued commands. */
+    private fun rebindLate(row: SwipeableView, order: String): SwipeableView = when (order) {
+        "oldUnbindsFirst" -> {
+            row.recyclingKey = "other"
+            row(key = "late")
+        }
+        "newBindsFirst" -> row(key = "late").also { row.recyclingKey = "other" }
+        "newBindsFirstThenOldDetaches" -> row(key = "late").also { root.removeView(row) }
+        "roundTrip" -> row.apply {
+            recyclingKey = "other"
+            recyclingKey = "late"
+            applyPendingConfiguration()
+        }
+        else -> row.apply {
+            root.removeView(this)
+            root.addView(this, FrameLayout.LayoutParams(400, 64))
+            layout(0, 0, 400, 64)
         }
     }
 

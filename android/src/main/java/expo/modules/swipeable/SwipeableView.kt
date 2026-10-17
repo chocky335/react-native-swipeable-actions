@@ -1,8 +1,6 @@
 package expo.modules.swipeable
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.MotionEvent
@@ -21,6 +19,7 @@ import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 import kotlin.math.abs
 
 class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
@@ -37,6 +36,20 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         /** Lock for thread-safe registry access */
         private val registryLock = Any()
+
+        /**
+         * Close ordering (guarded by registryLock). Each close takes the next sequence
+         * number. An open intent records the sequence it saw, so a close issued after it
+         * wins in every binding order.
+         */
+        private var closeSequence = 0L
+
+        /**
+         * Every live view, registered or not (guarded by registryLock). Only a view that
+         * holds a key can persist that key's open state, so a close marks the views that
+         * hold the key, not the key. Memory stays per live view.
+         */
+        private val liveViews = WeakHashMap<SwipeableView, Unit>()
 
         // LruCache synchronizes access internally; absence represents closed.
         private fun getOpenState(key: String): Boolean = openStateCache[key] != null
@@ -61,6 +74,39 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             viewRegistry.values.mapNotNull { it.get() }
         }
 
+        private fun currentIntent(): Long = synchronized(registryLock) { closeSequence }
+
+        private fun trackLiveView(view: SwipeableView) = synchronized(registryLock) {
+            liveViews[view] = Unit
+        }
+
+        // Call while holding registryLock.
+        private fun markHolders(sequence: Long, holds: (SwipeableView) -> Boolean) {
+            liveViews.keys.forEach { if (holds(it)) it.closedAtSequence = sequence }
+        }
+
+        /** The cached side and the intent it holds, read in one step. */
+        private fun readRestore(key: String): Pair<SwipeSide?, Long> = synchronized(registryLock) {
+            openStateCache[key] to closeSequence
+        }
+
+        /**
+         * Moves a view to its new key and reads that key's restore in one step. The view
+         * no longer holds the old key, so the old key's mark ends. An intent stamped
+         * before the bind belongs to an earlier binding and cannot persist the new key.
+         */
+        private fun bindRestore(view: SwipeableView, key: String?): Pair<SwipeSide?, Long>? =
+            synchronized(registryLock) {
+                if (view.heldKey != key) {
+                    view.heldKey = key
+                    view.closedAtSequence = closeSequence
+                }
+                key?.let(::readRestore)
+            }
+
+        /** Test seam: runs between a keyed open's registry read and its post. */
+        internal var afterOpenCapture: (() -> Unit)? = null
+
         private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
             val view = getView(key) ?: return
             view.postCommand {
@@ -68,29 +114,42 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
         }
 
+        // The intent is read with the target and its binding, so a later close marks that
+        // target and a rebind before the post drops the open like any queued command.
+        private fun postOpen(key: String, side: SwipeSide?) {
+            val (view, generation, intent) = synchronized(registryLock) {
+                val view = getView(key)
+                Triple(view, view?.bindingGeneration, closeSequence)
+            }
+            if (view == null || generation == null) return
+            afterOpenCapture?.invoke()
+            view.postCommand(generation, key) { view.openCommand(side, intent) }
+        }
+
         // Keep the existing command signatures unchanged.
-        fun openByKey(key: String) = postCommand(key) { it.open() }
+        fun openByKey(key: String) = postOpen(key, null)
 
         fun openByKeyOnSide(key: String, side: SwipeSide?) {
-            if (side != null) postCommand(key) { it.open(side) }
+            if (side == null) return
+            postOpen(key, side)
         }
 
         fun getOpenSideByKey(key: String): String? = openStateCache[key]?.value
 
         fun closeByKey(key: String, animated: Boolean = true) {
-            val view = synchronized(registryLock) {
-                getView(key).also { current ->
-                    // Clear unbound intent before a remount can restore it. Queue no
-                    // work in this case: a future binding owns its own cached intent.
-                    if (current == null) setOpenState(key, null)
-                }
-            } ?: return
-            view.postCommand {
-                if (view.recyclingKey == key) view.close(animated)
+            val (view, sequence) = synchronized(registryLock) {
+                // Mark every view that holds the key, the registered one and any older
+                // one, and clear the cache: a view that leaves the key cannot persist an
+                // earlier open, and a view that takes it reads closed.
+                val sequence = ++closeSequence
+                markHolders(sequence) { it.heldKey == key }
+                setOpenState(key, null)
+                getView(key) to sequence
             }
-            // A row that unbinds before this close runs must not restore open either.
-            Handler(Looper.getMainLooper()).post {
-                synchronized(registryLock) { if (getView(key) == null) setOpenState(key, null) }
+            if (view == null) return
+            view.postCommand {
+                // An open issued after this command is the latest intent and wins.
+                if (view.recyclingKey == key && view.openIntent < sequence) view.close(animated)
             }
         }
 
@@ -98,25 +157,21 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {
-            val boundKeys = synchronized(registryLock) {
-                // Rows that are not mounted come back closed, like closeByKey for an unbound key.
-                openStateCache.snapshot().keys.forEach { key ->
-                    if (getView(key) == null) setOpenState(key, null)
-                }
-                viewRegistry.keys.toList()
+            val sequence = synchronized(registryLock) {
+                // Like closeByKey for every key, bound or not, mounted or not.
+                val sequence = ++closeSequence
+                markHolders(sequence) { true }
+                openStateCache.evictAll()
+                sequence
             }
             getAllViews().forEach { view ->
                 view.postCommand {
+                    // An open issued after this command is the latest intent and wins.
+                    if (view.openIntent >= sequence) return@postCommand
                     // Earlier commands for this binding may still be queued.
                     val activeInteraction = (view.isAnimating || view.isDragging ||
                         view.directGesturePending || view.restorePending)
                     if (!animated || view.isOpen || activeInteraction) view.close(animated)
-                }
-            }
-            // A row that unbinds before its queued close runs must not restore open either.
-            Handler(Looper.getMainLooper()).post {
-                synchronized(registryLock) {
-                    boundKeys.forEach { key -> if (getView(key) == null) setOpenState(key, null) }
                 }
             }
         }
@@ -212,14 +267,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (oldValue == value) return
             val cancelled = takeGestureCancellation()
             bindingGeneration++
-            val restoredSide = value?.let { openStateCache[it] }
             if (oldValue != null) {
-                if (getView(oldValue) === this) {
-                    // An abandoned auto-close wait cannot resume, so its transient open must not restore.
-                    setOpenState(oldValue, if (isOpen && autoCloseDeadline == null) openSide else null)
-                }
+                // An abandoned auto-close wait cannot resume, so its transient open must not restore.
+                persistOpenSide(if (isOpen && autoCloseDeadline == null) openSide else null, oldValue)
                 unregisterView(this, oldValue)
             }
+            // The view stops holding the old key: its mark moves with the cache read.
+            val restored = bindRestore(this, value)
             // A rebind consumes even a not-yet-activated physical sequence.
             // cancelActiveWork clears activation, so suppress before clearing it.
             isCurrentTouchCancelled = true
@@ -234,7 +288,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             observedSlotCounts.clear()
             field = value
             value?.let { registerView(this, it) }
-            pendingRestoreSide = restoredSide
+            pendingRestoreSide = restored?.first
+            pendingRestoreIntent = restored?.second ?: 0L
             restorePending = true
             configurationChanged()
             // Finish registry bookkeeping before a synchronous callback can issue
@@ -265,6 +320,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var configurationDirty = false
     private var pendingGestureDisable = false
     private var pendingRestoreSide: SwipeSide? = null
+    private var pendingRestoreIntent = 0L
+    // The close sequence this view's open intent saw. A later keyed close makes it stale.
+    private var openIntent = 0L
+    // The key this view holds, and the last close or bind that makes an earlier open
+    // intent stale for it (guarded by registryLock).
+    private var heldKey: String? = null
+    private var closedAtSequence = 0L
     private var restorePending = false
     private var restoreCacheOnAttach = false
     private val requestedActions = mutableSetOf<SwipeSide>()
@@ -351,6 +413,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     init {
+        trackLiveView(this)
         clipChildren = false
         clipToPadding = false
         setWillNotDraw(false)
@@ -467,7 +530,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
 
-                // Handle in onTouchEvent for animation interruption
+                // Track the touch start in onTouchEvent. Only a drag interrupts settling work.
                 onTouchEvent(event)
 
                 // Forward DOWN to children
@@ -545,11 +608,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 touchStartY = event.rawY
                 isIntercepting = false
 
-                // A tap must not cancel a released gesture's auto-close wait or close; activation does.
-                if (isAnimating && autoCloseDeadline == null && autoCloseClosingSide == null) {
-                    interruptAnimation()
-                }
-
+                // Like iOS, only drag activation interrupts settling work. A tap never does.
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
@@ -588,7 +647,6 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.rawX
                 touchStartY = event.rawY
-                if (isAnimating && autoCloseDeadline == null && autoCloseClosingSide == null) interruptAnimation()
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -789,7 +847,18 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         openInternal(side, velocity)
     }
 
-    private fun openInternal(side: SwipeSide, velocity: Float, preserveGestureCompletion: Boolean = false) {
+    /** A keyed open keeps the intent of its command time, not of the main-thread turn. */
+    private fun openCommand(side: SwipeSide?, intent: Long) {
+        applyPendingConfiguration()
+        openInternal(side ?: defaultOpenSide() ?: return, 0f, intent = intent)
+    }
+
+    private fun openInternal(
+        side: SwipeSide,
+        velocity: Float,
+        preserveGestureCompletion: Boolean = false,
+        intent: Long = currentIntent()
+    ) {
         applyPendingConfiguration()
         if (!isSideEnabled(side)) return
         if (!preserveGestureCompletion && (isGestureActivated || directGesturePending)) {
@@ -798,7 +867,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         val previousSide = gestureSide ?: animationSide ?: openSide
         if (previousSide != null && previousSide != side &&
             (isOpen || currentTranslation != 0f || isAnimating || gestureCompletionPending)) {
-            closeInternal(animated = true, afterClose = { open(side, velocity) })
+            // The side switch carries this intent through its closing leg.
+            openIntent = intent
+            closeInternal(animated = true, afterClose = { openInternal(side, velocity, intent = intent) })
             return
         }
         // An ordinary open can deliver the pending end. An imperative auto-close
@@ -806,6 +877,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         if (!cancelActiveWork(preserveGestureCompletion || !autoClose)) return
         animationSide = side
         openSide = side
+        openIntent = intent
         val generation = workGeneration
         requestActions(side, retryEmptySlot = true)
         if (generation != workGeneration) return
@@ -890,12 +962,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         snapToOpen(side)
     }
 
-    private fun snapToOpen(side: SwipeSide) {
+    private fun snapToOpen(side: SwipeSide, intent: Long = currentIntent()) {
         if (!isSideEnabled(side)) return
         if (isGestureActivated || directGesturePending) isCurrentTouchCancelled = true
         if (!cancelActiveWork()) return
         isOpen = true
         openSide = side
+        openIntent = intent
         animationSide = side
         currentTranslation = side.sign * widthFor(side)
         contentView?.translationX = currentTranslation
@@ -1094,7 +1167,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             recyclingKey?.let { key ->
                 // Detached commands can change cached intent without a registered
                 // view. The same instance must restore that intent too.
-                pendingRestoreSide = openStateCache[key]
+                val (side, intent) = readRestore(key)
+                pendingRestoreSide = side
+                pendingRestoreIntent = intent
                 restorePending = true
                 isOpen = false
                 openSide = null
@@ -1217,10 +1292,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         pendingGestureDisable = false
         if (restorePending) {
             val restored = pendingRestoreSide
+            val intent = pendingRestoreIntent
             restorePending = false
             pendingRestoreSide = null
-            if (restored != null && isSideEnabled(restored)) {
-                snapToOpen(restored)
+            // A keyed close issued after the cache read wins over the read side.
+            val key = recyclingKey
+            if (restored != null && isSideEnabled(restored) && (key == null || isCurrentIntent(intent))) {
+                snapToOpen(restored, intent)
             } else {
                 persistOpenSide(null)
                 reconcileLogicalState()
@@ -1261,10 +1339,20 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         if (autoClose && isOpen && deadline != null) scheduleAutoClose(deadline)
     }
 
-    private fun persistOpenSide(side: SwipeSide?) {
-        recyclingKey?.let { key ->
-            if (getView(key) === this) setOpenState(key, side)
+    private fun persistOpenSide(side: SwipeSide?, key: String? = recyclingKey) {
+        if (key == null) return
+        // One critical section with the close commands: an open that a later close
+        // made stale persists closed, whether this binding ends first or last.
+        synchronized(registryLock) {
+            if (getView(key) === this) {
+                setOpenState(key, side?.takeIf { heldKey == key && openIntent >= closedAtSequence })
+            }
         }
+    }
+
+    /** False if a close issued after the intent marked this view. */
+    private fun isCurrentIntent(intent: Long): Boolean = synchronized(registryLock) {
+        intent >= closedAtSequence
     }
 
     private fun resetPosition() {
@@ -1314,21 +1402,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         return generation == workGeneration
     }
 
-    private fun interruptAnimation() {
-        val side = activeSide
-        if (!cancelActiveWork()) return
-        animationSide = side
-    }
-
     private fun postCurrent(action: () -> Unit) {
         val generation = workGeneration
         val key = recyclingKey
         post { if (generation == workGeneration && key == recyclingKey) action() }
     }
 
-    internal fun postCommand(action: () -> Unit) {
-        val generation = bindingGeneration
-        val key = recyclingKey
+    internal fun postCommand(action: () -> Unit) = postCommand(bindingGeneration, recyclingKey, action)
+
+    /** Runs the action only if the binding read at command time still owns the view. */
+    private fun postCommand(generation: Long, key: String?, action: () -> Unit) {
         post {
             if (generation == bindingGeneration && key == recyclingKey &&
                 (key == null || getView(key) === this)) {

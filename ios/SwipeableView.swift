@@ -91,12 +91,31 @@ public class SwipeableView: ExpoView {
         registryQueue.sync { _openStateCache.side(for: key)?.rawValue }
     }
 
-    private static func setOpenState(for key: String, side: SwipeSide?, owner: SwipeableView) {
+    private static func currentIntent() -> Int {
+        registryQueue.sync { _openStateCache.currentIntent }
+    }
+
+    private static func isCurrentIntent(_ intent: Int, for mark: SwipeCloseMark) -> Bool {
+        registryQueue.sync { _openStateCache.isCurrent(intent, for: mark) }
+    }
+
+    private static func bindRestore(_ mark: SwipeCloseMark, to key: String?) -> (side: SwipeSide?, intent: Int)? {
+        registryQueue.sync { _openStateCache.bind(mark, to: key) }
+    }
+
+    private static func readRestore(for key: String) -> (side: SwipeSide?, intent: Int) {
+        registryQueue.sync { _openStateCache.restore(for: key) }
+    }
+
+    private static func setOpenState(for key: String, side: SwipeSide?, owner: SwipeableView, intent: Int) {
         let identity = ObjectIdentifier(owner)
+        let mark = owner.closeMark
         registryQueue.async {
             // A recycled/detached view must not overwrite its replacement's state.
             if let current = _viewRegistry[key]?.value, ObjectIdentifier(current) != identity { return }
-            _openStateCache.set(side, for: key)
+            // One step with the close commands: an open that a later close made
+            // stale persists closed, whether this binding ends first or last.
+            _openStateCache.persist(side, for: key, from: mark, intent: intent)
         }
     }
 
@@ -116,10 +135,12 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    private static func enqueueCommand(for key: String, _ command: @escaping (SwipeableView) -> Void) {
-        guard let target = registryQueue.sync(execute: { _viewRegistry[key] }) else { return }
+    /// The command gets the intent read with its target, so a later close marks that target.
+    private static func enqueueCommand(for key: String, _ command: @escaping (SwipeableView, Int) -> Void) {
+        let (target, intent) = registryQueue.sync { (_viewRegistry[key], _openStateCache.currentIntent) }
+        guard let target = target else { return }
         DispatchQueue.main.async {
-            performCommand(command, for: key, target: target)
+            performCommand({ command($0, intent) }, for: key, target: target)
         }
     }
 
@@ -154,47 +175,46 @@ public class SwipeableView: ExpoView {
 
     // MARK: - Static Methods (by recyclingKey)
 
+    // A keyed open keeps the intent of its command time, not of the main-queue turn.
     static func openByKey(_ key: String) {
-        enqueueCommand(for: key) { $0.open() }
+        enqueueCommand(for: key) { view, intent in view.open(intent: intent) }
     }
 
     static func openByKeyOnSide(_ key: String, side: String) {
         guard let side = SwipeSide(rawValue: side) else { return }
-        enqueueCommand(for: key) { $0.open(side: side) }
+        enqueueCommand(for: key) { view, intent in view.open(side: side, intent: intent) }
     }
 
     static func closeByKey(_ key: String, animated: Bool = true) {
-        let target = registryQueue.sync {
-            // Consume unbound intent before a remount can read the cached side.
-            _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+        let (target, sequence) = registryQueue.sync { () -> (SwipeCommandTarget<SwipeableView>?, Int) in
+            // Consume the cached intent before any binding can read the cached side.
+            let target = _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+            return (target, _openStateCache.currentIntent)
         }
         guard let target = target else { return }
         DispatchQueue.main.async {
-            performCommand({ $0.close(animated: animated) }, for: key, target: target)
-            // A close for an unmounted row must also cancel its cached restore.
-            // Never clear a replacement/reattached binding rejected by performCommand.
-            registryQueue.sync {
-                _openStateCache.clearIfUnbound(
-                    for: key, hasCurrentBinding: _viewRegistry[key]?.value != nil
-                )
-            }
+            performCommand({ view in
+                guard SwipeOpenStateCache.closeApplies(sequence, toOpenIntent: view.openIntent) else { return }
+                view.close(animated: animated)
+            }, for: key, target: target)
         }
     }
 
     static func cancelByKey(_ key: String) {
-        enqueueCommand(for: key) { $0.cancelGesture() }
+        enqueueCommand(for: key) { view, _ in view.cancelGesture() }
     }
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
     static func closeAll(animated: Bool = true) {
-        let targets = registryQueue.sync { () -> [(key: String, target: SwipeCommandTarget<SwipeableView>)] in
-            // Rows that are not mounted come back closed, like close(key) for an unbound key.
-            _openStateCache.clearUnbound(bindings: _viewRegistry)
-            return _viewRegistry.map { (key: $0.key, target: $0.value) }
+        let (targets, sequence) = registryQueue.sync {
+            () -> ([(key: String, target: SwipeCommandTarget<SwipeableView>)], Int) in
+            _openStateCache.closeAll()
+            return (_viewRegistry.map { (key: $0.key, target: $0.value) }, _openStateCache.currentIntent)
         }
         DispatchQueue.main.async {
             for entry in targets {
                 performCommand({ view in
+                    guard SwipeOpenStateCache.closeApplies(sequence, toOpenIntent: view.openIntent) else { return }
                     if !animated || SwipePhysics.shouldCloseForCloseAll(
                         isOpen: view.isOpen, isAnimating: view.isAnimating,
                         hasPendingInteraction: view.isDragging || view.isGestureActivated ||
@@ -203,12 +223,6 @@ public class SwipeableView: ExpoView {
                         view.close(animated: animated)
                     }
                 }, for: entry.key, target: entry.target)
-                // A row that unbinds before this close runs must not restore open either.
-                registryQueue.sync {
-                    _openStateCache.clearIfUnbound(
-                        for: entry.key, hasCurrentBinding: _viewRegistry[entry.key]?.value != nil
-                    )
-                }
             }
         }
     }
@@ -242,6 +256,14 @@ public class SwipeableView: ExpoView {
     // Every asynchronous operation belongs to one key/configuration/command generation.
     private var workGeneration = 0
     private var pendingRestoreSide: SwipeSide?
+    private var pendingRestoreIntent = 0
+    // The close sequence this view's open intent saw. A later keyed close makes it stale.
+    private var openIntent = 0
+    // The keyed close mark of the key this view holds. Only the registry queue uses it.
+    private let closeMark = SwipeCloseMark()
+    private var isCurrentRestore: Bool {
+        recyclingKey.map { _ in Self.isCurrentIntent(pendingRestoreIntent, for: closeMark) } ?? true
+    }
     private var reconciliationWorkItem: DispatchWorkItem?
     private var visualRestoreWorkItem: DispatchWorkItem?
     private var requestedSides: Set<SwipeSide> = []
@@ -357,11 +379,11 @@ public class SwipeableView: ExpoView {
             guard oldValue != recyclingKey else { return }
             let cancelled = gestureCompletion.cancel(recyclingKey: oldValue, side: currentSide)
             commandTarget = SwipeCommandTarget(self)
-            let restored = recyclingKey.flatMap { Self.getOpenSide(for: $0) }
-                .flatMap { SwipeSide(rawValue: $0) }
+            // The view stops holding the old key: its mark moves with the cache read.
+            let restored = Self.bindRestore(closeMark, to: recyclingKey)
             if let old = oldValue {
                 // An abandoned auto-close wait cannot resume, so its transient open must not restore.
-                if autoCloseWorkItem != nil { Self.setOpenState(for: old, side: nil, owner: self) }
+                if autoCloseWorkItem != nil { Self.setOpenState(for: old, side: nil, owner: self, intent: openIntent) }
                 // Commands own cached intent. Rebinding must not resurrect the old
                 // view's stale state while a queued close is waiting to execute.
                 Self.unregisterView(self, for: old)
@@ -374,7 +396,8 @@ public class SwipeableView: ExpoView {
             slotChildren.removeAll()
             contentView?.transform = .identity
             updateActionsTransform()
-            pendingRestoreSide = restored
+            pendingRestoreSide = restored?.side
+            pendingRestoreIntent = restored?.intent ?? 0
             if let key = recyclingKey, !isDetached { Self.registerView(self, for: key) }
             // Widths may follow the key in the same Expo prop transaction.
             scheduleReconciliation()
@@ -435,7 +458,7 @@ public class SwipeableView: ExpoView {
     }
 
     private func persistOpenSide() {
-        if let key = recyclingKey { Self.setOpenState(for: key, side: openSide, owner: self) }
+        if let key = recyclingKey { Self.setOpenState(for: key, side: openSide, owner: self, intent: openIntent) }
     }
 
     private func isCurrent(_ generation: Int, key: String?) -> Bool {
@@ -506,14 +529,15 @@ public class SwipeableView: ExpoView {
         if let cachedSide = pendingRestoreSide {
             let side = cachedSide
             // gestureEnabled turns off only the gesture; cached intent still restores.
-            if width(for: side) <= 0 {
+            // A keyed close issued after the cache read wins over the read side.
+            if width(for: side) <= 0 || !isCurrentRestore {
                 pendingRestoreSide = nil
                 openSide = nil
                 currentTranslation = 0
                 persistOpenSide()
             } else if contentView != nil {
                 pendingRestoreSide = nil
-                snapToOpen(side: side)
+                snapToOpen(side: side, intent: pendingRestoreIntent)
             } else {
                 requestActions(on: side)
             }
@@ -700,7 +724,7 @@ public class SwipeableView: ExpoView {
         releaseChildRoles()
         if let key = recyclingKey {
             // Restore only settled cache intent, never unfinished interaction work.
-            if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self) }
+            if !preservesCachedSide { Self.setOpenState(for: key, side: nil, owner: self, intent: openIntent) }
             Self.unregisterView(self, for: key)
         }
         if let cancelled = cancelled { onGestureCancelled(cancelled) }
@@ -724,7 +748,9 @@ public class SwipeableView: ExpoView {
             Self.registerView(self, for: key)
             if wasDetached {
                 // Read again: a closeByKey while detached may have cleared the cache.
-                pendingRestoreSide = Self.getOpenSide(for: key).flatMap { SwipeSide(rawValue: $0) }
+                let restored = Self.readRestore(for: key)
+                pendingRestoreSide = restored.side
+                pendingRestoreIntent = restored.intent
             }
         }
         if panGesture.view !== self {
@@ -1184,34 +1210,37 @@ public class SwipeableView: ExpoView {
 
     // MARK: - Open/close
 
-    func open(velocity: CGFloat = 0) {
+    func open(velocity: CGFloat = 0, intent: Int? = nil) {
         commitProps()
         // gestureEnabled controls the recognizer, not imperative commands.
         guard let side = defaultOpenSide() else { return }
-        openResolvedSide(side)
+        openResolvedSide(side, intent: intent ?? Self.currentIntent())
     }
 
-    func open(side: SwipeSide, velocity: CGFloat = 0) {
+    func open(side: SwipeSide, velocity: CGFloat = 0, intent: Int? = nil) {
         commitProps()
         // Keep explicit opens available with gestureEnabled=false, just like open().
         guard width(for: side) > 0 else { return }
-        openResolvedSide(side)
+        openResolvedSide(side, intent: intent ?? Self.currentIntent())
     }
 
-    private func openResolvedSide(_ side: SwipeSide) {
+    private func openResolvedSide(_ side: SwipeSide, intent: Int) {
         if let previous = currentSide, previous != side,
            isOpen || isAnimating || currentTranslation != 0 || gestureCompletion.isPending {
+            // The side switch carries this intent through its closing leg.
+            openIntent = intent
             performClose(animated: true) { [weak self] in
                 guard let self = self, self.width(for: side) > 0 else { return }
-                self.beginOpen(on: side)
+                self.beginOpen(on: side, intent: intent)
             }
         } else {
-            beginOpen(on: side)
+            beginOpen(on: side, intent: intent)
         }
     }
 
     private func beginOpen(
-        on side: SwipeSide, preserveFeedback: Bool = false, preserveGestureCompletion: Bool = false
+        on side: SwipeSide, preserveFeedback: Bool = false, preserveGestureCompletion: Bool = false,
+        intent: Int? = nil
     ) {
         // Imperative auto-close opens have no timer/end; all other same-side opens
         // can take over the owed completion without resetting the JS start gate.
@@ -1222,6 +1251,7 @@ public class SwipeableView: ExpoView {
         let generation = workGeneration
         let key = recyclingKey
         openSide = side
+        openIntent = intent ?? Self.currentIntent()
         animationSide = side
         isAnimating = true
         persistOpenSide()
@@ -1261,11 +1291,12 @@ public class SwipeableView: ExpoView {
         snapToOpen(side: side)
     }
 
-    private func snapToOpen(side: SwipeSide) {
+    private func snapToOpen(side: SwipeSide, intent: Int? = nil) {
         guard invalidateWork() else { return }
         let generation = workGeneration
         let key = recyclingKey
         openSide = side
+        openIntent = intent ?? Self.currentIntent()
         isAnimating = false
         currentTranslation = side.sign * width(for: side)
         contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)

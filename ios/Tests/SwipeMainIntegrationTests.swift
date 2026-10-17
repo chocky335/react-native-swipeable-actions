@@ -414,7 +414,7 @@ final class SwipeMainIntegrationTests: XCTestCase {
         var cache = SwipeOpenStateCache(capacity: 2)
         for side in SwipeSide.allCases {
             cache.set(side, for: "a")
-            cache.clearIfUnbound(for: "a", hasCurrentBinding: false)
+            XCTAssertNil(cache.captureCloseTarget(for: "a", current: nil as SwipeCommandTarget<Child>?))
             XCTAssertNil(cache.side(for: "a"))
         }
     }
@@ -436,7 +436,6 @@ final class SwipeMainIntegrationTests: XCTestCase {
         if let captured = captured {
             queued.append {
                 captured.perform(ifCurrent: current) { _ in XCTFail("Unbound close reached remount") }
-                cache.clearIfUnbound(for: "a", hasCurrentBinding: current?.value != nil)
             }
         }
         current = nil
@@ -445,7 +444,7 @@ final class SwipeMainIntegrationTests: XCTestCase {
         XCTAssertEqual(cache.side(for: "a"), .right)
     }
 
-    func testCloseAllClearsOnlyUnboundCachedSides() {
+    func testCloseAllClearsBoundAndUnboundCachedSides() {
         let mounted = Child()
         var expired: Child? = Child()
         let bindings: [String: SwipeCommandTarget<Child>] = [
@@ -457,10 +456,11 @@ final class SwipeMainIntegrationTests: XCTestCase {
         cache.set(.left, for: "unmounted")
         cache.set(.right, for: "expired")
         cache.set(.right, for: "mounted")
-        cache.clearUnbound(bindings: bindings)
+        cache.closeAll()
         XCTAssertNil(cache.side(for: "unmounted"))
         XCTAssertNil(cache.side(for: "expired"))
-        XCTAssertEqual(cache.side(for: "mounted"), .right, "A bound row closes through its own command")
+        XCTAssertNotNil(bindings["mounted"]?.value)
+        XCTAssertNil(cache.side(for: "mounted"), "A bound row's cached intent closes at command time too")
     }
 
     func testCloseCaptureTreatsDeadWeakTargetAsUnbound() {
@@ -482,13 +482,308 @@ final class SwipeMainIntegrationTests: XCTestCase {
         cache.set(.left, for: "a")
         let captured = cache.captureCloseTarget(for: "a", current: oldBinding)
         XCTAssertTrue(captured === oldBinding)
-        XCTAssertEqual(cache.side(for: "a"), .left, "Bound capture must not change cached intent")
-        cache.set(.right, for: "a")
+        XCTAssertNil(cache.side(for: "a"), "A bound close owns the cached intent at command time")
+        let replacementMark = SwipeCloseMark()
+        _ = cache.bind(replacementMark, to: "a")
+        cache.persist(.right, for: "a", from: replacementMark, intent: cache.currentIntent)
         captured?.perform(ifCurrent: replacementBinding) { _ in
             XCTFail("A queued close must not operate on an A -> B -> A binding")
         }
-        cache.clearIfUnbound(for: "a", hasCurrentBinding: replacementBinding.value != nil)
         XCTAssertEqual(cache.side(for: "a"), .right)
+    }
+
+    func testBoundCloseIntentHoldsWhenTheKeyRebindsBeforeTheCloseRuns() {
+        let view = Child()
+        let mark = SwipeCloseMark()
+        var cache = SwipeOpenStateCache(capacity: 2)
+        _ = cache.bind(mark, to: "a")
+        let openIntent = cache.currentIntent
+        cache.persist(.left, for: "a", from: mark, intent: openIntent)
+        let oldBinding = SwipeCommandTarget(view)
+        let captured = cache.captureCloseTarget(for: "a", current: oldBinding)
+        XCTAssertTrue(captured === oldBinding)
+        cache.closeAll()  // closeAll in the same turn
+        XCTAssertNil(cache.side(for: "a"), "A bound close owns the cached intent at command time")
+        // A -> B -> A before the queued closes run: the ending binding persists its stale open.
+        cache.persist(.left, for: "a", from: mark, intent: openIntent)
+        _ = cache.bind(mark, to: "b")
+        let replacement = SwipeCommandTarget(view)
+        let restored = cache.bind(mark, to: "a")!
+        XCTAssertNil(restored.side, "The new binding must not restore the pre-close side")
+        cache.persist(.left, for: "a", from: mark, intent: openIntent)
+        captured?.perform(ifCurrent: replacement) { _ in
+            XCTFail("A queued close must not operate on an A -> B -> A binding")
+        }
+        XCTAssertNil(cache.side(for: "a"))
+        // A later binding of the key keeps its own intent once the closes have run.
+        cache.persist(.right, for: "a", from: mark, intent: restored.intent)
+        XCTAssertEqual(cache.side(for: "a"), .right)
+    }
+
+    func testCloseHoldsWhenTheReplacementBindsBeforeTheOldBindingEnds() {
+        for closeAll in [false, true] {
+            let label = closeAll ? "closeAll" : "close(key)"
+            let oldView = Child()
+            let newView = Child()
+            let oldMark = SwipeCloseMark()
+            let newMark = SwipeCloseMark()
+            var cache = SwipeOpenStateCache(capacity: 2)
+            _ = cache.bind(oldMark, to: "a")
+            let oldIntent = cache.currentIntent
+            cache.persist(.left, for: "a", from: oldMark, intent: oldIntent)
+            let oldBinding = SwipeCommandTarget(oldView)
+            if closeAll {
+                cache.closeAll()
+            } else {
+                XCTAssertTrue(cache.captureCloseTarget(for: "a", current: oldBinding) === oldBinding)
+            }
+            // The replacement binds the key first and reads the cache.
+            let replacement = SwipeCommandTarget(newView)
+            let restored = cache.bind(newMark, to: "a")!
+            XCTAssertNil(restored.side, label)
+            XCTAssertTrue(cache.isCurrent(restored.intent, for: newMark), label)
+            // Then the old binding ends with its pre-close open side.
+            cache.persist(.left, for: "a", from: oldMark, intent: oldIntent)
+            XCTAssertNil(cache.side(for: "a"), label)
+            oldBinding.perform(ifCurrent: replacement) { _ in XCTFail(label) }
+            XCTAssertNil(cache.restore(for: "a").side, "A later binding restores closed: \(label)")
+        }
+    }
+
+    func testRestoreReadBeforeTheCloseIsStale() {
+        for closeAll in [false, true] {
+            var cache = SwipeOpenStateCache(capacity: 2)
+            let opener = SwipeCloseMark()
+            _ = cache.bind(opener, to: "a")
+            cache.persist(.right, for: "a", from: opener, intent: cache.currentIntent)
+            // A binding reads the cache, then the close is issued before the restore applies.
+            let reader = SwipeCloseMark()
+            let restored = cache.bind(reader, to: "a")!
+            XCTAssertEqual(restored.side, .right)
+            if closeAll {
+                cache.closeAll()
+            } else {
+                _ = cache.captureCloseTarget(for: "a", current: nil as SwipeCommandTarget<Child>?)
+            }
+            XCTAssertFalse(cache.isCurrent(restored.intent, for: reader))
+            cache.persist(restored.side, for: "a", from: reader, intent: restored.intent)
+            XCTAssertNil(cache.side(for: "a"))
+        }
+    }
+
+    func testOpenAfterTheCloseCommandPersistsOpen() {
+        for closeAll in [false, true] {
+            let view = Child()
+            let mark = SwipeCloseMark()
+            var cache = SwipeOpenStateCache(capacity: 2)
+            _ = cache.bind(mark, to: "a")
+            let staleIntent = cache.currentIntent
+            cache.persist(.left, for: "a", from: mark, intent: staleIntent)
+            let binding = SwipeCommandTarget(view)
+            if closeAll {
+                cache.closeAll()
+            } else {
+                XCTAssertTrue(cache.captureCloseTarget(for: "a", current: binding) === binding)
+            }
+            // A later open stamps the new sequence and persists in either binding order.
+            let laterIntent = cache.currentIntent
+            XCTAssertTrue(cache.isCurrent(laterIntent, for: mark))
+            XCTAssertFalse(cache.isCurrent(staleIntent, for: mark))
+            cache.persist(.right, for: "a", from: mark, intent: laterIntent)
+            XCTAssertEqual(cache.side(for: "a"), .right)
+            XCTAssertEqual(cache.restore(for: "a").side, .right)
+            // A close issued after that open still wins over it.
+            _ = cache.captureCloseTarget(for: "a", current: binding)
+            cache.persist(.right, for: "a", from: mark, intent: laterIntent)
+            XCTAssertNil(cache.side(for: "a"))
+        }
+    }
+
+    func testOpenIssuedAfterTheCloseCommandWinsOverTheQueuedClose() {
+        for closeAll in [false, true] {
+            let view = Child()
+            let mark = SwipeCloseMark()
+            var cache = SwipeOpenStateCache(capacity: 2)
+            _ = cache.bind(mark, to: "a")
+            let staleIntent = cache.currentIntent
+            cache.persist(.left, for: "a", from: mark, intent: staleIntent)
+            let binding = SwipeCommandTarget(view)
+            if closeAll {
+                cache.closeAll()
+            } else {
+                XCTAssertTrue(cache.captureCloseTarget(for: "a", current: binding) === binding)
+            }
+            let close = cache.currentIntent
+            // The same binding opens again before its queued close runs.
+            let laterIntent = cache.currentIntent
+            cache.persist(.right, for: "a", from: mark, intent: laterIntent)
+            var closed = false
+            binding.perform(ifCurrent: binding) { _ in
+                closed = SwipeOpenStateCache.closeApplies(close, toOpenIntent: laterIntent)
+            }
+            XCTAssertFalse(closed, "The later open is the latest intent")
+            XCTAssertEqual(cache.side(for: "a"), .right)
+            XCTAssertTrue(SwipeOpenStateCache.closeApplies(close, toOpenIntent: staleIntent))
+        }
+    }
+
+    func testKeyedCloseKeepsItsEpochAfterManyOtherClosesWithPerViewMemory() {
+        var cache = SwipeOpenStateCache(capacity: 2)
+        let mark = SwipeCloseMark()
+        _ = cache.bind(mark, to: "a")
+        do {
+            // A binding that is gone leaves no state after the next close.
+            let gone = SwipeCloseMark()
+            _ = cache.bind(gone, to: "gone")
+            XCTAssertEqual(cache.trackedMarkCount, 2)
+        }
+        let staleIntent = cache.currentIntent
+        cache.persist(.left, for: "a", from: mark, intent: staleIntent)
+        // More distinct closed keys than the cache holds.
+        for key in ["a", "b", "c", "d", "e"] {
+            _ = cache.captureCloseTarget(for: key, current: nil as SwipeCommandTarget<Child>?)
+        }
+        // Keyed closes keep no per-key state: memory stays per live binding.
+        XCTAssertEqual(cache.trackedMarkCount, 1)
+        // The earlier close still makes the pre-close open stale.
+        XCTAssertFalse(cache.isCurrent(staleIntent, for: mark))
+        cache.persist(.left, for: "a", from: mark, intent: staleIntent)
+        XCTAssertNil(cache.side(for: "a"))
+        // An open issued after the closes stays current.
+        let laterIntent = cache.currentIntent
+        cache.persist(.right, for: "a", from: mark, intent: laterIntent)
+        XCTAssertEqual(cache.side(for: "a"), .right)
+    }
+
+    func testNeverClosedOpenRowStaysOpenAfterMoreKeyedClosesThanTheCacheHolds() {
+        var cache = SwipeOpenStateCache(capacity: 2)
+        let mark = SwipeCloseMark()
+        _ = cache.bind(mark, to: "a")
+        let others = ["b", "c", "d", "e"].map { key -> SwipeCloseMark in
+            let other = SwipeCloseMark()
+            _ = cache.bind(other, to: key)
+            return other
+        }
+        let intent = cache.currentIntent
+        cache.persist(.left, for: "a", from: mark, intent: intent)
+        // Closes of other keys, more than the cache holds, never stale this open.
+        for key in ["b", "c", "d", "e"] {
+            _ = cache.captureCloseTarget(for: key, current: nil as SwipeCommandTarget<Child>?)
+        }
+        XCTAssertTrue(cache.isCurrent(intent, for: mark))
+        XCTAssertTrue(others.allSatisfy { !cache.isCurrent(intent, for: $0) })
+        // The row ends its binding with the open side, and the next binding restores it.
+        cache.persist(.left, for: "a", from: mark, intent: intent)
+        _ = cache.bind(mark, to: "x")
+        let restored = cache.bind(SwipeCloseMark(), to: "a")
+        XCTAssertEqual(restored?.side, .left)
+        XCTAssertEqual(cache.side(for: "a"), .left)
+    }
+
+    func testCloseMarksEveryBindingThatHoldsTheKey() {
+        for closeAll in [false, true] {
+            let label = closeAll ? "closeAll" : "close(key)"
+            var cache = SwipeOpenStateCache(capacity: 4)
+            let oldMark = SwipeCloseMark()
+            let newMark = SwipeCloseMark()
+            let otherMark = SwipeCloseMark()
+            _ = cache.bind(oldMark, to: "a")
+            let intent = cache.currentIntent
+            // A newer binding takes the key before the older one leaves it.
+            _ = cache.bind(newMark, to: "a")
+            _ = cache.bind(otherMark, to: "b")
+            let newView = Child()
+            if closeAll {
+                cache.closeAll()
+            } else {
+                _ = cache.captureCloseTarget(for: "a", current: SwipeCommandTarget(newView))
+            }
+            XCTAssertFalse(cache.isCurrent(intent, for: oldMark), label)
+            XCTAssertFalse(cache.isCurrent(intent, for: newMark), label)
+            XCTAssertEqual(cache.isCurrent(intent, for: otherMark), !closeAll, label)
+            // The older binding cannot persist its earlier open after the newer one leaves.
+            cache.persist(.left, for: "a", from: oldMark, intent: intent)
+            XCTAssertNil(cache.side(for: "a"), label)
+        }
+    }
+
+    func testCommandedCloseHoldsInEveryBindingOrder() {
+        let orders = ["oldUnbindsFirst", "newBindsFirst", "roundTrip", "reattach"]
+        for closeAll in [false, true] {
+            for order in orders {
+                for reopens in [false, true] {
+                    let label = "\(closeAll ? "closeAll" : "close(key)") \(order) reopens=\(reopens)"
+                    var cache = SwipeOpenStateCache(capacity: 4)
+                    let old = SwipeCloseMark()
+                    _ = cache.bind(old, to: "a")
+                    var openIntent = cache.currentIntent
+                    cache.persist(.left, for: "a", from: old, intent: openIntent)
+                    if closeAll {
+                        cache.closeAll()
+                    } else {
+                        _ = cache.captureCloseTarget(for: "a", current: SwipeCommandTarget(Child()))
+                    }
+                    // A later open on the same binding, before the queued close runs.
+                    if reopens {
+                        openIntent = cache.currentIntent
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                    }
+                    let expected: SwipeSide? = reopens ? .left : nil
+                    let restored: (side: SwipeSide?, intent: Int)
+                    let holder: SwipeCloseMark
+                    switch order {
+                    case "oldUnbindsFirst":
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                        _ = cache.bind(old, to: "b")
+                        holder = SwipeCloseMark()
+                        restored = cache.bind(holder, to: "a")!
+                    case "newBindsFirst":
+                        holder = SwipeCloseMark()
+                        restored = cache.bind(holder, to: "a")!
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                    case "roundTrip":
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                        _ = cache.bind(old, to: "b")
+                        holder = old
+                        restored = cache.bind(old, to: "a")!
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                    default:
+                        holder = old
+                        restored = cache.restore(for: "a")
+                        cache.persist(.left, for: "a", from: old, intent: openIntent)
+                    }
+                    XCTAssertEqual(restored.side, expected, label)
+                    XCTAssertTrue(cache.isCurrent(restored.intent, for: holder), label)
+                    XCTAssertEqual(cache.side(for: "a"), expected, label)
+                    // A later binding, after every queued command ran, restores the same.
+                    XCTAssertEqual(cache.bind(SwipeCloseMark(), to: "a")?.side, expected, label)
+                }
+            }
+        }
+    }
+
+    func testKeyedCloseLeavesOtherKeysCurrentAndCloseAllCoversUncachedKeys() {
+        var cache = SwipeOpenStateCache(capacity: 4)
+        let a = SwipeCloseMark()
+        let b = SwipeCloseMark()
+        let neverCached = SwipeCloseMark()
+        _ = cache.bind(a, to: "a")
+        _ = cache.bind(b, to: "b")
+        _ = cache.bind(neverCached, to: "never-cached")
+        let intent = cache.currentIntent
+        cache.persist(.left, for: "a", from: a, intent: intent)
+        cache.persist(.right, for: "b", from: b, intent: intent)
+        _ = cache.captureCloseTarget(for: "a", current: nil as SwipeCommandTarget<Child>?)
+        XCTAssertNil(cache.side(for: "a"))
+        XCTAssertEqual(cache.side(for: "b"), .right)
+        cache.persist(.left, for: "b", from: b, intent: intent)
+        XCTAssertEqual(cache.side(for: "b"), .left, "A close of another key does not stale this intent")
+        cache.closeAll()
+        // A key that was never cached is closed by closeAll too.
+        cache.persist(.left, for: "never-cached", from: neverCached, intent: intent)
+        XCTAssertNil(cache.side(for: "never-cached"))
+        cache.persist(.left, for: "b", from: b, intent: intent)
+        XCTAssertNil(cache.side(for: "b"))
     }
 
     func testCancelDoesNotInvalidateLaterCommandsForSameBinding() {
