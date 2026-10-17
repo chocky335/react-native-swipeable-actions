@@ -35,6 +35,24 @@ not authorize publishing a subsequently bumped stable package. Repeat full
 acceptance on the stable source. If `main` moves before publication, prepare and
 test the intended current revision again; never rewrite evidence to match it.
 
+## Inconclusive host runs
+
+Each iOS shard writes `ios-evidence/host-health.json`. The `e2e-ios` job summary
+shows one host class next to each shard result:
+
+- `host healthy`: no gesture went to latent system gesture destinations of the app scene.
+- `host trouble: N latent-routed gestures, load X`: the simulator sent N gestures to
+  SpringBoard first, and the app did not get them.
+- `host unknown`: the shard has no usable simulator log.
+
+The host class never changes the `e2e-ios` result. A run with a failed case fails.
+
+1. If all failed shards of a failed run show host trouble, the run is
+   "inconclusive (host)". It is not release evidence.
+2. Never retry individual tests or failed jobs.
+3. Dispatch a fresh full run only after an inconclusive (host) run.
+4. Release evidence is a fully green full run.
+
 ## Evidence interface
 
 [The readiness gate](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.mjs) retrieves evidence directly from GitHub for the
