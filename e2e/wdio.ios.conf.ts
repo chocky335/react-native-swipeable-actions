@@ -110,15 +110,22 @@ export const config: WebdriverIO.Config = {
     // XCTest starts its virtual touch digitizer on the first synthetic gesture of a
     // session and delivers that gesture late and malformed. Spend it on a tap of the
     // non-interactive app title so the first test gesture reaches a warm digitizer.
-    const title = $(selectors.swipeableDemo)
-    await title.waitForDisplayed({ timeout: 60000 })
-    const { x, y, width, height } = await title.getElementRect(await title.elementId)
-    await driver
-      .action('pointer', { parameters: { pointerType: 'touch' } })
-      .move({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) })
-      .down()
-      .up()
-      .perform()
+    // WDIO logs and swallows an error from this hook, so the evidence records the outcome.
+    try {
+      const title = $(selectors.swipeableDemo)
+      await title.waitForDisplayed({ timeout: 60000 })
+      const { x, y, width, height } = await title.getElementRect(await title.elementId)
+      await driver
+        .action('pointer', { parameters: { pointerType: 'touch' } })
+        .move({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) })
+        .down()
+        .up()
+        .perform()
+    } catch (error) {
+      await recordResult({ event: 'warm-up', ok: false, error: String(error) })
+      throw error
+    }
+    await recordResult({ event: 'warm-up', ok: true })
   },
 
   beforeTest: async (test) => {

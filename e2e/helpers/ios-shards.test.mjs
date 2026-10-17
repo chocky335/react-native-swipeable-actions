@@ -36,7 +36,10 @@ function fixture() {
     plan.shards.map((shard) => {
       const common = { timestamp: '2026-10-16T12:00:00.000Z', pid: 42, worker: '0-0' }
       const spec = '/checkout/e2e/' + shard.spec
-      const records = [{ ...common, event: 'worker-start', specs: ['file://' + spec] }]
+      const records = [
+        { ...common, event: 'worker-start', specs: ['file://' + spec] },
+        { ...common, event: 'warm-up', ok: true }
+      ]
       for (const entry of shard.cases) {
         const metadata = { ...common, ...entry, file: spec, attempt: 0 }
         records.push({ ...metadata, event: 'test-start' })
@@ -244,64 +247,64 @@ for (const [name, mutate] of Object.entries(mutations))
   })
 
 const recordMutations = {
-  'unstarted case': (r) => r.splice(1, 2),
+  'unstarted case': (r) => r.splice(2, 2),
   'duplicate case replacing another': (r) => {
-    r[3] = { ...r[1] }
     r[4] = { ...r[2] }
+    r[5] = { ...r[3] }
   },
-  'extra duplicate case': (r) => r.splice(3, 0, { ...r[1] }, { ...r[2] }),
+  'extra duplicate case': (r) => r.splice(4, 0, { ...r[2] }, { ...r[3] }),
   'wrong title': (r) => {
-    r[1].title = 'not registered'
+    r[2].title = 'not registered'
   },
   'mismatched result': (r) => {
-    r[2].title = 'different'
+    r[3].title = 'different'
   },
   'mismatched parent': (r) => {
-    r[1].parent = 'different'
+    r[2].parent = 'different'
   },
   'mismatched full title': (r) => {
-    r[2].fullTitle = 'different'
+    r[3].fullTitle = 'different'
   },
   'wrong file': (r) => {
-    r[2].file = '/checkout/e2e/specs/swipeable.spec.ts'
+    r[3].file = '/checkout/e2e/specs/swipeable.spec.ts'
   },
   'failed case': (r) => {
-    r[2].status = 'failed'
+    r[3].status = 'failed'
   },
   'skipped case': (r) => {
-    r[2].status = 'skipped'
+    r[3].status = 'skipped'
   },
   'pending case': (r) => {
-    r[2].pending = true
+    r[3].pending = true
   },
   'error with passed status': (r) => {
-    r[2].error = { message: 'failure' }
+    r[3].error = { message: 'failure' }
   },
   'retry attempt': (r) => {
-    r[1].attempt = 1
+    r[2].attempt = 1
   },
   'transported retry result': (r) => {
-    r[2].retries.attempts = 1
+    r[3].retries.attempts = 1
   },
   'retry limit': (r) => {
-    r[2].retries.limit = 1
+    r[3].retries.limit = 1
   },
   'missing retry evidence': (r) => {
-    delete r[2].retries
+    delete r[3].retries
   },
   'missing duration': (r) => {
-    delete r[2].duration
+    delete r[3].duration
   },
-  'missing result': (r) => r.splice(2, 1),
+  'missing result': (r) => r.splice(3, 1),
   'missing worker end': (r) => r.pop(),
   'failed worker end': (r) => {
     r.at(-1).result = 1
   },
   'mixed worker PID': (r) => {
-    r[2].pid = 43
+    r[3].pid = 43
   },
   'mixed worker ID': (r) => {
-    r[2].worker = '0-1'
+    r[3].worker = '0-1'
   },
   'wrong worker spec': (r) => {
     r[0].specs = ['file:///checkout/e2e/specs/swipeable.spec.ts']
@@ -313,10 +316,21 @@ const recordMutations = {
   'hook skipped': (r) => r.splice(-1, 0, { ...r[0], event: 'hook-skipped' }),
   'late hook failure after worker end': (r) => r.push({ ...r[0], event: 'hook-failure' }),
   'result before start': (r) => {
-    ;[r[1], r[2]] = [r[2], r[1]]
+    ;[r[2], r[3]] = [r[3], r[2]]
   },
   'invalid timestamp': (r) => {
-    r[2].timestamp = 'invalid'
+    r[3].timestamp = 'invalid'
+  },
+  'missing warm-up': (r) => r.splice(1, 1),
+  'failed warm-up': (r) => {
+    r[1] = { ...r[1], ok: false, error: 'Error: title not displayed' }
+  },
+  'warm-up without outcome': (r) => {
+    delete r[1].ok
+  },
+  'duplicate warm-up': (r) => r.splice(-1, 0, { ...r[1] }),
+  'warm-up after the first case': (r) => {
+    ;[r[1], r[2], r[3]] = [r[2], r[3], r[1]]
   }
 }
 for (const [name, mutate] of Object.entries(recordMutations))

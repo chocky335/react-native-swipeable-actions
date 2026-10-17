@@ -35,7 +35,7 @@ function fixture(version = '1.0.0-rc.0') {
       const bundles = Object.fromEntries(manifest.shards.map((shard, index) => {
         const common = { timestamp: '2026-10-16T11:00:00Z', pid: 100, worker: '0-' + index }
         const file = '/checkout/e2e/' + shard.spec
-        const records = [{ ...common, event: 'worker-start', specs: [file] }]
+        const records = [{ ...common, event: 'worker-start', specs: [file] }, { ...common, event: 'warm-up', ok: true }]
         for (const entry of shard.cases) {
           records.push({ ...common, ...entry, file, attempt: 0, event: 'test-start' })
           records.push({ ...common, ...entry, file, attempt: 0, event: 'test-result', status: 'passed', duration: 1, retries: { attempts: 0, limit: 0 } })
@@ -101,9 +101,9 @@ const mutations = {
   'metadata-only evidence': (v) => { v.runs[0].bundles = {} },
   'stale inventory': (v) => { v.runs[0].manifest.shards[0].sourceHash = 'b'.repeat(64) },
   'missing iOS worker': (v) => { v.runs[0].bundles.rtl.workers = [] },
-  'missing iOS case': (v) => { v.runs[0].bundles.swipeable.workers[0].splice(1, 2) },
-  'failed iOS case': (v) => { v.runs[0].bundles['two-sided'].workers[0][2].status = 'failed' },
-  'retried iOS case': (v) => { v.runs[0].bundles.rtl.workers[0][2].retries.attempts = 1 },
+  'missing iOS case': (v) => { v.runs[0].bundles.swipeable.workers[0].splice(2, 2) },
+  'failed iOS case': (v) => { v.runs[0].bundles['two-sided'].workers[0][3].status = 'failed' },
+  'retried iOS case': (v) => { v.runs[0].bundles.rtl.workers[0][3].retries.attempts = 1 },
   'replayed old records': (v) => { v.runs[0].bundles.rtl.workers[0][0].timestamp = '2026-10-15T11:00:00Z' },
   'Android summary only': (v) => { v.runs[0].androidLog = 'Spec Files: 5 passed, 5 total\n' },
   'Android missing case': (v) => { v.runs[0].androidLog = v.runs[0].androidLog.replace('[app Android #0-0] \u2713 case 0', '') },

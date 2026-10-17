@@ -201,7 +201,7 @@ export function validateRecords(shard, records) {
   assert.ok(Array.isArray(records) && records.length > 0, 'Missing worker evidence')
   for (const record of records) {
     assert.ok(
-      ['worker-start', 'test-start', 'test-result', 'worker-end'].includes(record.event),
+      ['worker-start', 'warm-up', 'test-start', 'test-result', 'worker-end'].includes(record.event),
       'Hook failure/skip or unknown evidence event: ' + record.event
     )
     assert.equal(typeof record.timestamp, 'string')
@@ -210,6 +210,8 @@ export function validateRecords(shard, records) {
   const first = records[0]
   const last = records.at(-1)
   assert.equal(first.event, 'worker-start')
+  assert.equal(records[1]?.event, 'warm-up', 'Missing warm-up evidence')
+  assert.equal(records[1].ok, true, 'Warm-up failed')
   assert.equal(last.event, 'worker-end', 'Worker did not finish')
   assert.equal(last.result, 0, 'Worker failed')
   assert.ok(Number.isInteger(first.pid) && first.pid > 0, 'Missing worker PID')
@@ -222,10 +224,10 @@ export function validateRecords(shard, records) {
     assert.equal(record.pid, first.pid, 'Mixed workers')
     assert.equal(record.worker, first.worker, 'Mixed worker identities')
   }
-  assert.equal(records.length, 2 + shard.cases.length * 2, 'Missing/duplicate/unstarted cases')
+  assert.equal(records.length, 3 + shard.cases.length * 2, 'Missing/duplicate/unstarted cases')
   const expected = new Map(shard.cases.map((record) => [caseKey(shard.spec, record), record]))
   const seen = new Set()
-  for (let i = 1; i < records.length - 1; i += 2) {
+  for (let i = 2; i < records.length - 1; i += 2) {
     const start = records[i]
     const result = records[i + 1]
     assert.equal(start.event, 'test-start', 'Unpaired start')
