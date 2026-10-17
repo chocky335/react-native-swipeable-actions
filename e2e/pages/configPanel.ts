@@ -6,21 +6,37 @@ import { BasePage } from './basePage'
  */
 class ConfigPanel extends BasePage {
   /**
-   * Open config panel
+   * Open config panel. A slow simulator can drop a tap, so re-tap only while the
+   * panel is still closed, then wait for its content.
    */
   async open(): Promise<void> {
-    await this.tap(selectors.configHeader)
-    // Wait for panel to expand
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    await this.toggleUntil(true)
   }
 
   /**
-   * Close config panel
+   * Close config panel, re-tapping only while it is still open.
    */
   async close(): Promise<void> {
-    await this.tap(selectors.configHeader)
-    // Wait for panel to collapse
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    await this.toggleUntil(false)
+  }
+
+  private async toggleUntil(open: boolean): Promise<void> {
+    const marker = $(selectors.selectDemoList)
+    await driver.waitUntil(
+      async () => {
+        if ((await marker.isDisplayed()) === open) return true
+        await this.tap(selectors.configHeader)
+        return marker.waitForDisplayed({ timeout: 2000, reverse: !open }).then(
+          () => true,
+          () => false
+        )
+      },
+      {
+        timeout: 20000,
+        interval: 100,
+        timeoutMsg: `The config panel did not ${open ? 'open' : 'close'}`
+      }
+    )
   }
 
   /**
