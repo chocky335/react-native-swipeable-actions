@@ -148,8 +148,8 @@ The goal is not to reproduce old implementation quirks.
   callback cadence. Public callback argument lists are unchanged.
 - **Cancellation:** cancels pending/active interaction and cached open intent
   without completing the action. Continuing the same cancelled touch must not
-  restart it; a fresh gesture can. It cannot undo a swipe that already settled
-  open, which still reports `onSwipeEnd("open")`.
+  restart it; a fresh gesture can. A swipe that settled open before the cancel ran
+  has already reported `onSwipeEnd("open")` (without `autoClose`).
 - **Instant close:** `close(false)` clears cached open intent. Reattaching or
   restoring that key must not resurrect the old open state.
 - **Restoration and widths:** restore the cached physical edge at its current

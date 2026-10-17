@@ -174,11 +174,12 @@ const key = useId();
 </Swipeable>
 ```
 
-- `onSwipeStart` is an optional guard. `cancel()` stops a swipe that is still in
-  progress, and that swipe does not complete.
-- `cancel()` cannot undo a swipe that already settled open. That swipe still
-  reports `onSwipeEnd("open")`. A fast flick can do this. Check the guard again in
-  `onSwipeEnd`, and call `close()` instead of navigating.
+- `onSwipeStart` is an optional guard. `cancel()` closes the row at once, and the
+  swipe does not complete.
+- `onSwipeStart` reaches JavaScript asynchronously. If the swipe settles open before
+  your `cancel()` runs, `onSwipeEnd("open")` has already been sent. A busy
+  JavaScript thread makes this more likely. Check the guard again in `onSwipeEnd`,
+  and call `close()` instead of navigating.
 - `cancel()` and `close()` need a `recyclingKey`. Use a new key for each mount of the screen.
   Then a later mount does not restore the open state of a screen that you swiped away.
 - If the navigator has its own back gesture on that screen, turn it off. For a
@@ -196,7 +197,7 @@ row.current?.open(); // Right if enabled, else left. No-op if neither is enabled
 row.current?.open("left"); // No-op if left is disabled. Never opens right instead.
 row.current?.close(); // Animated.
 row.current?.close(false); // Instant. Also clears the cached open state.
-row.current?.cancel(); // Stops a gesture in progress. It cannot undo a swipe that already settled open.
+row.current?.cancel(); // Closes at once. A pending swipe does not complete.
 
 Swipeable.open("message-42", "right");
 Swipeable.close("message-42", false);
