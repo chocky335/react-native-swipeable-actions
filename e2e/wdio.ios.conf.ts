@@ -1,7 +1,7 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { finishCommandScope, guardRequest } from './helpers/command-scope'
-import { setPlatform } from './helpers/selectors'
+import { selectors, setPlatform } from './helpers/selectors'
 
 const appiumPort = Number(process.env.APPIUM_PORT || 4723)
 
@@ -107,6 +107,18 @@ export const config: WebdriverIO.Config = {
   before: async (_capabilities, specs) => {
     setPlatform('iOS')
     await recordResult({ event: 'worker-start', specs })
+    // XCTest starts its virtual touch digitizer on the first synthetic gesture of a
+    // session and delivers that gesture late and malformed. Spend it on a tap of the
+    // non-interactive app title so the first test gesture reaches a warm digitizer.
+    const title = $(selectors.swipeableDemo)
+    await title.waitForDisplayed({ timeout: 60000 })
+    const { x, y, width, height } = await title.getElementRect(await title.elementId)
+    await driver
+      .action('pointer', { parameters: { pointerType: 'touch' } })
+      .move({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) })
+      .down()
+      .up()
+      .perform()
   },
 
   beforeTest: async (test) => {
