@@ -107,13 +107,6 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         /** Test seam: runs between a keyed open's registry read and its post. */
         internal var afterOpenCapture: (() -> Unit)? = null
 
-        private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
-            val view = getView(key) ?: return
-            view.postCommand {
-                if (view.recyclingKey == key) action(view)
-            }
-        }
-
         // The intent is read with the target and its binding, so a later close marks that
         // target and a rebind before the post drops the open like any queued command.
         private fun postOpen(key: String, side: SwipeSide?) {
@@ -136,16 +129,22 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         fun getOpenSideByKey(key: String): String? = openStateCache[key]?.value
 
-        fun closeByKey(key: String, animated: Boolean = true) {
-            val (view, sequence) = synchronized(registryLock) {
-                // Mark every view that holds the key, the registered one and any older
-                // one, and clear the cache: a view that leaves the key cannot persist an
-                // earlier open, and a view that takes it reads closed.
+        /**
+         * Records a keyed close intent and reads the bound view in one step. Mark every
+         * view that holds the key, the registered one and any older one, and clear the
+         * cache: a view that leaves the key cannot persist an earlier open, and a view
+         * that takes it reads closed.
+         */
+        private fun captureCloseTarget(key: String): Pair<SwipeableView?, Long> =
+            synchronized(registryLock) {
                 val sequence = ++closeSequence
                 markHolders(sequence) { it.heldKey == key }
                 setOpenState(key, null)
                 getView(key) to sequence
             }
+
+        fun closeByKey(key: String, animated: Boolean = true) {
+            val (view, sequence) = captureCloseTarget(key)
             if (view == null) return
             view.postCommand {
                 // An open issued after this command is the latest intent and wins.
@@ -153,7 +152,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
         }
 
-        fun cancelByKey(key: String) = postCommand(key) { it.cancelGesture() }
+        /** A keyed cancel clears the cached open intent like a keyed close, mounted or not. */
+        fun cancelByKey(key: String) {
+            val view = captureCloseTarget(key).first ?: return
+            view.postCommand {
+                if (view.recyclingKey == key) view.cancelGesture()
+            }
+        }
 
         /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {

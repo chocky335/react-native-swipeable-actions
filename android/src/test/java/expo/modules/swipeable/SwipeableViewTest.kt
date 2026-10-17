@@ -1118,18 +1118,24 @@ class SwipeableViewTest {
     }
 
     @Test fun queuedCancelCannotSurviveDetachAndReattach() {
-        val row = row()
-        row.open(SwipeSide.LEFT)
-        settle()
-        events.clear()
-        SwipeableView.cancelByKey("row")
-        row.postCommand { row.cancelGesture() }
-        root.removeView(row)
-        root.addView(row)
-        settle()
-        assertEquals(160f, content(row).translationX, .01f)
-        assertEquals("left", SwipeableView.getOpenSideByKey("row"))
-        assertTrue(ends().isEmpty())
+        for (keyed in listOf(false, true)) {
+            val row = row()
+            row.open(SwipeSide.LEFT)
+            settle()
+            events.clear()
+            if (keyed) SwipeableView.cancelByKey("row")
+            row.postCommand { row.cancelGesture() }
+            root.removeView(row)
+            root.addView(row)
+            settle()
+            // A keyed cancel clears the cached open intent at command time, like a keyed close.
+            assertEquals("keyed=$keyed", if (keyed) 0f else 160f, content(row).translationX, .01f)
+            assertEquals("keyed=$keyed", if (keyed) null else "left", SwipeableView.getOpenSideByKey("row"))
+            assertTrue("keyed=$keyed", ends().isEmpty())
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
     }
 
     @Test fun rawCancelWithoutKeyPreservesCommandOrdering() {
@@ -2525,6 +2531,85 @@ class SwipeableViewTest {
             SwipeableView.clearCache()
             events.clear()
         }
+    }
+
+    @Test fun keyedCancelClearsAnUnmountedRowsCachedOpenBeforeRemount() {
+        for (side in SwipeSide.values()) {
+            val old = row(key = "cancelled")
+            old.open(side)
+            settle()
+            root.removeView(old)
+            assertEquals(side.value, SwipeableView.getOpenSideByKey("cancelled"))
+            events.clear()
+            SwipeableView.cancelByKey("cancelled")
+            assertNull(side.value, SwipeableView.getOpenSideByKey("cancelled"))
+            val remounted = row(key = "cancelled")
+            settle()
+            assertEquals(side.value, 0f, content(remounted).translationX, 0f)
+            assertNull(side.value, SwipeableView.getOpenSideByKey("cancelled"))
+            assertTrue(side.value, events.isEmpty())
+            root.removeView(remounted)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedCancelClosesARowThatUnbindsBeforeTheQueuedCancel() {
+        for (unbind in listOf("rebind", "detach")) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            SwipeableView.cancelByKey("late")
+            if (unbind == "rebind") row.recyclingKey = "other" else root.removeView(row)
+            settle()
+            assertNull(unbind, SwipeableView.getOpenSideByKey("late"))
+            root.removeView(row)
+            val remounted = row(key = "late")
+            settle()
+            assertEquals(unbind, 0f, content(remounted).translationX, 0f)
+            root.removeView(remounted)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedCancelOfABoundRowStillCancelsWithoutCompletion() {
+        val row = row(key = "bound")
+        row.open(SwipeSide.LEFT)
+        settle()
+        SwipeableView.cancelByKey("bound")
+        assertNull(SwipeableView.getOpenSideByKey("bound"))
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        events.clear()
+        row.handleGestureStart()
+        row.handleGestureUpdate(120f, 0f)
+        SwipeableView.cancelByKey("bound")
+        settle()
+        row.handleGestureEnd(120f, 0f)
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("bound"))
+        assertTrue(ends().isEmpty())
+    }
+
+    @Test fun openIssuedAfterAKeyedCancelWins() {
+        val old = row(key = "later")
+        old.open(SwipeSide.LEFT)
+        settle()
+        root.removeView(old)
+        SwipeableView.cancelByKey("later")
+        val remounted = row(key = "later")
+        SwipeableView.openByKey("later")
+        settle()
+        assertEquals(-240f, content(remounted).translationX, .01f)
+        assertEquals("right", SwipeableView.getOpenSideByKey("later"))
+        root.removeView(remounted)
+        settle()
+        assertEquals("right", SwipeableView.getOpenSideByKey("later"))
+        val restored = row(key = "later")
+        settle()
+        assertEquals(-240f, content(restored).translationX, .01f)
     }
 
     /** The size of every static collection the view class keeps. */

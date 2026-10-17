@@ -200,8 +200,15 @@ public class SwipeableView: ExpoView {
         }
     }
 
+    /// A keyed cancel clears the cached open intent like a keyed close, mounted or not.
     static func cancelByKey(_ key: String) {
-        enqueueCommand(for: key) { view, _ in view.cancelGesture() }
+        let target = registryQueue.sync {
+            _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+        }
+        guard let target = target else { return }
+        DispatchQueue.main.async {
+            performCommand({ $0.cancelGesture() }, for: key, target: target)
+        }
     }
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
