@@ -199,6 +199,12 @@ struct SwipeOpenStateCache {
         intent >= max(keyCloseSequences[key] ?? 0, closeAllSequence)
     }
 
+    /// A queued close skips a binding that opened after the close command:
+    /// that open is the latest intent and wins.
+    static func closeApplies(_ close: Int, toOpenIntent openIntent: Int) -> Bool {
+        openIntent < close
+    }
+
     /// The cached side and the intent it holds, read in one step.
     func restore(for key: String) -> (side: SwipeSide?, intent: Int) {
         (sides[key], closeSequence)

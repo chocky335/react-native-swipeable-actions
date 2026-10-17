@@ -2424,6 +2424,25 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun openIssuedAfterTheCloseCommandWinsOverTheQueuedCloseWithoutARebind() {
+        for (command in listOf("closeByKey", "closeAll")) for (opener in listOf("sameSide", "otherSide")) {
+            val label = "$command $opener"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            // A later intent on the main thread, before the queued close runs.
+            if (opener == "sameSide") row.open(SwipeSide.LEFT) else row.open(SwipeSide.RIGHT)
+            settle()
+            val (offset, side) = if (opener == "sameSide") 160f to "left" else -240f to "right"
+            assertEquals(label, offset, content(row).translationX, .01f)
+            assertEquals(label, side, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     private val BINDING_ORDERS = listOf(
         "oldUnbindsFirst", "newBindsFirst", "newBindsFirstThenOldDetaches", "roundTrip", "reattach"
     )

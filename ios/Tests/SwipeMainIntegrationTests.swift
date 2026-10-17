@@ -585,6 +585,32 @@ final class SwipeMainIntegrationTests: XCTestCase {
         }
     }
 
+    func testOpenIssuedAfterTheCloseCommandWinsOverTheQueuedClose() {
+        for closeAll in [false, true] {
+            let view = Child()
+            var cache = SwipeOpenStateCache(capacity: 2)
+            let staleIntent = cache.currentIntent
+            cache.persist(.left, for: "a", intent: staleIntent)
+            let binding = SwipeCommandTarget(view)
+            if closeAll {
+                cache.closeAll()
+            } else {
+                XCTAssertTrue(cache.captureCloseTarget(for: "a", current: binding) === binding)
+            }
+            let close = cache.currentIntent
+            // The same binding opens again before its queued close runs.
+            let laterIntent = cache.currentIntent
+            cache.persist(.right, for: "a", intent: laterIntent)
+            var closed = false
+            binding.perform(ifCurrent: binding) { _ in
+                closed = SwipeOpenStateCache.closeApplies(close, toOpenIntent: laterIntent)
+            }
+            XCTAssertFalse(closed, "The later open is the latest intent")
+            XCTAssertEqual(cache.side(for: "a"), .right)
+            XCTAssertTrue(SwipeOpenStateCache.closeApplies(close, toOpenIntent: staleIntent))
+        }
+    }
+
     func testKeyedCloseLeavesOtherKeysCurrentAndCloseAllCoversUncachedKeys() {
         var cache = SwipeOpenStateCache(capacity: 4)
         let intent = cache.currentIntent

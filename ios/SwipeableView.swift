@@ -181,13 +181,17 @@ public class SwipeableView: ExpoView {
     }
 
     static func closeByKey(_ key: String, animated: Bool = true) {
-        let target = registryQueue.sync {
+        let (target, sequence) = registryQueue.sync { () -> (SwipeCommandTarget<SwipeableView>?, Int) in
             // Consume the cached intent before any binding can read the cached side.
-            _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+            let target = _openStateCache.captureCloseTarget(for: key, current: _viewRegistry[key])
+            return (target, _openStateCache.currentIntent)
         }
         guard let target = target else { return }
         DispatchQueue.main.async {
-            performCommand({ $0.close(animated: animated) }, for: key, target: target)
+            performCommand({ view in
+                guard SwipeOpenStateCache.closeApplies(sequence, toOpenIntent: view.openIntent) else { return }
+                view.close(animated: animated)
+            }, for: key, target: target)
         }
     }
 
@@ -197,13 +201,15 @@ public class SwipeableView: ExpoView {
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
     static func closeAll(animated: Bool = true) {
-        let targets = registryQueue.sync { () -> [(key: String, target: SwipeCommandTarget<SwipeableView>)] in
+        let (targets, sequence) = registryQueue.sync {
+            () -> ([(key: String, target: SwipeCommandTarget<SwipeableView>)], Int) in
             _openStateCache.closeAll()
-            return _viewRegistry.map { (key: $0.key, target: $0.value) }
+            return (_viewRegistry.map { (key: $0.key, target: $0.value) }, _openStateCache.currentIntent)
         }
         DispatchQueue.main.async {
             for entry in targets {
                 performCommand({ view in
+                    guard SwipeOpenStateCache.closeApplies(sequence, toOpenIntent: view.openIntent) else { return }
                     if !animated || SwipePhysics.shouldCloseForCloseAll(
                         isOpen: view.isOpen, isAnimating: view.isAnimating,
                         hasPendingInteraction: view.isDragging || view.isGestureActivated ||
@@ -1213,6 +1219,8 @@ public class SwipeableView: ExpoView {
     private func openResolvedSide(_ side: SwipeSide, intent: Int) {
         if let previous = currentSide, previous != side,
            isOpen || isAnimating || currentTranslation != 0 || gestureCompletion.isPending {
+            // The side switch carries this intent through its closing leg.
+            openIntent = intent
             performClose(animated: true) { [weak self] in
                 guard let self = self, self.width(for: side) > 0 else { return }
                 self.beginOpen(on: side, intent: intent)

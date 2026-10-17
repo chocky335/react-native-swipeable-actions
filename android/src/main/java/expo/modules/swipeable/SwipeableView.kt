@@ -105,15 +105,17 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         fun getOpenSideByKey(key: String): String? = openStateCache[key]?.value
 
         fun closeByKey(key: String, animated: Boolean = true) {
-            val view = synchronized(registryLock) {
+            val (view, sequence) = synchronized(registryLock) {
                 // The close owns the key's intent from now on: no binding that holds,
                 // leaves or takes the key can restore or persist an earlier open.
                 keyCloseSequences[key] = ++closeSequence
                 setOpenState(key, null)
-                getView(key)
-            } ?: return
+                getView(key) to closeSequence
+            }
+            if (view == null) return
             view.postCommand {
-                if (view.recyclingKey == key) view.close(animated)
+                // An open issued after this command is the latest intent and wins.
+                if (view.recyclingKey == key && view.openIntent < sequence) view.close(animated)
             }
         }
 
@@ -121,14 +123,17 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         /** Include pending interactions and closing continuations, not only settled open rows. */
         fun closeAll(animated: Boolean = true) {
-            synchronized(registryLock) {
+            val sequence = synchronized(registryLock) {
                 // Like closeByKey for every key, bound or not, mounted or not.
                 closeAllSequence = ++closeSequence
                 keyCloseSequences.clear()
                 openStateCache.evictAll()
+                closeAllSequence
             }
             getAllViews().forEach { view ->
                 view.postCommand {
+                    // An open issued after this command is the latest intent and wins.
+                    if (view.openIntent >= sequence) return@postCommand
                     // Earlier commands for this binding may still be queued.
                     val activeInteraction = (view.isAnimating || view.isDragging ||
                         view.directGesturePending || view.restorePending)
@@ -822,6 +827,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         val previousSide = gestureSide ?: animationSide ?: openSide
         if (previousSide != null && previousSide != side &&
             (isOpen || currentTranslation != 0f || isAnimating || gestureCompletionPending)) {
+            // The side switch carries this intent through its closing leg.
+            openIntent = intent
             closeInternal(animated = true, afterClose = { openInternal(side, velocity, intent = intent) })
             return
         }
