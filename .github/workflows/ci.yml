@@ -526,7 +526,7 @@ jobs:
       - name: Classify host health
         if: always()
         continue-on-error: true
-        run: node e2e/helpers/host-health.mjs report e2e/logs/ios-evidence
+        run: node e2e/helpers/host-health.mjs report e2e/logs/ios-evidence e2e/logs/ios-results
 
       - name: Upload Appium logs and required shard evidence
         if: always()

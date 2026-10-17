@@ -37,18 +37,28 @@ test the intended current revision again; never rewrite evidence to match it.
 
 ## Inconclusive host runs
 
-Each iOS shard writes `ios-evidence/host-health.json`. The `e2e-ios` job summary
+Each iOS shard writes `ios-evidence/host-health.json`. It compares the simulator log
+with the NDJSON results in `ios-results/`. Each failure has a window: a failed test
+from its start to its result, a failed hook, or a failed warm-up. A test without a
+result fails, and its window ends at the next record. The `e2e-ios` job summary
 shows one host class next to each shard result:
 
-- `host healthy`: no gesture went to latent system gesture destinations of the app scene.
-- `host trouble: N latent-routed gestures, load X`: the simulator sent N gestures to
-  SpringBoard first, and the app did not get them.
-- `host unknown`: the shard has no usable simulator log.
+- `host trouble`: each failure window contains at least one gesture that went to
+  latent system gesture destinations of the app scene. The simulator sent these
+  gestures to SpringBoard first, and the app did not get them.
+- `host mixed`: some failure windows contain latent-routed gestures, and other
+  failure windows do not. The failures without them are real failures.
+- `host healthy`: no failure window contains a latent-routed gesture, or the shard
+  has no failure. A latent-routed gesture during a passed warm-up or test does not count.
+- `host unknown`: the shard has no usable simulator log, or it has latent-routed
+  gestures and no test results.
 
+The summary shows the latent-routed gestures in failure windows and in total.
 The host class never changes the `e2e-ios` result. A run with a failed case fails.
 
-1. If all failed shards of a failed run show host trouble, the run is
-   "inconclusive (host)". It is not release evidence.
+1. If each failed shard of a failed run shows `host trouble`, the run is
+   "inconclusive (host)". It is not release evidence. One failure without a
+   latent-routed gesture in its window makes the run a real failure.
 2. Never retry individual tests or failed jobs.
 3. Dispatch a fresh full run only after an inconclusive (host) run.
 4. Release evidence is a fully green full run.
