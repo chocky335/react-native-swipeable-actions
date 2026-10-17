@@ -522,6 +522,12 @@ jobs:
             --predicate 'subsystem == "com.swipeabledemo.app" OR process == "SwipeableDemo" OR process == "backboardd" OR process == "SpringBoard" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
             > e2e/logs/ios-evidence/simulator-log.txt 2>&1 || true
 
+      # Classifies the host for triage. It never changes the shard or gate result.
+      - name: Classify host health
+        if: always()
+        continue-on-error: true
+        run: node e2e/helpers/host-health.mjs report e2e/logs/ios-evidence
+
       - name: Upload Appium logs and required shard evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -555,6 +561,11 @@ jobs:
           pattern: ios-shard-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: ios-shards/
           merge-multiple: false
+      # Classifies each shard host for triage. The next step alone decides the gate.
+      - name: Summarize host health per shard
+        if: always()
+        continue-on-error: true
+        run: node e2e/helpers/host-health.mjs summary ios-plan/manifest.json ios-shards
       - name: Require complete successful same-run evidence
         env:
           IOS_PLAN_RESULT: ${{ needs.ios-plan.result }}
