@@ -14,7 +14,7 @@ export interface SwipeToGoBackProps {
   /**
    * Return `false` to block the swipe, for example while a draft is unsaved. The content
    * then snaps back and `onBack` is not called. It is called when a swipe starts, and again
-   * after a swipe opens, because a fast flick can open before the start check takes effect.
+   * after a swipe opens, because `cancel()` cannot undo a swipe that already settled open.
    */
   canGoBack?: () => boolean
   /** Test identifier of the swipeable container. */
