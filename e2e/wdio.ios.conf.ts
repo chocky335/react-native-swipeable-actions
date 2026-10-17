@@ -60,6 +60,8 @@ export const config: WebdriverIO.Config = {
       'appium:wdaLaunchTimeout': 240000,
       'appium:wdaConnectionTimeout': 240000,
       'appium:showXcodeLog': true,
+      // Appium's unfiltered `log stream` loads the CI host. CI saves the system log after the run.
+      'appium:skipLogCapture': true,
       'appium:noReset': false,
       'appium:isHeadless': true,
       // CI supplies the full build-for-testing output so Xcode launches XCTest.
