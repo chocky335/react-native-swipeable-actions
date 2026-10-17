@@ -435,7 +435,15 @@ jobs:
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
           # Run the build-for-testing output through XCTest, not as a standalone app.
           IOS_WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-build
-        run: cd e2e && npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
+        run: |
+          # The simulator can stall early in this step. Keep its logs from this point on,
+          # and sample host load for the first two minutes, to explain a lost touch.
+          echo "IOS_TEST_START=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
+          mkdir -p "$E2E_ARTIFACT_DIR"
+          top -l 24 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
+          TOP_PID=$!
+          trap 'kill "$TOP_PID" 2>/dev/null || true' EXIT
+          cd e2e && npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
 
       - name: Install Maestro
         if: matrix.maestro
@@ -457,6 +465,15 @@ jobs:
           node e2e/helpers/ios-shards.mjs receipt "${{ matrix.id }}"
           ios-plan/manifest.json e2e/logs/ios-shard-receipt.json
 
+      - name: Capture simulator logs
+        if: always()
+        run: |
+          if [ -n "${IOS_TEST_START:-}" ]; then WINDOW=(--start "$IOS_TEST_START"); else WINDOW=(--last 10m); fi
+          mkdir -p e2e/logs/ios-evidence
+          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show "${WINDOW[@]}" --style compact \
+            --predicate 'subsystem == "com.swipeabledemo.app" OR process == "SwipeableDemo" OR process == "backboardd" OR process == "SpringBoard" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
+            > e2e/logs/ios-evidence/simulator-log.txt 2>&1 || true
+
       - name: Upload Appium logs and required shard evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -465,19 +482,12 @@ jobs:
           path: e2e/logs/
           if-no-files-found: error
 
-      - name: Capture simulator logs
-        if: always()
-        run: |
-          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --last 10m --style compact \
-            --predicate 'subsystem == "com.swipeabledemo.app" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
-            > /tmp/simulator-log.txt 2>&1 || true
-
       - name: Upload simulator logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: simulator-log-ios-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
-          path: /tmp/simulator-log.txt
+          path: e2e/logs/ios-evidence/simulator-log.txt
 
   # Keep the original required-check job name; matrix success alone is insufficient.
   e2e-ios:
