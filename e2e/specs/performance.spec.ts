@@ -1,5 +1,6 @@
 import { afterEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
+import { relaunchApp } from '../helpers/touch-readiness'
 import { configPanel } from '../pages/configPanel'
 import { listDemoPage } from '../pages/listDemoPage'
 
@@ -13,9 +14,7 @@ const shouldRun = (testNum: number) => ENABLED_TESTS.length === 0 || ENABLED_TES
 
 describe('Swipeable Performance Tests', () => {
   afterEach(async () => {
-    const appId = 'com.swipeabledemo.app'
-    await driver.terminateApp(appId)
-    await driver.activateApp(appId)
+    await relaunchApp('com.swipeabledemo.app')
     await listDemoPage.waitForDisplayed()
   })
   ;(shouldRun(0) ? describe : describe.skip)(

@@ -183,6 +183,9 @@ export const selectors = {
   get seekbarThumb() {
     return byTestId('seekbar-thumb')
   },
+  get seekbarTrack() {
+    return byTestId('seekbar-track')
+  },
   get seekbarAction() {
     return byTestId('seekbar-action')
   },

@@ -6,6 +6,7 @@ import {
 import { afterEach, it } from '../helpers/scoped-mocha'
 import { compareImages, takeViewportScreenshot } from '../helpers/screenshot'
 import { selectors } from '../helpers/selectors'
+import { relaunchApp } from '../helpers/touch-readiness'
 import { chatPage } from '../pages/chatPage'
 import { configPanel } from '../pages/configPanel'
 import { listDemoPage } from '../pages/listDemoPage'
@@ -19,9 +20,7 @@ const ENABLED_TESTS: number[] = process.env.ENABLED_TESTS
 const shouldRun = (testNum: number) => ENABLED_TESTS.length === 0 || ENABLED_TESTS.includes(testNum)
 describe('Swipeable E2E Tests', () => {
   afterEach(async () => {
-    const appId = 'com.swipeabledemo.app'
-    await driver.terminateApp(appId)
-    await driver.activateApp(appId)
+    await relaunchApp('com.swipeabledemo.app')
     await listDemoPage.waitForDisplayed()
   })
   const numberOfRows = 5

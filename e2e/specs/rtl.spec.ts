@@ -1,6 +1,7 @@
 import { swipeOnElement } from '../helpers/gestures'
 import { after, before, beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
+import { relaunchApp } from '../helpers/touch-readiness'
 import { configPanel } from '../pages/configPanel'
 import { guardRequest } from '../helpers/command-scope'
 import { createFastGeometryReader } from '../helpers/fast-geometry'
@@ -31,8 +32,7 @@ async function text(selector: string): Promise<string> {
 
 async function openDemo(): Promise<void> {
   // A new JS/native bridge is essential: forceRTL is not a live layout toggle.
-  await driver.terminateApp(APP_ID)
-  await driver.activateApp(APP_ID)
+  await relaunchApp(APP_ID)
   await $(selectors.configHeader).waitForDisplayed()
   if (driver.isAndroid) await driver.pause(1000)
   await $(selectors.configHeader).click()

@@ -1,7 +1,8 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { finishCommandScope, guardRequest } from './helpers/command-scope'
-import { selectors, setPlatform } from './helpers/selectors'
+import { setPlatform } from './helpers/selectors'
+import { type TouchReadiness, waitForTouchReadiness } from './helpers/touch-readiness'
 
 const appiumPort = Number(process.env.APPIUM_PORT || 4723)
 
@@ -108,24 +109,17 @@ export const config: WebdriverIO.Config = {
     setPlatform('iOS')
     await recordResult({ event: 'worker-start', specs })
     // XCTest starts its virtual touch digitizer on the first synthetic gesture of a
-    // session and delivers that gesture late and malformed. Spend it on a tap of the
-    // non-interactive app title so the first test gesture reaches a warm digitizer.
+    // session, and the simulator can stall for seconds early in a run. A gesture sent
+    // during a stall is lost. Gate the session on a drag that visibly reaches the app.
     // WDIO logs and swallows an error from this hook, so the evidence records the outcome.
+    let readiness: TouchReadiness
     try {
-      const title = $(selectors.swipeableDemo)
-      await title.waitForDisplayed({ timeout: 60000 })
-      const { x, y, width, height } = await title.getElementRect(await title.elementId)
-      await driver
-        .action('pointer', { parameters: { pointerType: 'touch' } })
-        .move({ x: Math.round(x + width / 2), y: Math.round(y + height / 2) })
-        .down()
-        .up()
-        .perform()
+      readiness = await waitForTouchReadiness()
     } catch (error) {
       await recordResult({ event: 'warm-up', ok: false, error: String(error) })
       throw error
     }
-    await recordResult({ event: 'warm-up', ok: true })
+    await recordResult({ event: 'warm-up', ok: true, ...readiness })
   },
 
   beforeTest: async (test) => {

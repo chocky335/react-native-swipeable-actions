@@ -1,6 +1,7 @@
 import { swipeOnElement, swipeOnElementInLayoutUnits } from '../helpers/gestures'
 import { beforeEach, it } from '../helpers/scoped-mocha'
 import { selectors } from '../helpers/selectors'
+import { relaunchApp } from '../helpers/touch-readiness'
 import { configPanel } from '../pages/configPanel'
 
 const APP_ID = 'com.swipeabledemo.app'
@@ -81,8 +82,7 @@ describe('Swipe to go back', () => {
   let restOffset = 0
 
   beforeEach(async () => {
-    await driver.terminateApp(APP_ID)
-    await driver.activateApp(APP_ID)
+    await relaunchApp(APP_ID)
     await $(selectors.configHeader).waitForDisplayed()
     await openConfigPanel()
     await configPanel.selectSwipeBackDemo()

@@ -67,7 +67,7 @@ export function SeekbarRow({
           <Text style={styles.label}>Seekbar</Text>
 
           <GestureDetector gesture={pan}>
-            <Animated.View style={styles.trackHitArea}>
+            <Animated.View style={styles.trackHitArea} testID='seekbar-track'>
               <View style={styles.track}>
                 <Animated.View style={[styles.thumb, thumbStyle]} testID='seekbar-thumb' />
               </View>

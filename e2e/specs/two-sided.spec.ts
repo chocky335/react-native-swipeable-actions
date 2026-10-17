@@ -5,6 +5,7 @@ import { configPanel } from '../pages/configPanel'
 import { guardRequest } from '../helpers/command-scope'
 import { createFastGeometryReader } from '../helpers/fast-geometry'
 import { createControlsNavigator } from '../helpers/control-navigation'
+import { relaunchApp } from '../helpers/touch-readiness'
 
 type Side = 'left' | 'right'
 type Events = { starts: number; ends: number; left: number; right: number }
@@ -238,8 +239,7 @@ async function reverseThroughZero(side: Side): Promise<void> {
 
 describe('Two-sided native demo', () => {
   beforeEach(async () => {
-    await driver.terminateApp(APP_ID)
-    await driver.activateApp(APP_ID)
+    await relaunchApp(APP_ID)
     await $(selectors.configHeader).waitForDisplayed()
     if (driver.isAndroid) {
       // Accessibility can expose the new Activity before its launch transition
