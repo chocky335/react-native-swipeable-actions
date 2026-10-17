@@ -548,7 +548,8 @@ for (const hidden of [false, true])
     assert.equal(typed(f, 'performActions').length, 10)
     assert.equal(typed(f, 'releaseActions').length, 10)
     assert.equal(typed(f, 'click').length, 0)
-    assert.equal(typed(f, 'getSettings').length, 30)
+    // The first observation captures the baseline; later ones reuse the confirmed restoration.
+    assert.equal(typed(f, 'getSettings').length, 3 + 9 * 2)
     for (const event of typed(f, 'performActions')) {
       const index = f.events.indexOf(event)
       assert.equal(f.events[index + 1].type, 'releaseActions')

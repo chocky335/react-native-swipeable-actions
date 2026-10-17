@@ -1,6 +1,7 @@
 export type Rect = { x: number; y: number; width: number; height: number }
 type Settings = { shouldUseCompactResponses: boolean; elementResponseAttributes: string }
 export type Protocol = {
+  sessionId?: string
   getSettings(): Promise<unknown>
   updateSettings(settings: Settings): Promise<unknown>
   findElements(using: string, value: string): Promise<unknown>
@@ -103,7 +104,13 @@ export function parseGeometry(response: unknown, id: number): Geometry {
   return { frame, anchor, rawText, text, layoutWidth, scale, offset, layoutOffset: offset / scale }
 }
 
-const transactionStates = new WeakMap<Protocol, { busy: boolean; unusable: boolean }>()
+type TransactionState = {
+  busy: boolean
+  unusable: boolean
+  // Settings confirmed by the last completed restoration. Nothing else on iOS changes them.
+  restored?: { sessionId?: string; settings: Settings }
+}
+const transactionStates = new WeakMap<Protocol, TransactionState>()
 
 /** A fresh guarded observation; settings ownership is shared by all readers of this driver. */
 export function createExpandedReader(
@@ -122,11 +129,17 @@ export function createExpandedReader(
     assertOwnerActive()
     return value
   }
-  async function setAndConfirm(value: Settings): Promise<void> {
+  /** Returns the confirmed settings. A value that is already confirmed needs no request. */
+  async function setAndConfirm(
+    confirmed: Settings | undefined,
+    value: Settings
+  ): Promise<Settings> {
+    if (confirmed && equalSettings(confirmed, value)) return confirmed
     await command(() => driver.updateSettings(value))
     const actual = settings(await command(() => driver.getSettings()))
     if (!equalSettings(value, actual))
       throw new Error('Geometry response settings were not confirmed')
+    return actual
   }
   return async function read<T>(query: string, parse: (response: unknown) => T): Promise<T> {
     assertOwnerActive()
@@ -135,18 +148,23 @@ export function createExpandedReader(
       throw new Error('Geometry reader disabled after unconfirmed settings restoration')
     if (shared.busy) throw new Error('Concurrent geometry read is not allowed')
     shared.busy = true
+    const sessionId = driver.sessionId
+    const restored = shared.restored?.sessionId === sessionId ? shared.restored : undefined
+    // Only a completed restoration below makes the baseline reusable again.
+    shared.restored = undefined
     let original: Settings | undefined
+    let confirmed: Settings | undefined
     let dirty = false
     let failed = false
     let failure: unknown
     let result: T | undefined
     try {
-      original = settings(await command(() => driver.getSettings()))
+      original = restored?.settings ?? settings(await command(() => driver.getSettings()))
       dirty = true
-      await setAndConfirm({
-        shouldUseCompactResponses: false,
-        elementResponseAttributes: attributes
-      })
+      const target = { shouldUseCompactResponses: false, elementResponseAttributes: attributes }
+      // An unconfirmed update leaves the actual settings unknown until restoration.
+      confirmed = equalSettings(original, target) ? original : undefined
+      confirmed = await setAndConfirm(confirmed, target)
       const response = await command(() => driver.findElements('-ios predicate string', query))
       result = parse(response)
       assertOwnerActive()
@@ -156,7 +174,10 @@ export function createExpandedReader(
     }
     try {
       // Every cleanup request still passes the original owner/transport guard.
-      if (dirty && original) await setAndConfirm(original)
+      if (dirty && original) {
+        await setAndConfirm(confirmed, original)
+        shared.restored = { sessionId, settings: original }
+      }
     } catch (error) {
       shared.unusable = true
       if (!failed) {

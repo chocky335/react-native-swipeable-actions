@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRequire } from 'node:module'
 import geometryModule from './fast-geometry.ts'
-const { parseGeometry, createFastGeometryReader } = geometryModule
+const { parseGeometry, createFastGeometryReader, createExpandedReader } = geometryModule
 
 // Offline only. No session creation, sockets, devices, or fixture imports.
 const require = createRequire(import.meta.url)
@@ -94,6 +94,8 @@ function expectedCalls(id, initial = original) {
     { method: 'getSettings' }
   ]
 }
+// A restoration confirmed the baseline, so the next read on the session skips the capture.
+const cachedCalls = (id, initial = original) => expectedCalls(id, initial).slice(1)
 
 for (const id of [0, 1, 100]) {
   for (const scale of [1, 2, 3]) {
@@ -405,8 +407,7 @@ for (const id of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '0', null
 for (const initial of [
   original,
   { shouldUseCompactResponses: false, elementResponseAttributes: ' text,rect,attribute/name ' },
-  { shouldUseCompactResponses: true, elementResponseAttributes: '' },
-  expanded
+  { shouldUseCompactResponses: true, elementResponseAttributes: '' }
 ]) {
   test(`six-request healthy transaction exactly restores ${JSON.stringify(initial)}`, async () => {
     const f = fake({ initial, response: () => payload({ id: 100 }) })
@@ -415,6 +416,12 @@ for (const initial of [
     assert.deepEqual(f.settings, initial)
   })
 }
+test('an already expanded baseline sends no settings update', async () => {
+  const f = fake({ initial: expanded, response: () => payload({ id: 100 }) })
+  assert.equal((await f.read(100)).layoutOffset, 0)
+  assert.deepEqual(f.calls, [expectedCalls(100)[0], expectedCalls(100)[3]])
+  assert.deepEqual(f.settings, expanded)
+})
 test('fresh query every read, including reattach, replacement, changed text and settings baseline', async () => {
   let generation = 0
   const ids = [0, 0, 100]
@@ -437,10 +444,11 @@ test('fresh query every read, including reattach, replacement, changed text and 
   assert.equal(b.frame.x, 12)
   assert.deepEqual([a.offset, b.offset, c.offset], offsets)
   assert.equal(generation, 3)
-  assert.deepEqual(
-    f.calls,
-    ids.flatMap((id) => expectedCalls(id))
-  )
+  assert.deepEqual(f.calls, [
+    ...expectedCalls(ids[0]),
+    ...cachedCalls(ids[1]),
+    ...cachedCalls(ids[2])
+  ])
   assert.equal(c.rawText, ' Row width 378;  key two-sided-demo-100\n')
   const newBaseline = { shouldUseCompactResponses: false, elementResponseAttributes: 'label' }
   await f.driver.updateSettings(newBaseline)
@@ -557,7 +565,7 @@ test('concurrent read excluded before requests; completed transaction releases l
   release.resolve()
   await first
   await f.read()
-  assert.deepEqual(f.calls, [...expectedCalls(0), ...expectedCalls(0)])
+  assert.deepEqual(f.calls, [...expectedCalls(0), ...cachedCalls(0)])
 })
 test('failed query with confirmed restoration releases lock and uses a fresh query', async () => {
   const failure = new Error('query failed once')
@@ -568,7 +576,65 @@ test('failed query with confirmed restoration releases lock and uses a fresh que
   })
   await assert.rejects(f.read(), (error) => error === failure)
   await f.read()
-  assert.deepEqual(f.calls, [...expectedCalls(0), ...expectedCalls(0)])
+  assert.deepEqual(f.calls, [...expectedCalls(0), ...cachedCalls(0)])
+})
+test('a new session captures its own baseline again', async () => {
+  const f = fake()
+  f.driver.sessionId = 'first'
+  await f.read()
+  await f.read()
+  f.driver.sessionId = 'second'
+  await f.read()
+  await f.read()
+  assert.deepEqual(f.calls, [
+    ...expectedCalls(0),
+    ...cachedCalls(0),
+    ...expectedCalls(0),
+    ...cachedCalls(0)
+  ])
+  assert.deepEqual(f.settings, original)
+})
+for (const [label, fault] of [
+  ['malformed capture', ({ number }) => (number === 1 ? { override: true, value: {} } : undefined)],
+  [
+    'failed restoration confirmation',
+    ({ number }) => {
+      if (number === 6) throw new Error('restore confirmation failed')
+    }
+  ]
+]) {
+  test(`${label} never seeds a reusable baseline`, async () => {
+    const f = fake({ fault })
+    await assert.rejects(f.read())
+    const count = f.calls.length
+    if (label === 'malformed capture') {
+      await f.read()
+      assert.deepEqual(f.calls.slice(count), expectedCalls(0))
+    } else {
+      await assert.rejects(f.read(), /disabled after unconfirmed settings restoration/)
+      assert.equal(f.calls.length, count)
+    }
+  })
+}
+test('readers with other attributes share one confirmed baseline per driver', async () => {
+  const f = fake()
+  const controls = { shouldUseCompactResponses: false, elementResponseAttributes: 'rect' }
+  const observe = createExpandedReader(f.driver, {
+    assertOwnerActive() {},
+    attributes: controls.elementResponseAttributes
+  })
+  await observe('controls', (response) => response)
+  await f.read()
+  assert.deepEqual(f.calls, [
+    { method: 'getSettings' },
+    { method: 'updateSettings', argument: controls },
+    { method: 'getSettings' },
+    { method: 'findElements', argument: { using: '-ios predicate string', value: 'controls' } },
+    { method: 'updateSettings', argument: original },
+    { method: 'getSettings' },
+    ...cachedCalls(0)
+  ])
+  assert.deepEqual(f.settings, original)
 })
 test('retired late query result rejected with no restoration or subsequent driver calls', async () => {
   const started = deferred()
