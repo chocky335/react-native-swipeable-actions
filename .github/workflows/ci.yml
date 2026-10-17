@@ -17,6 +17,22 @@ on:
         required: false
         type: boolean
         default: false
+      ios-suite:
+        description: 'Diagnosis only: run one iOS suite (a partial run never passes the e2e-ios gate)'
+        required: false
+        type: choice
+        default: all
+        options: [all, swipeable, two-sided, rtl, swipe-back, performance]
+      ios-grep:
+        description: 'Diagnosis only: run iOS tests whose title contains this text'
+        required: false
+        type: string
+        default: ''
+      ios-video:
+        description: 'Record the iOS simulator screen for each shard'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   package:
@@ -228,7 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -242,6 +258,16 @@ jobs:
       - name: Discover complete iOS inventory
         id: plan
         run: node e2e/helpers/ios-shards.mjs plan ios-plan/manifest.json
+      - name: Select the requested iOS suite
+        id: select
+        env:
+          MATRIX: ${{ steps.plan.outputs.matrix }}
+          SUITE: ${{ inputs.ios-suite || 'all' }}
+        run: |
+          SELECTED=$(jq -c --arg s "$SUITE" \
+            'if $s == "all" then . else {include: [.include[] | select(.id == $s)]} end' <<< "$MATRIX")
+          test "$(jq '.include | length' <<< "$SELECTED")" -gt 0
+          echo "matrix=$SELECTED" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -435,6 +461,8 @@ jobs:
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
           # Run the build-for-testing output through XCTest, not as a standalone app.
           IOS_WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-build
+          IOS_GREP: ${{ inputs.ios-grep }}
+          IOS_VIDEO: ${{ inputs.ios-video }}
         run: |
           # The simulator can stall early in this step. Keep its logs from this point on,
           # and sample host load for the first two minutes, to explain a lost touch.
@@ -442,8 +470,28 @@ jobs:
           mkdir -p "$E2E_ARTIFACT_DIR"
           top -l 24 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
           TOP_PID=$!
-          trap 'kill "$TOP_PID" 2>/dev/null || true' EXIT
-          cd e2e && npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
+          VIDEO_PID=
+          if [ "$IOS_VIDEO" = true ]; then
+            mkdir -p "$RUNNER_TEMP/ios-video"
+            xcrun simctl io "$IOS_UDID" recordVideo --codec h264 --force "$RUNNER_TEMP/ios-video/simulator.mp4" &
+            VIDEO_PID=$!
+          fi
+          # SIGINT lets simctl finish the movie file.
+          trap 'kill "$TOP_PID" 2>/dev/null || true; [ -n "$VIDEO_PID" ] && kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true' EXIT
+          cd e2e
+          if [ -n "$IOS_GREP" ]; then
+            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1 --mochaOpts.grep "$IOS_GREP"
+          else
+            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
+          fi
+
+      - name: Upload simulator video
+        if: always() && inputs.ios-video
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-video-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: ${{ runner.temp }}/ios-video/
+          if-no-files-found: warn
 
       - name: Install Maestro
         if: matrix.maestro
