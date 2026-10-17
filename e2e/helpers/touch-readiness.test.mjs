@@ -134,7 +134,7 @@ test('touch readiness gate without a device or transport', async (t) => {
       const started = Date.now()
       await assert.rejects(
         waitForTouchReadiness(fast),
-        /Touch readiness gate failed after \d+ drag\(s\) in 400 ms: .*touches do not reach the app/
+        /Touch readiness gate failed after \d+ drag\(s\) in \d+ ms: .*touches do not reach the app/
       )
       assert.ok(Date.now() - started < fast.timeout + 200)
       assert.ok(state.drags.length > 1)
@@ -154,7 +154,7 @@ test('touch readiness gate without a device or transport', async (t) => {
     await withFixture({ displayed: () => false }, async (state) => {
       await assert.rejects(
         waitForTouchReadiness(fast),
-        /after 0 drag\(s\) in 400 ms: the list screen seekbar did not appear/
+        /after 0 drag\(s\) in \d+ ms: the list screen seekbar did not appear/
       )
       assert.equal(state.drags.length, 0)
     })

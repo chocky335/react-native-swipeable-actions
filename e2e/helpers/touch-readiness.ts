@@ -82,12 +82,20 @@ async function waitFor(
 export async function waitForTouchReadiness(
   options: TouchReadinessOptions = {}
 ): Promise<TouchReadiness> {
-  const { timeout = 60000, moveWindow = 5000, interval = 100 } = options
+  const { timeout = 30000, moveWindow = 5000, interval = 100 } = options
   const started = Date.now()
-  const remaining = () => Math.max(0, started + timeout - Date.now())
+  // Each phase gets its own budget: a stall while the list appears must not
+  // consume the time to move the thumb or to put it back.
+  let phaseStart = started
+  const startPhase = () => {
+    phaseStart = Date.now()
+  }
+  const remaining = () => Math.max(0, phaseStart + timeout - Date.now())
   let drags = 0
   const failure = (reason: string) =>
-    new Error(`Touch readiness gate failed after ${drags} drag(s) in ${timeout} ms: ${reason}`)
+    new Error(
+      `Touch readiness gate failed after ${drags} drag(s) in ${Date.now() - started} ms: ${reason}`
+    )
   const onListScreen = () => $(selectors.seekbarTrack).isDisplayed()
 
   if (!(await waitFor(onListScreen, remaining(), interval))) {
@@ -98,6 +106,7 @@ export async function waitForTouchReadiness(
   const moved = async () => Math.abs((await rectOf(selectors.seekbarThumb)).x - rest.x) > MOVED
   const atRest = async () => Math.abs((await rectOf(selectors.seekbarThumb)).x - rest.x) <= AT_REST
 
+  startPhase()
   for (;;) {
     if (drags > 0 && remaining() === 0) {
       throw failure('the seekbar thumb never moved, so touches do not reach the app')
@@ -110,6 +119,7 @@ export async function waitForTouchReadiness(
     if (await waitFor(moved, Math.min(moveWindow, remaining()), interval)) break
   }
 
+  startPhase()
   for (;;) {
     const thumb = await rectOf(selectors.seekbarThumb)
     if (Math.abs(thumb.x - rest.x) <= AT_REST) break
