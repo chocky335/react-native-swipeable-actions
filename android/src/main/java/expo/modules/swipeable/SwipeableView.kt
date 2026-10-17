@@ -43,7 +43,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
          */
         private var closeSequence = 0L
         private var closeAllSequence = 0L
-        private val keyCloseSequences = mutableMapOf<String, Long>()
+        private var evictedCloseSequence = 0L
+        // Same bound as the open-state cache, in close order. A key without an entry
+        // takes the newest evicted close, so an eviction never lets an earlier open win.
+        private val keyCloseSequences = object : LinkedHashMap<String, Long>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>): Boolean {
+                if (size <= MAX_CACHE_SIZE) return false
+                evictedCloseSequence = maxOf(evictedCloseSequence, eldest.value)
+                return true
+            }
+        }
 
         // LruCache synchronizes access internally; absence represents closed.
         private fun getOpenState(key: String): Boolean = openStateCache[key] != null
@@ -72,7 +81,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         // Call while holding registryLock.
         private fun isCurrentIntent(key: String, intent: Long): Boolean =
-            intent >= maxOf(keyCloseSequences[key] ?: 0L, closeAllSequence)
+            intent >= maxOf(keyCloseSequences[key] ?: evictedCloseSequence, closeAllSequence)
 
         private fun isCurrentRestore(key: String, intent: Long): Boolean = synchronized(registryLock) {
             isCurrentIntent(key, intent)
@@ -108,6 +117,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             val (view, sequence) = synchronized(registryLock) {
                 // The close owns the key's intent from now on: no binding that holds,
                 // leaves or takes the key can restore or persist an earlier open.
+                keyCloseSequences.remove(key)
                 keyCloseSequences[key] = ++closeSequence
                 setOpenState(key, null)
                 getView(key) to closeSequence

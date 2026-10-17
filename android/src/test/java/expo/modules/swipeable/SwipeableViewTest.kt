@@ -2443,6 +2443,28 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun keyCloseSequencesStayBoundedAndKeepTheirEpoch() {
+        val row = row(key = "late")
+        row.open(SwipeSide.LEFT)
+        settle()
+        SwipeableView.closeByKey("late")
+        // More distinct closed keys than the cache holds, before the queued close runs.
+        repeat(1100) { SwipeableView.closeByKey("gone-$it") }
+        assertTrue(keyCloseSequenceCount() <= 1000)
+        // The evicted close still makes the pre-close open stale.
+        row.recyclingKey = "other"
+        val bound = row(key = "late")
+        settle()
+        assertEquals(0f, content(bound).translationX, 0f)
+        assertNull(SwipeableView.getOpenSideByKey("late"))
+    }
+
+    private fun keyCloseSequenceCount(): Int {
+        val field = SwipeableView::class.java.getDeclaredField("keyCloseSequences")
+        field.isAccessible = true
+        return (field.get(null) as Map<*, *>).size
+    }
+
     private val BINDING_ORDERS = listOf(
         "oldUnbindsFirst", "newBindsFirst", "newBindsFirstThenOldDetaches", "roundTrip", "reattach"
     )

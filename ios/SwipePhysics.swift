@@ -184,6 +184,9 @@ struct SwipeOpenStateCache {
     // sequence it saw, so a close issued after it wins in every binding order.
     private var closeSequence = 0
     private var closeAllSequence = 0
+    // Same bound as the open sides. A key without an entry takes the newest
+    // evicted close, so an eviction never lets an earlier open win.
+    private var evictedCloseSequence = 0
     private var keyCloseSequences: [String: Int] = [:]
 
     init(capacity: Int) {
@@ -196,8 +199,10 @@ struct SwipeOpenStateCache {
     var currentIntent: Int { closeSequence }
 
     func isCurrent(_ intent: Int, for key: String) -> Bool {
-        intent >= max(keyCloseSequences[key] ?? 0, closeAllSequence)
+        intent >= max(keyCloseSequences[key] ?? evictedCloseSequence, closeAllSequence)
     }
+
+    var trackedCloseCount: Int { keyCloseSequences.count }
 
     /// A queued close skips a binding that opened after the close command:
     /// that open is the latest intent and wins.
@@ -218,6 +223,12 @@ struct SwipeOpenStateCache {
     ) -> SwipeCommandTarget<View>? {
         closeSequence += 1
         keyCloseSequences[key] = closeSequence
+        // Sequences only grow, so the smallest entry is the oldest close.
+        while keyCloseSequences.count > max(0, capacity),
+              let oldest = keyCloseSequences.min(by: { $0.value < $1.value }) {
+            keyCloseSequences.removeValue(forKey: oldest.key)
+            evictedCloseSequence = max(evictedCloseSequence, oldest.value)
+        }
         set(nil, for: key)
         return current?.value != nil ? current : nil
     }

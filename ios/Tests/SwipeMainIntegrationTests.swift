@@ -611,6 +611,24 @@ final class SwipeMainIntegrationTests: XCTestCase {
         }
     }
 
+    func testKeyCloseSequencesStayBoundedAndKeepTheirEpoch() {
+        var cache = SwipeOpenStateCache(capacity: 2)
+        let staleIntent = cache.currentIntent
+        cache.persist(.left, for: "a", intent: staleIntent)
+        for key in ["a", "b", "c", "d"] {
+            _ = cache.captureCloseTarget(for: key, current: nil as SwipeCommandTarget<Child>?)
+        }
+        XCTAssertEqual(cache.trackedCloseCount, 2)
+        // The evicted close still makes the pre-close open stale.
+        XCTAssertFalse(cache.isCurrent(staleIntent, for: "a"))
+        cache.persist(.left, for: "a", intent: staleIntent)
+        XCTAssertNil(cache.side(for: "a"))
+        // An open issued after the closes stays current.
+        let laterIntent = cache.currentIntent
+        cache.persist(.right, for: "a", intent: laterIntent)
+        XCTAssertEqual(cache.side(for: "a"), .right)
+    }
+
     func testKeyedCloseLeavesOtherKeysCurrentAndCloseAllCoversUncachedKeys() {
         var cache = SwipeOpenStateCache(capacity: 4)
         let intent = cache.currentIntent
