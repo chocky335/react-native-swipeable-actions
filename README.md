@@ -277,7 +277,7 @@ not swipes.
 | --- | --- | --- |
 | `open(side?)` | `Swipeable.open(key, side?)` | Open a side. Without a side: right if enabled, else left. |
 | `close(animated = true)` | `Swipeable.close(key, animated = true)` | Close the row. |
-| `cancel()` | `Swipeable.cancel(key)` | Cancel the current gesture or pending open. |
+| `cancel()` | `Swipeable.cancel(key)` | Close at once. A gesture in progress or a pending open does not complete. |
 | - | `Swipeable.closeAll(animated = true)` | Close all rows, including rows that are not mounted (scrolled off or on a covered screen). Those rows come back closed. |
 
 ### Types
