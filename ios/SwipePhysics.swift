@@ -175,19 +175,32 @@ struct SwipeTouchBinding<Owner: AnyObject> {
     }
 }
 
+/// The keyed close intent of one binding. Only the view that holds a key can
+/// persist that key's open state, so a close marks the views that hold the key,
+/// not the key. `closedAt` is the last close or bind that makes an earlier open
+/// intent stale. Read and write it only through SwipeOpenStateCache.
+final class SwipeCloseMark {
+    fileprivate(set) var key: String?
+    fileprivate(set) var closedAt = 0
+    fileprivate var isTracked = false
+
+    init() {}
+}
+
 /// Only open targets are cached. Closing removes the FIFO entry as well as its value.
 struct SwipeOpenStateCache {
+    private struct WeakMark {
+        weak var value: SwipeCloseMark?
+    }
+
     let capacity: Int
     private var sides: [String: SwipeSide] = [:]
     private var order: [String] = []
-    // Each keyed close takes the next sequence number. An open intent records the
+    // Each close takes the next sequence number. An open intent records the
     // sequence it saw, so a close issued after it wins in every binding order.
     private var closeSequence = 0
-    private var closeAllSequence = 0
-    // Same bound as the open sides. A key without an entry takes the newest
-    // evicted close, so an eviction never lets an earlier open win.
-    private var evictedCloseSequence = 0
-    private var keyCloseSequences: [String: Int] = [:]
+    // One weak entry for each live binding: memory stays per live view.
+    private var marks: [WeakMark] = []
 
     init(capacity: Int) {
         self.capacity = capacity
@@ -198,11 +211,12 @@ struct SwipeOpenStateCache {
     /// The intent an open records now. Read it on the registry queue.
     var currentIntent: Int { closeSequence }
 
-    func isCurrent(_ intent: Int, for key: String) -> Bool {
-        intent >= max(keyCloseSequences[key] ?? evictedCloseSequence, closeAllSequence)
+    /// False if a close issued after the intent marked this binding.
+    func isCurrent(_ intent: Int, for mark: SwipeCloseMark) -> Bool {
+        intent >= mark.closedAt
     }
 
-    var trackedCloseCount: Int { keyCloseSequences.count }
+    var trackedMarkCount: Int { marks.count }
 
     /// A queued close skips a binding that opened after the close command:
     /// that open is the latest intent and wins.
@@ -215,20 +229,37 @@ struct SwipeOpenStateCache {
         (sides[key], closeSequence)
     }
 
+    /// Moves a binding to its new key and reads that key's restore in one step.
+    /// The binding no longer holds the old key, so the old key's mark ends. An intent
+    /// stamped before the bind belongs to an earlier binding and cannot persist the new key.
+    mutating func bind(_ mark: SwipeCloseMark, to key: String?) -> (side: SwipeSide?, intent: Int)? {
+        if !mark.isTracked {
+            mark.isTracked = true
+            marks.removeAll { $0.value == nil }
+            marks.append(WeakMark(value: mark))
+        }
+        if mark.key != key {
+            mark.key = key
+            mark.closedAt = closeSequence
+        }
+        return key.map { restore(for: $0) }
+    }
+
+    private mutating func markLiveBindings(where holds: (SwipeCloseMark) -> Bool) {
+        marks.removeAll { $0.value == nil }
+        for entry in marks {
+            if let mark = entry.value, holds(mark) { mark.closedAt = closeSequence }
+        }
+    }
+
     // Call while holding the registry queue: capture and the close must be atomic.
-    // The close owns the key's intent from now on: no binding that holds, leaves
-    // or takes the key can restore or persist an earlier open.
+    // The close marks every binding that holds the key, the registered one and
+    // any older one: no binding can restore or persist an earlier open.
     mutating func captureCloseTarget<View: AnyObject>(
         for key: String, current: SwipeCommandTarget<View>?
     ) -> SwipeCommandTarget<View>? {
         closeSequence += 1
-        keyCloseSequences[key] = closeSequence
-        // Sequences only grow, so the smallest entry is the oldest close.
-        while keyCloseSequences.count > max(0, capacity),
-              let oldest = keyCloseSequences.min(by: { $0.value < $1.value }) {
-            keyCloseSequences.removeValue(forKey: oldest.key)
-            evictedCloseSequence = max(evictedCloseSequence, oldest.value)
-        }
+        markLiveBindings { $0.key == key }
         set(nil, for: key)
         return current?.value != nil ? current : nil
     }
@@ -236,15 +267,15 @@ struct SwipeOpenStateCache {
     /// Like captureCloseTarget for every key, bound or not, mounted or not.
     mutating func closeAll() {
         closeSequence += 1
-        closeAllSequence = closeSequence
-        keyCloseSequences.removeAll()
+        markLiveBindings { _ in true }
         sides.removeAll()
         order.removeAll()
     }
 
-    /// An open that a later close made stale persists closed.
-    mutating func persist(_ side: SwipeSide?, for key: String, intent: Int) {
-        set(isCurrent(intent, for: key) ? side : nil, for: key)
+    /// An open that a later close made stale persists closed. A binding that
+    /// no longer holds the key cannot persist it open.
+    mutating func persist(_ side: SwipeSide?, for key: String, from mark: SwipeCloseMark, intent: Int) {
+        set(mark.key == key && isCurrent(intent, for: mark) ? side : nil, for: key)
     }
 
     mutating func set(_ side: SwipeSide?, for key: String) {

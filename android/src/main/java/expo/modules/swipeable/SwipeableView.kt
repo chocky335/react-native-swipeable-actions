@@ -19,6 +19,7 @@ import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 import kotlin.math.abs
 
 class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
@@ -37,22 +38,18 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         private val registryLock = Any()
 
         /**
-         * Close ordering (guarded by registryLock). Each keyed close takes the next sequence
+         * Close ordering (guarded by registryLock). Each close takes the next sequence
          * number. An open intent records the sequence it saw, so a close issued after it
          * wins in every binding order.
          */
         private var closeSequence = 0L
-        private var closeAllSequence = 0L
-        private var evictedCloseSequence = 0L
-        // Same bound as the open-state cache, in close order. A key without an entry
-        // takes the newest evicted close, so an eviction never lets an earlier open win.
-        private val keyCloseSequences = object : LinkedHashMap<String, Long>() {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>): Boolean {
-                if (size <= MAX_CACHE_SIZE) return false
-                evictedCloseSequence = maxOf(evictedCloseSequence, eldest.value)
-                return true
-            }
-        }
+
+        /**
+         * Every live view, registered or not (guarded by registryLock). Only a view that
+         * holds a key can persist that key's open state, so a close marks the views that
+         * hold the key, not the key. Memory stays per live view.
+         */
+        private val liveViews = WeakHashMap<SwipeableView, Unit>()
 
         // LruCache synchronizes access internally; absence represents closed.
         private fun getOpenState(key: String): Boolean = openStateCache[key] != null
@@ -79,18 +76,33 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
         private fun currentIntent(): Long = synchronized(registryLock) { closeSequence }
 
-        // Call while holding registryLock.
-        private fun isCurrentIntent(key: String, intent: Long): Boolean =
-            intent >= maxOf(keyCloseSequences[key] ?: evictedCloseSequence, closeAllSequence)
+        private fun trackLiveView(view: SwipeableView) = synchronized(registryLock) {
+            liveViews[view] = Unit
+        }
 
-        private fun isCurrentRestore(key: String, intent: Long): Boolean = synchronized(registryLock) {
-            isCurrentIntent(key, intent)
+        // Call while holding registryLock.
+        private fun markHolders(sequence: Long, holds: (SwipeableView) -> Boolean) {
+            liveViews.keys.forEach { if (holds(it)) it.closedAtSequence = sequence }
         }
 
         /** The cached side and the intent it holds, read in one step. */
         private fun readRestore(key: String): Pair<SwipeSide?, Long> = synchronized(registryLock) {
             openStateCache[key] to closeSequence
         }
+
+        /**
+         * Moves a view to its new key and reads that key's restore in one step. The view
+         * no longer holds the old key, so the old key's mark ends. An intent stamped
+         * before the bind belongs to an earlier binding and cannot persist the new key.
+         */
+        private fun bindRestore(view: SwipeableView, key: String?): Pair<SwipeSide?, Long>? =
+            synchronized(registryLock) {
+                if (view.heldKey != key) {
+                    view.heldKey = key
+                    view.closedAtSequence = closeSequence
+                }
+                key?.let(::readRestore)
+            }
 
         private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
             val view = getView(key) ?: return
@@ -99,28 +111,34 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
         }
 
-        // Keep the existing command signatures unchanged.
-        fun openByKey(key: String) {
-            val intent = currentIntent()
-            postCommand(key) { it.openCommand(null, intent) }
+        // The intent is read with the target, so a later close marks that target.
+        private fun postOpen(key: String, side: SwipeSide?) {
+            val (view, intent) = synchronized(registryLock) { getView(key) to closeSequence }
+            if (view == null) return
+            view.postCommand {
+                if (view.recyclingKey == key) view.openCommand(side, intent)
+            }
         }
+
+        // Keep the existing command signatures unchanged.
+        fun openByKey(key: String) = postOpen(key, null)
 
         fun openByKeyOnSide(key: String, side: SwipeSide?) {
             if (side == null) return
-            val intent = currentIntent()
-            postCommand(key) { it.openCommand(side, intent) }
+            postOpen(key, side)
         }
 
         fun getOpenSideByKey(key: String): String? = openStateCache[key]?.value
 
         fun closeByKey(key: String, animated: Boolean = true) {
             val (view, sequence) = synchronized(registryLock) {
-                // The close owns the key's intent from now on: no binding that holds,
-                // leaves or takes the key can restore or persist an earlier open.
-                keyCloseSequences.remove(key)
-                keyCloseSequences[key] = ++closeSequence
+                // Mark every view that holds the key, the registered one and any older
+                // one, and clear the cache: a view that leaves the key cannot persist an
+                // earlier open, and a view that takes it reads closed.
+                val sequence = ++closeSequence
+                markHolders(sequence) { it.heldKey == key }
                 setOpenState(key, null)
-                getView(key) to closeSequence
+                getView(key) to sequence
             }
             if (view == null) return
             view.postCommand {
@@ -135,10 +153,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         fun closeAll(animated: Boolean = true) {
             val sequence = synchronized(registryLock) {
                 // Like closeByKey for every key, bound or not, mounted or not.
-                closeAllSequence = ++closeSequence
-                keyCloseSequences.clear()
+                val sequence = ++closeSequence
+                markHolders(sequence) { true }
                 openStateCache.evictAll()
-                closeAllSequence
+                sequence
             }
             getAllViews().forEach { view ->
                 view.postCommand {
@@ -243,12 +261,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (oldValue == value) return
             val cancelled = takeGestureCancellation()
             bindingGeneration++
-            val restored = value?.let(::readRestore)
             if (oldValue != null) {
                 // An abandoned auto-close wait cannot resume, so its transient open must not restore.
                 persistOpenSide(if (isOpen && autoCloseDeadline == null) openSide else null, oldValue)
                 unregisterView(this, oldValue)
             }
+            // The view stops holding the old key: its mark moves with the cache read.
+            val restored = bindRestore(this, value)
             // A rebind consumes even a not-yet-activated physical sequence.
             // cancelActiveWork clears activation, so suppress before clearing it.
             isCurrentTouchCancelled = true
@@ -298,6 +317,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var pendingRestoreIntent = 0L
     // The close sequence this view's open intent saw. A later keyed close makes it stale.
     private var openIntent = 0L
+    // The key this view holds, and the last close or bind that makes an earlier open
+    // intent stale for it (guarded by registryLock).
+    private var heldKey: String? = null
+    private var closedAtSequence = 0L
     private var restorePending = false
     private var restoreCacheOnAttach = false
     private val requestedActions = mutableSetOf<SwipeSide>()
@@ -384,6 +407,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     init {
+        trackLiveView(this)
         clipChildren = false
         clipToPadding = false
         setWillNotDraw(false)
@@ -1267,7 +1291,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             pendingRestoreSide = null
             // A keyed close issued after the cache read wins over the read side.
             val key = recyclingKey
-            if (restored != null && isSideEnabled(restored) && (key == null || isCurrentRestore(key, intent))) {
+            if (restored != null && isSideEnabled(restored) && (key == null || isCurrentIntent(intent))) {
                 snapToOpen(restored, intent)
             } else {
                 persistOpenSide(null)
@@ -1314,8 +1338,15 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         // One critical section with the close commands: an open that a later close
         // made stale persists closed, whether this binding ends first or last.
         synchronized(registryLock) {
-            if (getView(key) === this) setOpenState(key, side?.takeIf { isCurrentIntent(key, openIntent) })
+            if (getView(key) === this) {
+                setOpenState(key, side?.takeIf { heldKey == key && openIntent >= closedAtSequence })
+            }
         }
+    }
+
+    /** False if a close issued after the intent marked this view. */
+    private fun isCurrentIntent(intent: Long): Boolean = synchronized(registryLock) {
+        intent >= closedAtSequence
     }
 
     private fun resetPosition() {

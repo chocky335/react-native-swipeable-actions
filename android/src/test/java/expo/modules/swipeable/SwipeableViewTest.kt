@@ -2443,15 +2443,18 @@ class SwipeableViewTest {
         }
     }
 
-    @Test fun keyCloseSequencesStayBoundedAndKeepTheirEpoch() {
+    @Test fun keyedCloseKeepsItsEpochAfterManyOtherClosesWithPerViewMemory() {
         val row = row(key = "late")
         row.open(SwipeSide.LEFT)
         settle()
         SwipeableView.closeByKey("late")
+        val before = staticStateSizes()
+        assertTrue(before.containsKey("openStateCache"))
         // More distinct closed keys than the cache holds, before the queued close runs.
         repeat(1100) { SwipeableView.closeByKey("gone-$it") }
-        assertTrue(keyCloseSequenceCount() <= 1000)
-        // The evicted close still makes the pre-close open stale.
+        // Keyed closes keep no per-key state: memory stays per live view.
+        staticStateSizes().forEach { (name, size) -> assertTrue(name, size <= before.getValue(name)) }
+        // The earlier close still makes the pre-close open stale.
         row.recyclingKey = "other"
         val bound = row(key = "late")
         settle()
@@ -2459,11 +2462,58 @@ class SwipeableViewTest {
         assertNull(SwipeableView.getOpenSideByKey("late"))
     }
 
-    private fun keyCloseSequenceCount(): Int {
-        val field = SwipeableView::class.java.getDeclaredField("keyCloseSequences")
-        field.isAccessible = true
-        return (field.get(null) as Map<*, *>).size
+    @Test fun neverClosedOpenRowStaysOpenAfterMoreKeyedClosesThanTheCacheHolds() {
+        for (order in BINDING_ORDERS) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            // Closes of other keys, more than the cache holds, never stale this open.
+            repeat(1100) { SwipeableView.closeByKey("gone-$it") }
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(order, 160f, content(bound).translationX, .01f)
+            assertEquals(order, "left", SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
     }
+
+    @Test fun commandedCloseStalesAPendingRestoreOnAViewThatLostTheRegistry() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            val first = row(key = "late")
+            first.open(SwipeSide.LEFT)
+            settle()
+            root.removeView(first)
+            assertEquals(command, "left", SwipeableView.getOpenSideByKey("late"))
+            // This binding reads the open side. Its restore waits for the next frame.
+            val pending = row(key = "other")
+            pending.recyclingKey = "late"
+            // A newer binding takes the registry entry before the close.
+            val replacement = row(key = "late")
+            closeLate(command)
+            replacement.recyclingKey = "elsewhere"
+            settle()
+            assertEquals(command, 0f, content(pending).translationX, 0f)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    /** The size of every static collection the view class keeps. */
+    private fun staticStateSizes(): Map<String, Int> = SwipeableView::class.java.declaredFields
+        .filter { java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        .mapNotNull { field ->
+            field.isAccessible = true
+            when (val value = field.get(null)) {
+                is Map<*, *> -> field.name to value.size
+                is Collection<*> -> field.name to value.size
+                is androidx.collection.LruCache<*, *> -> field.name to value.size()
+                else -> null
+            }
+        }.toMap()
 
     private val BINDING_ORDERS = listOf(
         "oldUnbindsFirst", "newBindsFirst", "newBindsFirstThenOldDetaches", "roundTrip", "reattach"

@@ -95,8 +95,12 @@ public class SwipeableView: ExpoView {
         registryQueue.sync { _openStateCache.currentIntent }
     }
 
-    private static func isCurrentIntent(_ intent: Int, for key: String) -> Bool {
-        registryQueue.sync { _openStateCache.isCurrent(intent, for: key) }
+    private static func isCurrentIntent(_ intent: Int, for mark: SwipeCloseMark) -> Bool {
+        registryQueue.sync { _openStateCache.isCurrent(intent, for: mark) }
+    }
+
+    private static func bindRestore(_ mark: SwipeCloseMark, to key: String?) -> (side: SwipeSide?, intent: Int)? {
+        registryQueue.sync { _openStateCache.bind(mark, to: key) }
     }
 
     private static func readRestore(for key: String) -> (side: SwipeSide?, intent: Int) {
@@ -105,12 +109,13 @@ public class SwipeableView: ExpoView {
 
     private static func setOpenState(for key: String, side: SwipeSide?, owner: SwipeableView, intent: Int) {
         let identity = ObjectIdentifier(owner)
+        let mark = owner.closeMark
         registryQueue.async {
             // A recycled/detached view must not overwrite its replacement's state.
             if let current = _viewRegistry[key]?.value, ObjectIdentifier(current) != identity { return }
             // One step with the close commands: an open that a later close made
             // stale persists closed, whether this binding ends first or last.
-            _openStateCache.persist(side, for: key, intent: intent)
+            _openStateCache.persist(side, for: key, from: mark, intent: intent)
         }
     }
 
@@ -130,10 +135,12 @@ public class SwipeableView: ExpoView {
         }
     }
 
-    private static func enqueueCommand(for key: String, _ command: @escaping (SwipeableView) -> Void) {
-        guard let target = registryQueue.sync(execute: { _viewRegistry[key] }) else { return }
+    /// The command gets the intent read with its target, so a later close marks that target.
+    private static func enqueueCommand(for key: String, _ command: @escaping (SwipeableView, Int) -> Void) {
+        let (target, intent) = registryQueue.sync { (_viewRegistry[key], _openStateCache.currentIntent) }
+        guard let target = target else { return }
         DispatchQueue.main.async {
-            performCommand(command, for: key, target: target)
+            performCommand({ command($0, intent) }, for: key, target: target)
         }
     }
 
@@ -170,14 +177,12 @@ public class SwipeableView: ExpoView {
 
     // A keyed open keeps the intent of its command time, not of the main-queue turn.
     static func openByKey(_ key: String) {
-        let intent = currentIntent()
-        enqueueCommand(for: key) { $0.open(intent: intent) }
+        enqueueCommand(for: key) { view, intent in view.open(intent: intent) }
     }
 
     static func openByKeyOnSide(_ key: String, side: String) {
         guard let side = SwipeSide(rawValue: side) else { return }
-        let intent = currentIntent()
-        enqueueCommand(for: key) { $0.open(side: side, intent: intent) }
+        enqueueCommand(for: key) { view, intent in view.open(side: side, intent: intent) }
     }
 
     static func closeByKey(_ key: String, animated: Bool = true) {
@@ -196,7 +201,7 @@ public class SwipeableView: ExpoView {
     }
 
     static func cancelByKey(_ key: String) {
-        enqueueCommand(for: key) { $0.cancelGesture() }
+        enqueueCommand(for: key) { view, _ in view.cancelGesture() }
     }
 
     /// Close all swipeables. When animated=true, only closes open views. When animated=false, resets all views.
@@ -254,8 +259,10 @@ public class SwipeableView: ExpoView {
     private var pendingRestoreIntent = 0
     // The close sequence this view's open intent saw. A later keyed close makes it stale.
     private var openIntent = 0
+    // The keyed close mark of the key this view holds. Only the registry queue uses it.
+    private let closeMark = SwipeCloseMark()
     private var isCurrentRestore: Bool {
-        recyclingKey.map { Self.isCurrentIntent(pendingRestoreIntent, for: $0) } ?? true
+        recyclingKey.map { _ in Self.isCurrentIntent(pendingRestoreIntent, for: closeMark) } ?? true
     }
     private var reconciliationWorkItem: DispatchWorkItem?
     private var visualRestoreWorkItem: DispatchWorkItem?
@@ -372,7 +379,8 @@ public class SwipeableView: ExpoView {
             guard oldValue != recyclingKey else { return }
             let cancelled = gestureCompletion.cancel(recyclingKey: oldValue, side: currentSide)
             commandTarget = SwipeCommandTarget(self)
-            let restored = recyclingKey.map { Self.readRestore(for: $0) }
+            // The view stops holding the old key: its mark moves with the cache read.
+            let restored = Self.bindRestore(closeMark, to: recyclingKey)
             if let old = oldValue {
                 // An abandoned auto-close wait cannot resume, so its transient open must not restore.
                 if autoCloseWorkItem != nil { Self.setOpenState(for: old, side: nil, owner: self, intent: openIntent) }
