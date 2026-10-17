@@ -482,13 +482,6 @@ jobs:
           path: e2e/logs/
           if-no-files-found: error
 
-      - name: Upload simulator logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: simulator-log-ios-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
-          path: e2e/logs/ios-evidence/simulator-log.txt
-
   # Keep the original required-check job name; matrix success alone is insufficient.
   e2e-ios:
     if: always() && inputs.enable-e2e-ios == true

@@ -4,7 +4,7 @@ type Rect = { x: number; y: number; width: number; height: number }
 type Point = { x: number; y: number }
 
 export type TouchReadinessOptions = {
-  /** Bound for the whole gate, including every probe and restore drag. */
+  /** Bound for each phase: the list wait, the probe drags, and the restore drags. */
   timeout?: number
   /** How long one drag may take to move the thumb before the gate drags again. */
   moveWindow?: number

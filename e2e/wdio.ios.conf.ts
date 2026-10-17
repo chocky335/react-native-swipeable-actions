@@ -114,7 +114,8 @@ export const config: WebdriverIO.Config = {
     // WDIO logs and swallows an error from this hook, so the evidence records the outcome.
     let readiness: TouchReadiness
     try {
-      readiness = await waitForTouchReadiness()
+      // A cold launch can be slow; relaunches inside 120 s test hooks keep the default.
+      readiness = await waitForTouchReadiness({ timeout: 60000 })
     } catch (error) {
       await recordResult({ event: 'warm-up', ok: false, error: String(error) })
       throw error
