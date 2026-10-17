@@ -180,8 +180,11 @@ struct SwipeOpenStateCache {
     let capacity: Int
     private var sides: [String: SwipeSide] = [:]
     private var order: [String] = []
-    // Bound keys with a queued close that has not run yet.
-    private var pendingCloses: [String: Int] = [:]
+    // Each keyed close takes the next sequence number. An open intent records the
+    // sequence it saw, so a close issued after it wins in every binding order.
+    private var closeSequence = 0
+    private var closeAllSequence = 0
+    private var keyCloseSequences: [String: Int] = [:]
 
     init(capacity: Int) {
         self.capacity = capacity
@@ -189,43 +192,42 @@ struct SwipeOpenStateCache {
 
     func side(for key: String) -> SwipeSide? { sides[key] }
 
-    // Call while holding the registry queue: capture and cache clearing must be atomic.
-    // An unbound close has no delayed work that could affect a future binding.
+    /// The intent an open records now. Read it on the registry queue.
+    var currentIntent: Int { closeSequence }
+
+    func isCurrent(_ intent: Int, for key: String) -> Bool {
+        intent >= max(keyCloseSequences[key] ?? 0, closeAllSequence)
+    }
+
+    /// The cached side and the intent it holds, read in one step.
+    func restore(for key: String) -> (side: SwipeSide?, intent: Int) {
+        (sides[key], closeSequence)
+    }
+
+    // Call while holding the registry queue: capture and the close must be atomic.
+    // The close owns the key's intent from now on: no binding that holds, leaves
+    // or takes the key can restore or persist an earlier open.
     mutating func captureCloseTarget<View: AnyObject>(
         for key: String, current: SwipeCommandTarget<View>?
     ) -> SwipeCommandTarget<View>? {
-        guard current?.value != nil else {
-            set(nil, for: key)
-            return nil
-        }
-        beginClose(for: key)
-        return current
-    }
-
-    // A binding that ends before its queued close runs must apply the close itself:
-    // the command cannot reach a replacement binding, which would restore this side.
-    func hasPendingClose(for key: String) -> Bool { pendingCloses[key] != nil }
-
-    mutating func beginClose(for key: String) {
-        pendingCloses[key, default: 0] += 1
-    }
-
-    mutating func finishClose(for key: String, hasCurrentBinding: Bool) {
-        let count = (pendingCloses[key] ?? 0) - 1
-        pendingCloses[key] = count > 0 ? count : nil
-        clearIfUnbound(for: key, hasCurrentBinding: hasCurrentBinding)
-    }
-
-    // closeAll's equivalent of an unbound close(key). Bound rows close through their own command.
-    mutating func clearUnbound<View: AnyObject>(bindings: [String: SwipeCommandTarget<View>]) {
-        for key in Array(sides.keys) where bindings[key]?.value == nil {
-            set(nil, for: key)
-        }
-    }
-
-    mutating func clearIfUnbound(for key: String, hasCurrentBinding: Bool) {
-        guard !hasCurrentBinding else { return }
+        closeSequence += 1
+        keyCloseSequences[key] = closeSequence
         set(nil, for: key)
+        return current?.value != nil ? current : nil
+    }
+
+    /// Like captureCloseTarget for every key, bound or not, mounted or not.
+    mutating func closeAll() {
+        closeSequence += 1
+        closeAllSequence = closeSequence
+        keyCloseSequences.removeAll()
+        sides.removeAll()
+        order.removeAll()
+    }
+
+    /// An open that a later close made stale persists closed.
+    mutating func persist(_ side: SwipeSide?, for key: String, intent: Int) {
+        set(isCurrent(intent, for: key) ? side : nil, for: key)
     }
 
     mutating func set(_ side: SwipeSide?, for key: String) {

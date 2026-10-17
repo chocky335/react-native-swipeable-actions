@@ -2346,6 +2346,112 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun commandedCloseClearsBoundCachedIntentAtCommandTime() {
+        for (command in listOf("closeByKey", "closeAll")) {
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            settle()
+            assertEquals(command, 0f, content(row).translationX, 0f)
+            assertNull(command, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun commandedCloseHoldsInEveryBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 0f, content(bound).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            // A later binding, after every queued command ran, restores closed too.
+            root.removeAllViews()
+            val remounted = row(key = "late")
+            settle()
+            assertEquals(label, 0f, content(remounted).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun openAfterTheCloseCommandPersistsInEveryBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            row.open(SwipeSide.LEFT)
+            settle()
+            closeLate(command)
+            // A later intent on the main thread, before the queued close runs.
+            row.open(SwipeSide.LEFT)
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 160f, content(bound).translationX, .01f)
+            assertEquals(label, "left", SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun keyedOpenIssuedBeforeTheCloseCannotOutliveItInAnyBindingOrder() {
+        for (command in listOf("closeByKey", "closeAll")) for (order in BINDING_ORDERS) {
+            val label = "$command $order"
+            val row = row(key = "late")
+            settle()
+            SwipeableView.openByKeyOnSide("late", SwipeSide.LEFT)
+            closeLate(command)
+            // Only the earlier open runs before the key rebinds.
+            shadowOf(Looper.getMainLooper()).runOneTask()
+            assertTrue(label, named("onActionsNeeded").any { it["side"] == "left" })
+            val bound = rebindLate(row, order)
+            settle()
+            assertEquals(label, 0f, content(bound).translationX, 0f)
+            assertNull(label, SwipeableView.getOpenSideByKey("late"))
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    private val BINDING_ORDERS = listOf(
+        "oldUnbindsFirst", "newBindsFirst", "newBindsFirstThenOldDetaches", "roundTrip", "reattach"
+    )
+
+    private fun closeLate(command: String) {
+        if (command == "closeByKey") SwipeableView.closeByKey("late") else SwipeableView.closeAll()
+    }
+
+    /** Moves key "late" to a new binding before the main looper runs queued commands. */
+    private fun rebindLate(row: SwipeableView, order: String): SwipeableView = when (order) {
+        "oldUnbindsFirst" -> {
+            row.recyclingKey = "other"
+            row(key = "late")
+        }
+        "newBindsFirst" -> row(key = "late").also { row.recyclingKey = "other" }
+        "newBindsFirstThenOldDetaches" -> row(key = "late").also { root.removeView(row) }
+        "roundTrip" -> row.apply {
+            recyclingKey = "other"
+            recyclingKey = "late"
+            applyPendingConfiguration()
+        }
+        else -> row.apply {
+            root.removeView(this)
+            root.addView(this, FrameLayout.LayoutParams(400, 64))
+            layout(0, 0, 400, 64)
+        }
+    }
+
     private fun consumeCancellation(key: String, side: String) {
         assertEquals(listOf(mapOf("side" to side, "recyclingKey" to key)), named("onGestureCancelled"))
         // Keep the existing no-consumer-event assertions after asserting the internal signal.
