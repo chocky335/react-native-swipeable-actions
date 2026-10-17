@@ -104,6 +104,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 key?.let(::readRestore)
             }
 
+        /** Test seam: runs between a keyed open's registry read and its post. */
+        internal var afterOpenCapture: (() -> Unit)? = null
+
         private fun postCommand(key: String, action: (SwipeableView) -> Unit) {
             val view = getView(key) ?: return
             view.postCommand {
@@ -111,13 +114,16 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             }
         }
 
-        // The intent is read with the target, so a later close marks that target.
+        // The intent is read with the target and its binding, so a later close marks that
+        // target and a rebind before the post drops the open like any queued command.
         private fun postOpen(key: String, side: SwipeSide?) {
-            val (view, intent) = synchronized(registryLock) { getView(key) to closeSequence }
-            if (view == null) return
-            view.postCommand {
-                if (view.recyclingKey == key) view.openCommand(side, intent)
+            val (view, generation, intent) = synchronized(registryLock) {
+                val view = getView(key)
+                Triple(view, view?.bindingGeneration, closeSequence)
             }
+            if (view == null || generation == null) return
+            afterOpenCapture?.invoke()
+            view.postCommand(generation, key) { view.openCommand(side, intent) }
         }
 
         // Keep the existing command signatures unchanged.
@@ -1402,9 +1408,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         post { if (generation == workGeneration && key == recyclingKey) action() }
     }
 
-    internal fun postCommand(action: () -> Unit) {
-        val generation = bindingGeneration
-        val key = recyclingKey
+    internal fun postCommand(action: () -> Unit) = postCommand(bindingGeneration, recyclingKey, action)
+
+    /** Runs the action only if the binding read at command time still owns the view. */
+    private fun postCommand(generation: Long, key: String?, action: () -> Unit) {
         post {
             if (generation == bindingGeneration && key == recyclingKey &&
                 (key == null || getView(key) === this)) {

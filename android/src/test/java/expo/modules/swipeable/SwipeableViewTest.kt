@@ -2424,6 +2424,31 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun keyedOpenCannotLandOnABindingThatChangedBeforeItsPost() {
+        for (change in listOf("roundTrip", "roundTripAfterUnrelatedClose", "reattach")) {
+            val row = row(key = "late")
+            settle()
+            // The command thread read the target and intent, then the main thread rebinds.
+            SwipeableView.afterOpenCapture = {
+                SwipeableView.afterOpenCapture = null
+                if (change == "roundTripAfterUnrelatedClose") SwipeableView.closeByKey("unrelated")
+                rebindLate(row, if (change == "reattach") "reattach" else "roundTrip")
+            }
+            try {
+                SwipeableView.openByKeyOnSide("late", SwipeSide.LEFT)
+            } finally {
+                SwipeableView.afterOpenCapture = null
+            }
+            settle()
+            assertEquals(change, 0f, content(row).translationX, 0f)
+            assertNull(change, SwipeableView.getOpenSideByKey("late"))
+            assertTrue(change, named("onActionsNeeded").none { it["side"] == "left" })
+            root.removeAllViews()
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun openIssuedAfterTheCloseCommandWinsOverTheQueuedCloseWithoutARebind() {
         for (command in listOf("closeByKey", "closeAll")) for (opener in listOf("sameSide", "otherSide")) {
             val label = "$command $opener"
