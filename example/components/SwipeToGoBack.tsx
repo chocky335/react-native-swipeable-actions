@@ -12,8 +12,9 @@ export interface SwipeToGoBackProps {
   /** Called once, after a swipe passes the threshold and the content settles off screen. */
   onBack: () => void
   /**
-   * Called when a swipe starts. Return `false` to block it, for example while a draft is
-   * unsaved. The content then snaps back and `onBack` is not called.
+   * Return `false` to block the swipe, for example while a draft is unsaved. The content
+   * then snaps back and `onBack` is not called. It is called when a swipe starts, and again
+   * after a swipe opens, because a fast flick can open before the start check takes effect.
    */
   canGoBack?: () => boolean
   /** Test identifier of the swipeable container. */
@@ -39,9 +40,14 @@ export function SwipeToGoBack({ children, onBack, canGoBack, testID }: SwipeToGo
 
   const handleSwipeEnd = useCallback(
     (state: 'open' | 'closed') => {
-      if (state === 'open') onBack()
+      if (state !== 'open') return
+      if (canGoBack?.() === false) {
+        swipeableRef.current?.close()
+        return
+      }
+      onBack()
     },
-    [onBack]
+    [canGoBack, onBack]
   )
 
   return (

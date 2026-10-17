@@ -164,7 +164,11 @@ const key = useId();
   leftActionsWidth={width}
   dragOffsetFromEdge={20}
   onSwipeStart={() => hasUnsavedDraft() && screen.current?.cancel()}
-  onSwipeEnd={(state) => state === "open" && navigation.goBack()}
+  onSwipeEnd={(state) => {
+    if (state !== "open") return;
+    if (hasUnsavedDraft()) screen.current?.close();
+    else navigation.goBack();
+  }}
 >
   <ChatScreen />
 </Swipeable>
@@ -172,7 +176,9 @@ const key = useId();
 
 - `onSwipeStart` is an optional guard. `cancel()` snaps the screen back, and
   `onSwipeEnd` does not report `"open"`.
-- `cancel()` needs a `recyclingKey`. Use a new key for each mount of the screen.
+- Check the guard again in `onSwipeEnd`. A fast flick can open the screen before
+  `cancel()` takes effect. Then `close()` snaps the screen back.
+- `cancel()` and `close()` need a `recyclingKey`. Use a new key for each mount of the screen.
   Then a later mount does not restore the open state of a screen that you swiped away.
 - If the navigator has its own back gesture on that screen, turn it off. For a
   native stack, set `gestureEnabled: false`.
