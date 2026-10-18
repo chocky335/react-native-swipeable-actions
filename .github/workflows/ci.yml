@@ -117,6 +117,24 @@ jobs:
       - name: Run tests
         run: SKIP_E2E=1 ./scripts/test-all.sh
 
+  # The Linux test job skips the Swift tests, so they run here on every push and pull request.
+  test-ios:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check pinned iOS toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Run Swift unit tests
+        working-directory: ios
+        run: swift test
+
   e2e-android:
     if: inputs.enable-e2e-android == true
     needs: package

@@ -43,6 +43,12 @@ Maestro flows.
 | iOS | iOS 26.4 simulator (iPhone 17 Pro), Xcode 26.6 | 62 E2E cases, Maestro flows, Swift unit tests |
 | Packaging | `npm pack` tarball in a clean Expo app | Install, type check, autolinking, release builds on both platforms |
 
+The Swift unit tests run with `swift test` on macOS in the `test-ios` CI job. They
+cover the platform-independent helpers and state logic: swipe physics, side
+selection, gesture completion, the open-state cache, child roles, rail visibility
+and haptic state. They do not load UIKit or the native view. The E2E suites cover
+the UIKit view on the simulator.
+
 ## Not supported
 
 - The legacy architecture (Paper). The iOS view does not compile on it, and no

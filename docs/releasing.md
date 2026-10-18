@@ -77,13 +77,14 @@ one supplied run ID. Arbitrary local JSON pass receipts are not a publish input.
 The run must be a successful [CI workflow](https://github.com/chocky335/react-native-swipeable-actions/blob/main/.github/workflows/ci.yml) execution in this
 repository with the exact source SHA and these successful jobs:
 
-- `lint`, `test`, `package`, `build-ios`, `e2e-android`, `ios-plan`
+- `lint`, `test`, `test-ios`, `package`, `build-ios`, `e2e-android`, `ios-plan`
 - `iOS / performance`, `iOS / rtl`, `iOS / swipe-back`, `iOS / swipeable`, `iOS / two-sided`,
   `e2e-ios`
 
 Any additional unsuccessful, duplicate, missing, skipped or unfinished job also
 blocks publication. Each mobile job must have a successful `Run E2E tests` step,
 and swipeable must execute `Run Maestro seekbar regression test` successfully.
+`test-ios` must have a successful `Run Swift unit tests` step.
 
 The package artifact is `npm-package-<full SHA>` **within the supplied run**.
 It contains `package-artifact.json` with `sourceSha`, `cleanSource: true`,

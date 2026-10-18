@@ -407,7 +407,7 @@ and the [release checklist](https://github.com/chocky335/react-native-swipeable-
 
 ```sh
 npm test            # Jest
-npm run test:ios    # Swift unit tests
+npm run test:ios    # Swift unit tests: helpers and state logic, no UIKit
 npm run test:android
 ```
 
