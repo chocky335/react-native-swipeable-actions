@@ -16,25 +16,26 @@ export const HEALTH_FILE = 'host-health.json'
  * A gesture that it routes to latent system gesture destinations for the app scene goes
  * to SpringBoard first. Under host overload, SpringBoard does not process it, and the app
  * never receives the touch.
+ *
+ * The time of a gesture is its start: the first state line of its sender ID, `init:`.
+ * The latent list shows only in later lines, such as `cancel` and `invalidate` at its end.
  */
 export function parseSimulatorLog(text) {
-  const gestures = new Set()
-  const latent = new Map()
+  const started = new Map()
+  const latent = new Set()
   for (const line of text.split('\n')) {
     if (!line.includes('backboardd[') || !line.includes('BKDirectTouchState')) continue
     const sender = line.match(/senderID: (0x[0-9A-Fa-f]+)/)?.[1]
     if (!sender) continue
-    gestures.add(sender)
+    if (!started.has(sender)) started.set(sender, line.slice(0, 23))
     // The latent list is the last field of the state. An empty list prints as `()`.
     const field = line.indexOf('latentSystemGestureDestinations: (')
-    if (field >= 0 && line.includes(APP_SCENE, field) && !latent.has(sender)) {
-      latent.set(sender, line.slice(0, 23))
-    }
+    if (field >= 0 && line.includes(APP_SCENE, field)) latent.add(sender)
   }
   return {
-    gestures: gestures.size,
+    gestures: started.size,
     latentRoutedGestures: latent.size,
-    latentRoutedAt: [...latent.values()]
+    latentRoutedAt: [...latent].map((sender) => started.get(sender))
   }
 }
 

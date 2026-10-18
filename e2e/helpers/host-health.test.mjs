@@ -25,9 +25,10 @@ process.env.TZ = 'UTC'
 
 // Trimmed from the CI shard evidence of run 39053954618 (swipeable).
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'host-health')
-// One latent-routed gesture during the warm-up, at 18:04:07.338.
+// One latent-routed gesture during the warm-up. It starts at 18:04:07.304 and ends at 18:04:07.338.
 const simulatorLog = await readFile(path.join(fixtures, 'simulator-log.txt'), 'utf8')
-// One latent-routed gesture inside the failed first test, at 18:04:57.133.
+// One latent-routed gesture inside the failed first test. It starts at 18:04:56.618 and ends
+// at 18:04:57.133.
 const failedTestLog = await readFile(path.join(fixtures, 'simulator-log-failed-test.txt'), 'utf8')
 const hostLoad = await readFile(path.join(fixtures, 'host-load.txt'), 'utf8')
 // Warm-up until 18:04:45.375, a failed test from 18:04:45.394 to 18:05:08.788, then
@@ -54,8 +55,31 @@ test('one latent-routed and one healthy gesture per sender ID', () => {
   assert.deepEqual(parseSimulatorLog(simulatorLog), {
     gestures: 2,
     latentRoutedGestures: 1,
-    latentRoutedAt: ['2026-10-17 18:04:07.338']
+    latentRoutedAt: ['2026-10-17 18:04:07.304']
   })
+})
+
+test('a latent-routed gesture has the time of its first state line, not of its end', () => {
+  assert.deepEqual(parseSimulatorLog(failedTestLog), {
+    gestures: 1,
+    latentRoutedGestures: 1,
+    latentRoutedAt: ['2026-10-17 18:04:56.618']
+  })
+})
+
+test('a latent-routed gesture that starts before a failure window and ends in it does not count', () => {
+  // The gesture starts after the warm-up and before the failed test, and it ends in the test.
+  const early = failedTestLog.replace('2026-10-17 18:04:56.618', '2026-10-17 18:04:45.380')
+  const health = classify({
+    simulatorLog: simulatorLog + early,
+    hostLoad,
+    results,
+    gate: onlyFailedCases(1)
+  })
+  assert.deepEqual(health.latentRoutedAt, ['2026-10-17 18:04:07.304', '2026-10-17 18:04:45.380'])
+  assert.equal(health.latentRoutedInFailures, 0)
+  assert.equal(health.failuresWithLatent, 0)
+  assert.equal(health.status, 'healthy')
 })
 
 test('a latent destination for another scene is not app trouble', () => {
@@ -453,7 +477,7 @@ test('report writes host-health.json next to the evidence, even without inputs',
       onlyFailedCases: true,
       gestures: 3,
       latentRoutedGestures: 2,
-      latentRoutedAt: ['2026-10-17 18:04:07.338', '2026-10-17 18:04:57.133'],
+      latentRoutedAt: ['2026-10-17 18:04:07.304', '2026-10-17 18:04:56.618'],
       latentRoutedInFailures: 1,
       failures: 1,
       failuresWithLatent: 1,

@@ -40,7 +40,8 @@ test the intended current revision again; never rewrite evidence to match it.
 Each iOS shard writes `ios-evidence/host-health.json`. It compares the simulator log
 with the NDJSON results in `ios-results/`. Each failure has a window: a failed test
 from its start to its result, a failed hook, or a failed warm-up. A test without a
-result fails, and its window ends at the next record. The `e2e-ios` job summary
+result fails, and its window ends at the next record. A gesture counts in the window
+that contains its start. The `e2e-ios` job summary
 shows the gate checks and one host class for each shard. The gate checks column
 uses the same checks as the gate for that shard: the step outcomes, the warm-up
 and the full case inventory. It lists each condition that fails.
