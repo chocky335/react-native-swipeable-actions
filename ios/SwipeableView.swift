@@ -1090,13 +1090,18 @@ public class SwipeableView: ExpoView {
         case .ended:
             handlePanEnded(gesture)
         case .cancelled:
+            guard isGestureActivated else {
+                // A pan that never activated interrupted nothing, so all work stays as it is.
+                gestureStartTranslation = 0
+                savedFirstResponder = nil
+                return
+            }
             let settledSide = openSide
-            let wasActivated = isGestureActivated
             let draggedSide = currentSide
             let reportedState = lastEmittedWillEndState
             // The drag cleared the auto-close wait. A row that settles open waits again,
             // like a release that reopens it, and the auto-close completes the swipe.
-            let restartsAutoClose = wasActivated && autoClose && settledSide != nil
+            let restartsAutoClose = autoClose && settledSide != nil
             guard invalidateWork(
                 preservePresentation: false, preserveGestureCompletion: restartsAutoClose
             ) else { return }
@@ -1106,7 +1111,7 @@ public class SwipeableView: ExpoView {
             updateActionsTransform()
             savedFirstResponder = nil
             if restartsAutoClose { scheduleAutoClose() }
-            if wasActivated { reportCancelledGesture(side: settledSide ?? draggedSide, reportedState: reportedState) }
+            reportCancelledGesture(side: settledSide ?? draggedSide, reportedState: reportedState)
         default:
             break
         }
@@ -1127,18 +1132,27 @@ public class SwipeableView: ExpoView {
 
     private func handlePanBegan(_ gesture: UIPanGestureRecognizer) {
         cancelFabricTouches()
-        let interruptedSide = currentSide
-        guard invalidateWork() else { return }
         ignoresPanUntilNextBegin = false
         gestureStartTranslation = gesture.translation(in: self).x
-        gestureSide = interruptedSide
-        if gestureSide == nil && dragOffsetFromEdge <= 0 {
-            gestureSide = SwipePhysics.latchedSide(
-                openSide: openSide, translation: gesture.velocity(in: self).x,
-                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
-            )
-        }
-        if dragOffsetFromEdge <= 0, let side = gestureSide { activateGesture(on: side) }
+        // Like Android, only activation interrupts settling work. A pan that ends or is
+        // cancelled before it activates keeps a pending auto-close and an animation.
+        guard dragOffsetFromEdge <= 0 else { return }
+        let side = currentSide ?? SwipePhysics.latchedSide(
+            openSide: openSide, translation: gesture.velocity(in: self).x,
+            leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+        )
+        if let side = side { interruptWorkAndActivate(on: side, startTranslation: gestureStartTranslation) }
+    }
+
+    /// Activation takes over the side of the work that it interrupts.
+    @discardableResult
+    private func interruptWorkAndActivate(on side: SwipeSide, startTranslation: CGFloat) -> Bool {
+        guard invalidateWork() else { return false }
+        // The invalidation is this pan's own, so it does not consume the pan.
+        ignoresPanUntilNextBegin = false
+        gestureStartTranslation = startTranslation
+        activateGesture(on: side)
+        return true
     }
 
     private func handlePanChanged(_ gesture: UIPanGestureRecognizer) {
@@ -1146,13 +1160,12 @@ public class SwipeableView: ExpoView {
         if !isGestureActivated {
             let relative = translation - gestureStartTranslation
             guard abs(relative) >= dragOffsetFromEdge else { return }
-            let side = gestureSide ?? SwipePhysics.latchedSide(
+            let side = currentSide ?? SwipePhysics.latchedSide(
                 openSide: openSide, translation: relative,
                 leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
             )
             guard let selected = side else { return }
-            gestureStartTranslation = translation
-            activateGesture(on: selected)
+            guard interruptWorkAndActivate(on: selected, startTranslation: translation) else { return }
         }
         guard let side = currentSide else { return }
         updateGesture(translation: translation - gestureStartTranslation, side: side)
@@ -1162,7 +1175,8 @@ public class SwipeableView: ExpoView {
         guard isGestureActivated, let side = currentSide else {
             gestureStartTranslation = 0
             savedFirstResponder = nil
-            resetFeedback()
+            // A pan that never activated began no feedback and interrupted nothing.
+            if isGestureActivated { resetFeedback() }
             return
         }
         finishGesture(

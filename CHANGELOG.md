@@ -68,6 +68,8 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
   `onProgress` and `onSwipeStateChange`, so a progress UI does not stay mid-drag.
 - An `autoClose` row that a cancelled drag returns to open now waits
   `autoCloseTimeout` again and closes. Before, it stayed open.
+- On iOS, a pan that ends before it passes `dragOffsetFromEdge` no longer stops
+  a pending auto-close or a settling animation, like on Android.
 
 ## 0.1.12 and earlier
 
