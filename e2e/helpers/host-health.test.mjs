@@ -8,6 +8,7 @@ import {
   classify,
   describeHealth,
   failureWindows,
+  gateCheck,
   HEALTH_FILE,
   logTime,
   parseHostLoad,
@@ -33,6 +34,8 @@ const hostLoad = await readFile(path.join(fixtures, 'host-load.txt'), 'utf8')
 // a passed test from 18:05:45.434 to 18:06:20.282.
 const results = await readFile(path.join(fixtures, 'ios-results.ndjson'), 'utf8')
 const twoFailures = results.replace('"status":"passed"', '"status":"failed"')
+// The gate rejects the shard for its failed cases alone.
+const onlyFailedCases = (failedCases) => ({ onlyFailedCases: true, failedCases })
 
 function ndjson(...records) {
   return records.map((record) => JSON.stringify(record)).join('\n') + '\n'
@@ -128,7 +131,8 @@ test('a latent-routed gesture inside the failed test window is host trouble', ()
   const health = classify({
     simulatorLog: simulatorLog + failedTestLog,
     hostLoad,
-    results
+    results,
+    gate: onlyFailedCases(1)
   })
   assert.equal(health.status, 'trouble')
   assert.equal(health.latentRoutedGestures, 2)
@@ -145,7 +149,8 @@ test('two failures with latent-routed gestures in only one are not host trouble'
   const health = classify({
     simulatorLog: simulatorLog + failedTestLog,
     hostLoad,
-    results: twoFailures
+    results: twoFailures,
+    gate: onlyFailedCases(2)
   })
   assert.equal(health.status, 'mixed')
   assert.equal(health.failures, 2)
@@ -245,7 +250,8 @@ test('classification without the inputs it needs is unknown', () => {
       classify({
         simulatorLog: simulatorLog + failedTestLog,
         hostLoad: undefined,
-        results
+        results,
+        gate: onlyFailedCases(1)
       })
     ),
     'host trouble: all 1 failures have latent-routed gestures ' +
@@ -253,48 +259,22 @@ test('classification without the inputs it needs is unknown', () => {
   )
 })
 
-test('report writes host-health.json next to the evidence, even without inputs', async () => {
-  await temporary(async (directory) => {
-    const evidence = path.join(directory, 'ios-evidence')
-    const resultsDirectory = path.join(directory, 'ios-results')
-    await mkdir(evidence)
-    await mkdir(resultsDirectory)
-    await writeFile(path.join(evidence, 'simulator-log.txt'), simulatorLog + failedTestLog)
-    await copyFile(path.join(fixtures, 'host-load.txt'), path.join(evidence, 'host-load.txt'))
-    await copyFile(
-      path.join(fixtures, 'ios-results.ndjson'),
-      path.join(resultsDirectory, 'worker-14696-1792260093215.ndjson')
-    )
-    const health = await report(evidence, resultsDirectory)
-    assert.deepEqual(JSON.parse(await readFile(path.join(evidence, HEALTH_FILE), 'utf8')), health)
-    assert.deepEqual(health, {
-      version: 2,
-      status: 'trouble',
-      gestures: 3,
-      latentRoutedGestures: 2,
-      latentRoutedAt: ['2026-10-17 18:04:07.338', '2026-10-17 18:04:57.133'],
-      latentRoutedInFailures: 1,
-      failures: 1,
-      failuresWithLatent: 1,
-      failedTests: [
-        {
-          title: 'should open and close swipeable row',
-          start: '2026-10-17T18:04:45.394Z',
-          end: '2026-10-17T18:05:08.788Z',
-          latentRoutedGestures: 1
-        }
-      ],
-      loadSamples: 3,
-      maxLoadAverage: 512.16,
-      minIdlePercent: 0.4,
-      missing: []
-    })
+test('without the gate checks, a shard is never host trouble', () => {
+  const health = classify({ simulatorLog: simulatorLog + failedTestLog, hostLoad, results })
+  assert.equal(health.status, 'mixed')
+  assert.equal(health.onlyFailedCases, false)
+  assert.equal(
+    describeHealth(health),
+    'host mixed: 1 of 1 failures have latent-routed gestures, other gate checks fail too ' +
+      '(1 of 2 latent-routed gestures in failures), load 512.16'
+  )
+  const wrongCount = classify({
+    simulatorLog: simulatorLog + failedTestLog,
+    hostLoad,
+    results,
+    gate: onlyFailedCases(2)
   })
-  await temporary(async (directory) => {
-    const health = await report(directory, path.join(directory, 'ios-results'))
-    assert.equal(health.status, 'unknown')
-    assert.deepEqual(health.missing, ['simulator-log.txt', 'host-load.txt', 'ios-results'])
-  })
+  assert.equal(wrongCount.status, 'mixed')
 })
 
 const context = { sha: 'a'.repeat(40), runId: '123', runAttempt: '1' }
@@ -356,6 +336,150 @@ async function writeShard(directory, shard, bundle, health) {
 
 const shardById = (id) => manifest.shards.find((shard) => shard.id === id)
 
+/**
+ * Swipeable evidence that the gate rejects for one failed case only. The case fails in
+ * the window of the failed test in the fixtures.
+ */
+function failingBundle() {
+  const bundle = passingBundle(shardById('swipeable'))
+  const records = bundle.workers[0]
+  for (const record of records) record.timestamp = '2026-10-17T18:06:00.000Z'
+  records[0].timestamp = '2026-10-17T18:04:03.523Z'
+  records[1].timestamp = '2026-10-17T18:04:45.375Z'
+  records[2].timestamp = '2026-10-17T18:04:45.394Z'
+  Object.assign(records[3], {
+    timestamp: '2026-10-17T18:05:08.788Z',
+    status: 'failed',
+    error: { name: 'Error', message: 'row did not open' }
+  })
+  records.at(-1).result = 1
+  bundle.receipt.wdioOutcome = 'failure'
+  return bundle
+}
+
+function classifyBundle(bundle) {
+  return classify({
+    simulatorLog: simulatorLog + failedTestLog,
+    hostLoad,
+    results: ndjson(...bundle.workers[0]),
+    gate: gateCheck(shardById('swipeable'), bundle, context)
+  })
+}
+
+test('failed cases as the only gate rejections, each with a latent gesture, are host trouble', () => {
+  const bundle = failingBundle()
+  assert.deepEqual(
+    { ...gateCheck(shardById('swipeable'), bundle, context), error: undefined },
+    { error: undefined, failedCases: 1, onlyFailedCases: true }
+  )
+  const health = classifyBundle(bundle)
+  assert.equal(health.status, 'trouble')
+  assert.equal(health.onlyFailedCases, true)
+  assert.equal(health.failuresWithLatent, 1)
+})
+
+// Each of these makes the gate reject the shard for more than its failed case.
+const otherRejections = {
+  'Maestro failure': (bundle) => {
+    bundle.receipt.maestroOutcome = 'failure'
+  },
+  'skipped case': (bundle) => {
+    bundle.workers[0][5].status = 'skipped'
+  },
+  'pending case': (bundle) => {
+    bundle.workers[0][5].pending = true
+  },
+  'passed case with an error': (bundle) => {
+    bundle.workers[0][5].error = { name: 'Error' }
+  },
+  'failed warm-up': (bundle) => {
+    bundle.workers[0][1].ok = false
+  },
+  'hook failure': (bundle) => {
+    bundle.workers[0].splice(4, 0, {
+      ...bundle.workers[0][3],
+      event: 'hook-failure',
+      hook: 'afterEach'
+    })
+  },
+  'missing case': (bundle) => {
+    bundle.workers[0].splice(4, 2)
+  },
+  'unfinished worker': (bundle) => {
+    bundle.workers[0].pop()
+  },
+  'worker result 2': (bundle) => {
+    bundle.workers[0].at(-1).result = 2
+  },
+  'cancelled WDIO step': (bundle) => {
+    bundle.receipt.wdioOutcome = 'cancelled'
+  },
+  'stale receipt': (bundle) => {
+    bundle.receipt.runAttempt = '2'
+  }
+}
+
+for (const [reason, mutate] of Object.entries(otherRejections)) {
+  test(`a latent-routed failed case with another gate rejection is not host trouble: ${reason}`, () => {
+    const bundle = failingBundle()
+    mutate(bundle)
+    const check = gateCheck(shardById('swipeable'), bundle, context)
+    assert.equal(check.passed, undefined)
+    assert.equal(check.onlyFailedCases, false)
+    const health = classifyBundle(bundle)
+    assert.notEqual(health.status, 'trouble')
+    assert.doesNotMatch(describeHealth(health), /^host trouble/)
+  })
+}
+
+test('the gate checks pass a passing shard, and it has no failed cases', () => {
+  const check = gateCheck(shardById('swipeable'), passingBundle(shardById('swipeable')), context)
+  assert.deepEqual(check, { passed: 25, failedCases: 0, onlyFailedCases: false })
+})
+
+test('report writes host-health.json next to the evidence, even without inputs', async () => {
+  await temporary(async (directory) => {
+    const shard = shardById('swipeable')
+    await writeShard(directory, shard, failingBundle())
+    const root = path.join(directory, artifactName(context, shard.id))
+    const evidence = path.join(root, 'ios-evidence')
+    await writeFile(path.join(evidence, 'simulator-log.txt'), simulatorLog + failedTestLog)
+    await copyFile(path.join(fixtures, 'host-load.txt'), path.join(evidence, 'host-load.txt'))
+    const health = await report(manifest, shard.id, root)
+    assert.deepEqual(JSON.parse(await readFile(path.join(evidence, HEALTH_FILE), 'utf8')), health)
+    assert.deepEqual(health, {
+      version: 3,
+      status: 'trouble',
+      onlyFailedCases: true,
+      gestures: 3,
+      latentRoutedGestures: 2,
+      latentRoutedAt: ['2026-10-17 18:04:07.338', '2026-10-17 18:04:57.133'],
+      latentRoutedInFailures: 1,
+      failures: 1,
+      failuresWithLatent: 1,
+      failedTests: [
+        {
+          title: 'suite case 0',
+          start: '2026-10-17T18:04:45.394Z',
+          end: '2026-10-17T18:05:08.788Z',
+          latentRoutedGestures: 1
+        }
+      ],
+      loadSamples: 3,
+      maxLoadAverage: 512.16,
+      minIdlePercent: 0.4,
+      missing: []
+    })
+  })
+  await temporary(async (directory) => {
+    await mkdir(path.join(directory, 'ios-evidence'))
+    const health = await report(manifest, 'swipeable', directory)
+    assert.equal(health.status, 'unknown')
+    assert.equal(health.onlyFailedCases, false)
+    assert.deepEqual(health.missing, ['simulator-log.txt', 'host-load.txt', 'ios-results'])
+  })
+})
+
 test('summary lists every planned shard with its gate checks and host class', async () => {
   await temporary(async (directory) => {
     const healthy = classify({
@@ -363,15 +487,8 @@ test('summary lists every planned shard with its gate checks and host class', as
       hostLoad,
       results
     })
-    const failed = passingBundle(shardById('swipeable'))
-    failed.receipt.wdioOutcome = 'failure'
-    failed.receipt.maestroOutcome = 'skipped'
-    await writeShard(
-      directory,
-      shardById('swipeable'),
-      failed,
-      classify({ simulatorLog: simulatorLog + failedTestLog, hostLoad, results })
-    )
+    const failed = failingBundle()
+    await writeShard(directory, shardById('swipeable'), failed, classifyBundle(failed))
     await writeShard(
       directory,
       shardById('swipe-back'),
@@ -413,6 +530,23 @@ test('summary lists every planned shard with its gate checks and host class', as
     assert.match(
       markdown,
       /^\| performance \| no evidence \| .* \| n\/a \| n\/a \| n\/a \| n\/a \| n\/a \| n\/a \|$/m
+    )
+  })
+})
+
+test('the summary never shows host trouble when its own gate checks find another failure', async () => {
+  await temporary(async (directory) => {
+    const shard = shardById('swipeable')
+    const health = classifyBundle(failingBundle())
+    assert.equal(health.status, 'trouble')
+    const failed = failingBundle()
+    failed.receipt.maestroOutcome = 'failure'
+    await writeShard(directory, shard, failed, health)
+    const [row] = await summarize({ ...manifest, shards: [shard] }, directory)
+    assert.equal(
+      row.host,
+      'host mixed: 1 of 1 failures have latent-routed gestures, other gate checks fail too ' +
+        '(1 of 2 latent-routed gestures in failures), load 512.16'
     )
   })
 })

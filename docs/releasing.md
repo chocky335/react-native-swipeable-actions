@@ -45,11 +45,15 @@ shows the gate checks and one host class for each shard. The gate checks column
 uses the same checks as the gate for that shard: the step outcomes, the warm-up
 and the full case inventory.
 
-- `host trouble`: each failure window contains at least one gesture that went to
-  latent system gesture destinations of the app scene. The simulator sent these
-  gestures to SpringBoard first, and the app did not get them.
+- `host trouble`: the gate rejects the shard only for failed cases, and the window
+  of each failed case contains at least one gesture that went to latent system
+  gesture destinations of the app scene. The simulator sent these gestures to
+  SpringBoard first, and the app did not get them. A failed Maestro step or warm-up,
+  a skipped, pending or unfinished case, a failed hook, a failed worker or a missing
+  case is a real failure, and the shard is never `host trouble`.
 - `host mixed`: some failure windows contain latent-routed gestures, and other
-  failure windows do not. The failures without them are real failures.
+  failure windows do not, or the gate also rejects the shard for another reason.
+  The failures without them, and the other rejections, are real failures.
 - `host healthy`: no failure window contains a latent-routed gesture, or the shard
   has no failure. A latent-routed gesture during a passed warm-up or test does not count.
 - `host unknown`: the shard has no usable simulator log, or it has latent-routed

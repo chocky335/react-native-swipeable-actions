@@ -8,6 +8,7 @@ const APP_SCENE = 'sceneID:com.swipeabledemo.app'
 const LOG_FILE = 'simulator-log.txt'
 const LOAD_FILE = 'host-load.txt'
 const RESULTS = 'ios-results'
+const EVIDENCE = 'ios-evidence'
 export const HEALTH_FILE = 'host-health.json'
 
 /**
@@ -136,7 +137,54 @@ export function failureWindows(records) {
   return windows
 }
 
-export function classify({ simulatorLog, hostLoad, results }) {
+/** True for a failed case: its result says failed, and it is not pending or skipped. */
+const failedCase = (record) =>
+  record.event === 'test-result' && record.status === 'failed' && !record.pending && !record.skipped
+
+/**
+ * The same evidence with each failed case passed, and with the WDIO step and the worker
+ * outcomes that a failed case causes. Nothing else changes.
+ */
+function withFailedCasesPassed({ receipt, workers }) {
+  return {
+    receipt: receipt.wdioOutcome === 'failure' ? { ...receipt, wdioOutcome: 'success' } : receipt,
+    workers: workers.map((records) =>
+      records.map((record) => {
+        if (failedCase(record)) return { ...record, status: 'passed', error: null }
+        if (record.event === 'worker-end' && record.result === 1) return { ...record, result: 0 }
+        return record
+      })
+    )
+  }
+}
+
+/**
+ * The gate checks for one shard. `onlyFailedCases` is true only when the gate rejects the
+ * shard for its failed cases and for nothing else. Only then can host trouble explain it.
+ */
+export function gateCheck(shard, bundle, context) {
+  try {
+    return { passed: validateShard(shard, bundle, context), failedCases: 0, onlyFailedCases: false }
+  } catch (error) {
+    const failedCases = bundle.workers.flat().filter(failedCase).length
+    let onlyFailedCases = false
+    if (failedCases > 0) {
+      try {
+        validateShard(shard, withFailedCasesPassed(bundle), context)
+        onlyFailedCases = true
+      } catch {
+        // Another gate check fails too, so the shard has a failure that is not a failed case.
+      }
+    }
+    return { error, failedCases, onlyFailedCases }
+  }
+}
+
+/**
+ * `gate` is the result of `gateCheck` for the shard. Without it, the shard is never host
+ * trouble.
+ */
+export function classify({ simulatorLog, hostLoad, results, gate }) {
   const missing = []
   if (simulatorLog === undefined) missing.push(LOG_FILE)
   if (hostLoad === undefined) missing.push(LOAD_FILE)
@@ -158,15 +206,19 @@ export function classify({ simulatorLog, hostLoad, results }) {
     })
   )
   const failuresWithLatent = failures.filter((window) => window.latentRoutedGestures > 0).length
-  // Host trouble explains a shard only when it explains each of its failures.
+  // Host trouble explains a shard only when the gate rejects it for failed cases alone, and
+  // each failed case has a latent-routed gesture.
+  const onlyFailedCases = gate?.onlyFailedCases === true && gate.failedCases === failures.length
   let status = 'healthy'
   if (routing.gestures === 0) status = 'unknown'
   else if (results === undefined && routing.latentRoutedGestures > 0) status = 'unknown'
-  else if (failures.length > 0 && failuresWithLatent === failures.length) status = 'trouble'
+  else if (onlyFailedCases && failures.length > 0 && failuresWithLatent === failures.length)
+    status = 'trouble'
   else if (failuresWithLatent > 0) status = 'mixed'
   return {
-    version: 2,
+    version: 3,
     status,
+    onlyFailedCases,
     ...routing,
     latentRoutedInFailures: latent.filter((at) => failures.some((w) => inside(w, at))).length,
     failures: failures.length,
@@ -196,11 +248,24 @@ async function optionalResults(directory) {
   return texts.join('\n')
 }
 
-export async function report(directory, resultsDirectory) {
+/** The gate checks for one shard artifact. Evidence that the gate cannot read has none. */
+async function optionalGateCheck(manifest, shard, root) {
+  try {
+    return gateCheck(shard, await loadShardBundle(root), manifest)
+  } catch {
+    return
+  }
+}
+
+/** Writes host-health.json for one shard artifact: its receipt, results and evidence. */
+export async function report(manifest, id, root) {
+  const shard = manifest.shards.find((entry) => entry.id === id)
+  const directory = path.join(root, EVIDENCE)
   const health = classify({
     simulatorLog: await optionalText(path.join(directory, LOG_FILE)),
     hostLoad: await optionalText(path.join(directory, LOAD_FILE)),
-    results: await optionalResults(resultsDirectory)
+    results: await optionalResults(path.join(root, RESULTS)),
+    gate: shard && (await optionalGateCheck(manifest, shard, root))
   })
   await writeFile(path.join(directory, HEALTH_FILE), `${JSON.stringify(health, null, 2)}\n`)
   return health
@@ -212,23 +277,38 @@ export function describeHealth(health) {
   const gestures = `${health.latentRoutedInFailures} of ${health.latentRoutedGestures} latent-routed gestures in failures`
   if (health.status === 'trouble')
     return `host trouble: all ${health.failures} failures have latent-routed gestures (${gestures}), load ${load}`
-  if (health.status === 'mixed')
-    return `host mixed: ${health.failuresWithLatent} of ${health.failures} failures have latent-routed gestures (${gestures}), load ${load}`
+  if (health.status === 'mixed') {
+    const other = health.onlyFailedCases ? '' : ', other gate checks fail too'
+    return `host mixed: ${health.failuresWithLatent} of ${health.failures} failures have latent-routed gestures${other} (${gestures}), load ${load}`
+  }
   if (health.status === 'healthy') return `host healthy: ${gestures}`
   if (health.missing?.includes(LOG_FILE)) return 'host unknown: no simulator log'
   if (health.gestures > 0) return 'host unknown: no test results'
   return 'host unknown: no gestures in the simulator log'
 }
 
+const firstLine = (error) => String(error?.message ?? error).split('\n')[0]
+
 /** The gate's own checks for one shard. The gate also needs the plan, the build and every shard. */
 async function shardResult(manifest, shard, root) {
+  let bundle
   try {
-    const passed = validateShard(shard, await loadShardBundle(root), manifest)
-    return `passed (${passed} cases)`
+    bundle = await loadShardBundle(root)
   } catch (error) {
-    if (error?.code === 'ENOENT') return `rejected: missing ${path.relative(root, error.path)}`
-    return `rejected: ${String(error?.message ?? error).split('\n')[0]}`
+    if (error?.code === 'ENOENT')
+      return { result: `rejected: missing ${path.relative(root, error.path)}` }
+    return { result: `rejected: ${firstLine(error)}` }
   }
+  const check = gateCheck(shard, bundle, manifest)
+  if (check.passed !== undefined) return { result: `passed (${check.passed} cases)`, check }
+  return { result: `rejected: ${firstLine(check.error)}`, check }
+}
+
+/** The summary repeats the gate checks. Host trouble needs them to reject failed cases only. */
+function checkedHealth(health, check) {
+  if (health?.status !== 'trouble') return health
+  if (check?.onlyFailedCases && check.failedCases === health.failures) return health
+  return { ...health, status: 'mixed', onlyFailedCases: false }
 }
 
 async function optionalJson(filename) {
@@ -257,13 +337,12 @@ export async function summarize(manifest, directory) {
   for (const shard of manifest.shards) {
     const root = path.join(directory, artifactName(manifest, shard.id))
     const found = await exists(root)
-    const health = found
-      ? await optionalJson(path.join(root, 'ios-evidence', HEALTH_FILE))
-      : undefined
+    const health = found ? await optionalJson(path.join(root, EVIDENCE, HEALTH_FILE)) : undefined
+    const { result, check } = found ? await shardResult(manifest, shard, root) : {}
     rows.push({
       id: shard.id,
-      result: found ? await shardResult(manifest, shard, root) : 'no evidence',
-      host: describeHealth(health),
+      result: result ?? 'no evidence',
+      host: describeHealth(checkedHealth(health, check)),
       failures: health?.failures ?? null,
       latentRoutedInFailures: health?.latentRoutedInFailures ?? null,
       latentRoutedGestures: health?.latentRoutedGestures ?? null,
@@ -285,7 +364,7 @@ export function summaryMarkdown(rows) {
     '',
     'The host class does not change the gate result.',
     "Gate checks runs the gate's checks for one shard. The gate also needs the plan, the build and every shard.",
-    'Host trouble needs a latent-routed gesture inside the window of each failure.',
+    'Host trouble needs failed cases as the only gate rejections, each with a latent-routed gesture inside its window.',
     '',
     '| Shard | Gate checks | Host | Failures | Latent in failures | Latent total | Gestures | Max load | Min idle % |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
@@ -312,8 +391,9 @@ export function summaryMarkdown(rows) {
 }
 
 async function main([command, ...args]) {
-  if (command === 'report' && args.length === 2) {
-    const health = await report(args[0], args[1])
+  if (command === 'report' && args.length === 3) {
+    const manifest = JSON.parse(await readFile(args[0], 'utf8'))
+    const health = await report(manifest, args[1], args[2])
     console.log(describeHealth(health))
   } else if (command === 'summary' && args.length === 2) {
     const manifest = JSON.parse(await readFile(args[0], 'utf8'))
@@ -322,7 +402,7 @@ async function main([command, ...args]) {
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown)
   } else {
     throw new Error(
-      'Expected: report <evidence directory> <results directory> | summary <plan> <shard directory>'
+      'Expected: report <plan> <shard ID> <shard artifact directory> | summary <plan> <shard directory>'
     )
   }
 }
