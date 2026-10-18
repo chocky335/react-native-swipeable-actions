@@ -183,6 +183,12 @@ tag, overwrite published history, or silently reuse evidence after changing sour
 Create GitHub Release notes from the exact changelog section after verifying npm
 and tag identity. The workflow does not create GitHub Releases.
 
+Offline gate regression command from a repository checkout:
+`node --test scripts/release-readiness.test.mjs`.
+The [regression suite](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.test.mjs)
+uses synthetic evidence and mocked workflow git/npm commands. It tests rejection
+logic and mutation boundaries; it is not mobile acceptance and never publishes.
+
 ## After a bad publish
 
 If a published version is broken, recover with a new version. A published npm
@@ -210,9 +216,3 @@ version and its `v<version>` tag are permanent records.
    the version pattern in `validateSource` in `scripts/release-readiness.mjs`, add
    its tests, and update the `version` input text in `publish.yml`. Then the patch
    goes through this same gate.
-
-Offline gate regression command from a repository checkout:
-`node --test scripts/release-readiness.test.mjs`.
-The [regression suite](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.test.mjs)
-uses synthetic evidence and mocked workflow git/npm commands. It tests rejection
-logic and mutation boundaries; it is not mobile acceptance and never publishes.
