@@ -146,6 +146,13 @@ test('accepts exact case multisets despite nested-suite display order, timestamp
   }
   assert.equal(validateReadiness(value).version, '1.0.0-rc.0')
 })
+test('accepts the worker-end quarantine field of current iOS evidence', () => {
+  const value = fixture()
+  for (const run of value.runs) {
+    for (const bundle of Object.values(run.bundles)) bundle.workers[0].at(-1).quarantine = null
+  }
+  assert.equal(validateReadiness(value).version, '1.0.0-rc.0')
+})
 for (const [name, mutate] of Object.entries(mutations)) {
   test('fails closed: ' + name, () => {
     const value = fixture()

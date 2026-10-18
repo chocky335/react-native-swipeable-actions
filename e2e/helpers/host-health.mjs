@@ -143,11 +143,24 @@ const failedCase = (record) =>
   record.event === 'test-result' && record.status === 'failed' && !record.pending && !record.skipped
 
 /**
+ * True when the quarantine of the worker-end record starts in the case of this test-result.
+ * Its runnable is the Mocha full title: the titles of the suites, then the case title.
+ */
+function quarantinedIn(quarantine, record) {
+  const runnable = quarantine?.runnable
+  if (typeof runnable !== 'string') return false
+  if (!record.parent) return runnable === record.title
+  const own = `${record.parent} ${record.title}`
+  return runnable === own || runnable.endsWith(` ${own}`)
+}
+
+/**
  * True when the failed cases alone cause the worker result. WDIO gives `after` the Mocha
  * failure count: one for each failed case and for each failed hook. A hook that fails in
  * its body has a hook record. A session quarantine fails each later hook before the WDIO
- * hook wrapper runs, so these hooks have no record (command-scope.ts `wrap`). A quarantine
- * after the last case adds only these hooks, and the worker ends directly after that case.
+ * hook wrapper runs, so these hooks have no record (command-scope.ts `wrap`). A larger
+ * count is part of the failed cases only when the worker ends directly after the last
+ * failed case, and its worker-end record shows a quarantine that starts in that case.
  */
 function failedCasesCauseResult(records) {
   const end = records.at(-1)
@@ -155,7 +168,8 @@ function failedCasesCauseResult(records) {
   const failed = records.filter(failedCase).length
   if (failed === 0) return false
   if (end.result === failed) return true
-  return end.result > failed && records.length > 1 && failedCase(records.at(-2))
+  const last = records.at(-2)
+  return end.result > failed && failedCase(last ?? {}) && quarantinedIn(end.quarantine, last)
 }
 
 /**

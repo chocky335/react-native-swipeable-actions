@@ -428,11 +428,17 @@ test('command ownership with the installed Mocha and WDIO transport', async (t) 
               nextRan = true
               await isolatedDriver.performActions([])
             })
+            assert.equal(guard.quarantineState(), null)
             assert.ok((await f.run()) > 0)
             assert.equal(outcome.passed, false)
             assert.match(outcome.error.message, mode === 'timeout' ? /Timeout/ : /quarantined/)
             assert.match(evidenceError.message, /quarantined/)
             assert.equal(nextRan, false)
+            // The worker-end evidence ties the quarantine to the case that owned the request.
+            assert.deepEqual(guard.quarantineState(), {
+              reason: 'unresolved request when "accepted action" ended',
+              runnable: 'accepted action'
+            })
             await assert.rejects(isolatedDriver.releaseActions(), /quarantined/)
             assert.deepEqual(calls, ['old-action-accepted'])
             await completed.promise

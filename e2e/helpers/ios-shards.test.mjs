@@ -349,6 +349,20 @@ test('NDJSON round-trip accepts actual optional fullTitle omission', () => {
     14
   )
 })
+test('the gate reads the worker-end quarantine field as evidence only', () => {
+  const { plan, bundles, run } = fixture()
+  for (const bundle of Object.values(bundles)) bundle.workers[0].at(-1).quarantine = null
+  assert.equal(validateAggregate(plan, bundles, run).passed, 62)
+  const records = bundles.rtl.workers[0]
+  records.at(-1).quarantine = {
+    reason: 'unresolved request when "suite case 0" ended',
+    runnable: 'suite case 0'
+  }
+  assert.equal(
+    validateRecords(plan.shards[1], parseRecords(`${records.map(JSON.stringify).join('\n')}\n`)),
+    14
+  )
+})
 for (const text of ['', '{}', '{\n', '\n', 'null\n', '[]\n', '{}\n\n']) {
   test('malformed/truncated NDJSON is rejected: ' + JSON.stringify(text), () => {
     assert.throws(() => parseRecords(text))

@@ -1,6 +1,6 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { finishCommandScope, guardRequest } from './helpers/command-scope'
+import { finishCommandScope, guardRequest, quarantineState } from './helpers/command-scope'
 import { setPlatform } from './helpers/selectors'
 import { type TouchReadiness, waitForTouchReadiness } from './helpers/touch-readiness'
 
@@ -155,7 +155,8 @@ export const config: WebdriverIO.Config = {
   }),
 
   after: async (result, _capabilities, specs) => {
-    await recordResult({ event: 'worker-end', result, specs })
+    // A quarantine fails later hooks before WDIO records them. Host health reads its cause here.
+    await recordResult({ event: 'worker-end', result, specs, quarantine: quarantineState() })
   },
 
   afterTest: finishCommandScope(async (test, _context, { passed, error, duration, retries }) => {

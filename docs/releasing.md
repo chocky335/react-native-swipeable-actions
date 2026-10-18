@@ -52,10 +52,10 @@ and the full case inventory. It lists each condition that fails.
   SpringBoard first, and the app did not get them. A Maestro step that a failed WDIO
   step skipped is part of the failed cases. The worker result is part of them only when
   it is one Mocha failure for each failed case, or when the worker ends directly after a
-  failed last case and the session quarantine failed the hooks after it. A failed
-  Maestro step or warm-up, a skipped, pending or unfinished case, a failed hook, a
-  failed worker or a missing case is a real failure, and the shard is never
-  `host trouble`.
+  failed last case and its worker-end record shows a quarantine that started in that
+  case. A failed Maestro step or warm-up, a skipped, pending or unfinished case, a
+  failed hook, a failed worker or a missing case is a real failure, and the shard is
+  never `host trouble`.
 - `host mixed`: some failure windows contain latent-routed gestures, and other
   failure windows do not, or the gate also rejects the shard for another reason.
   The failures without them, and the other rejections, are real failures.

@@ -24,6 +24,8 @@ type SuiteWithHooks = {
   _afterAll: Mocha.Hook[]
 }
 type Outcome = { passed: boolean; error?: unknown }
+/** The first quarantine of a worker: its reason, and the full title of the runnable that owned the work. */
+export type QuarantineState = { reason: string; runnable: string | null }
 
 /** Each worker has one guard. Separate instances let regressions quarantine safely. */
 export function createCommandGuard() {
@@ -32,9 +34,17 @@ export function createCommandGuard() {
   const pending = new Set<Flight>()
   const evidenceScopes = new Set<Scope>()
   let quarantine: Error | undefined
+  let quarantineCause: QuarantineState | null = null
 
-  function quarantineSession(reason: string): void {
-    quarantine ??= new Error(`WebDriver session quarantined: ${reason}`)
+  function quarantineSession(reason: string, owner?: Scope): void {
+    if (quarantine) return
+    quarantine = new Error(`WebDriver session quarantined: ${reason}`)
+    quarantineCause = { reason, runnable: owner?.title ?? null }
+  }
+
+  /** The worker-end evidence records this state. Null means no quarantine. */
+  function quarantineState(): QuarantineState | null {
+    return quarantineCause && { ...quarantineCause }
   }
 
   function healthy(): void {
@@ -56,7 +66,7 @@ export function createCommandGuard() {
     for (const child of scope.children) close(child)
     if ([...pending].some((flight) => belongsTo(flight.owner, scope))) {
       // Quarantine BEFORE abort: client cancellation is not server completion.
-      quarantineSession(`unresolved request when "${scope.title}" ended`)
+      quarantineSession(`unresolved request when "${scope.title}" ended`, scope)
     }
     scope.controller.abort(
       originalTimeout(scope) ??
@@ -119,7 +129,7 @@ export function createCommandGuard() {
       return
     }
     // Abort/error otherwise cannot establish remote completion.
-    quarantineSession(reason)
+    quarantineSession(reason, flight.owner)
   }
 
   function trackDispatcher(delegate: Dispatcher, owner: Scope | undefined): Dispatcher {
@@ -398,8 +408,8 @@ export function createCommandGuard() {
       wrapSuite(root)
     }
   }
-  return { guardRequest, finishCommandScope, withCommandAttempt, mochaHooks }
+  return { guardRequest, finishCommandScope, withCommandAttempt, mochaHooks, quarantineState }
 }
 
-export const { guardRequest, finishCommandScope, withCommandAttempt, mochaHooks } =
+export const { guardRequest, finishCommandScope, withCommandAttempt, mochaHooks, quarantineState } =
   createCommandGuard()

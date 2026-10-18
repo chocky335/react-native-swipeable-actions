@@ -464,8 +464,9 @@ for (const [reason, mutate] of Object.entries(otherRejections)) {
 
 // Trimmed from the CI shard evidence of run 39128353788 (performance and swipeable). Each
 // shard has one failed case with one latent-routed gesture in its window. The performance
-// session was quarantined after its only case, and its worker result is 3. The failed
-// WDIO step of the swipeable shard skipped its Maestro step.
+// session was quarantined in its only case, and its worker result is 3. The failed WDIO
+// step of the swipeable shard skipped its Maestro step. Each worker-end record has the
+// `quarantine` field as the worker now writes it. The job log of the run gives its value.
 const run = path.join(fixtures, 'run-39128353788')
 const runContext = {
   sha: '7de18da9088e798b57ce60f2dd284dfc4d74cfd0',
@@ -525,9 +526,16 @@ function classifyRun(id, bundle) {
   })
 }
 
-test('run 39128353788: a quarantine after the last failed case is part of that case', () => {
+const caseTitle =
+  'Benchmark 0: run-benchmark produces a result string should run benchmark and surface FPS result'
+
+test('run 39128353788: a quarantine that starts in the last failed case is part of that case', () => {
   const bundle = runBundle('performance')
   assert.equal(bundle.workers[0].at(-1).result, 3)
+  assert.equal(
+    bundle.workers[0].at(-1).quarantine.runnable,
+    `Swipeable Performance Tests ${caseTitle}`
+  )
   assert.equal(bundle.receipt.wdioOutcome, 'failure')
   assert.deepEqual(
     { ...gateCheck(runShard('performance'), bundle, runContext), error: undefined },
@@ -599,6 +607,38 @@ const runRejections = {
     'performance',
     (bundle) => {
       bundle.workers[0].at(-1).result = { message: 'spec load error' }
+    }
+  ],
+  'worker result 3 without a quarantine field': [
+    'performance',
+    (bundle) => {
+      delete bundle.workers[0].at(-1).quarantine
+    }
+  ],
+  'worker result 3 without a quarantine': [
+    'performance',
+    (bundle) => {
+      bundle.workers[0].at(-1).quarantine = null
+    }
+  ],
+  'quarantine without an owning runnable': [
+    'performance',
+    (bundle) => {
+      bundle.workers[0].at(-1).quarantine = {
+        reason: 'a new runnable began with unresolved requests',
+        runnable: null
+      }
+    }
+  ],
+  'quarantine that starts in another runnable': [
+    'performance',
+    (bundle) => {
+      const runnable =
+        'Swipeable Performance Tests "after each" hook for "should run benchmark and surface FPS result"'
+      bundle.workers[0].at(-1).quarantine = {
+        reason: `unresolved request when "${runnable}" ended`,
+        runnable
+      }
     }
   ],
   'quarantine with a hook record': [
