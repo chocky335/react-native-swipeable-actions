@@ -1,25 +1,22 @@
 # Preparing and publishing v1
 
-The final combined implementation is the release candidate, not either earlier PR
-in isolation. `CHANGELOG.md` is the release-note source of truth. This procedure
-does not authorize a version change, tag, dispatch, or publication by itself.
-CI run `38930587069` failed the iOS two-sided and swipeable suites. It is not
-release evidence. Historical runs and local/offline checks cannot replace a
-successful run of the final prepared source or physical acceptance.
+The prepared `main` revision is the release candidate. `CHANGELOG.md` is the
+release-note source of truth. This procedure does not authorize a version change,
+tag, dispatch, or publication by itself. Historical runs and local or offline
+checks cannot replace a successful run of the prepared source or physical
+acceptance.
 
 ## Prepare an unpublished exact version
 
-1. Finish the combined implementation and independent review. Local draft metadata
-   may be prepared while fixes are in progress, but final acceptance must use the
-   exact prepared source/version, not the earlier 0.1.12 working tree. The current
-   local draft is `1.0.0-rc.0`, unpublished and not release-approved. Subsequent
-   candidates use an explicit `1.0.0-rc.N`, or stable `1.0.0`; never use
+1. Finish the implementation and its independent review. Final acceptance must
+   use the exact prepared source and version. Release candidates use an explicit
+   `1.0.0-rc.N`, and the stable release uses `1.0.0`. Never use
    `npm version prerelease` to infer v1.
 2. In a separately reviewed preparation change, use
-   `npm version 1.0.0-rc.0 --no-git-tag-version --ignore-scripts` (or the approved
-   exact version; do not repeat if it is already prepared).
+   `npm version <version> --no-git-tag-version --ignore-scripts` with the approved
+   exact version. Skip this step if `package.json` already has that version.
    Commit package and lockfile identity together with finalized release notes
-   under exactly `## 1.0.0-rc.0 - YYYY-MM-DD`. Retain breaking API, migration,
+   under exactly `## <version> - YYYY-MM-DD`. Retain breaking API, migration,
    platform and appearance notes. Leave `Unreleased` for subsequent changes.
 3. Merge the preparation to `main`. This commit is the source SHA to test and
    publish. Preparation is not publication and creates no release tag. The
@@ -178,7 +175,7 @@ the short mutation window. If it advances after the tag is pushed, the final che
 blocks publication and the immutable tag must be retained for inspection.
 
 If publication fails after tagging, retain the tag and inspect npm first. A retry
-may use an existing tag only when it resolves to the exact tested SHA and the
+can use an existing tag only when it resolves to the exact tested SHA and the
 version is still unpublished. An existing npm version blocks a retry, including
 when a previous request succeeded but its response was lost. Never move a release
 tag, overwrite published history, or silently reuse evidence after changing source.
