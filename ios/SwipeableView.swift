@@ -1091,15 +1091,32 @@ public class SwipeableView: ExpoView {
             handlePanEnded(gesture)
         case .cancelled:
             let settledSide = openSide
+            let wasActivated = isGestureActivated
+            let draggedSide = currentSide
+            let reportedState = lastEmittedWillEndState
             guard invalidateWork(preservePresentation: false) else { return }
             openSide = settledSide
             currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
             savedFirstResponder = nil
+            if wasActivated { reportCancelledGesture(side: settledSide ?? draggedSide, reportedState: reportedState) }
         default:
             break
         }
+    }
+
+    /// A cancel returns the row to its logical state. Progress and the intended state
+    /// then report that position, so JS UIs do not stay mid-drag. A cancel never
+    /// completes the swipe, so it emits no onSwipeEnd.
+    private func reportCancelledGesture(side: SwipeSide?, reportedState: String?) {
+        let generation = workGeneration
+        let key = recyclingKey
+        let settledState = isOpen ? "open" : "closed"
+        let progress: CGFloat = isOpen ? 1 : 0
+        onSwipeProgress(payload(["progress": progress, "translationX": currentTranslation], side: side))
+        guard isCurrent(generation, key: key), reportedState != settledState else { return }
+        onSwipeStateChange(payload(["state": settledState], side: side))
     }
 
     private func handlePanBegan(_ gesture: UIPanGestureRecognizer) {

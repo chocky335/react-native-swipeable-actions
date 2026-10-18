@@ -674,8 +674,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                     velocityTracker?.computeCurrentVelocity(1000)
                     val horizontalDelta = event.rawX - touchStartX
                     if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                        isCurrentTouchCancelled = true
-                        reconcileLogicalState()
+                        cancelTouchGesture()
                     } else {
                         handlePanEnd(horizontalDelta, velocityTracker?.xVelocity ?: 0f)
                     }
@@ -726,13 +725,30 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (generation == workGeneration && isGestureActivated) {
                 // A stuck gesture ends like an OS cancel, not a release. The finger can
                 // still be down, so the rest of this touch sequence stays consumed.
-                isCurrentTouchCancelled = true
-                velocityTracker?.recycle()
-                velocityTracker = null
-                reconcileLogicalState()
+                cancelTouchGesture()
             }
         }
         postDelayed(gestureTimeoutRunnable, GESTURE_TIMEOUT_MS)
+    }
+
+    /**
+     * An OS or watchdog cancel returns the row to its logical state. Progress and the
+     * intended state then report that position, so JS UIs do not stay mid-drag.
+     * A cancel never completes the swipe, so it emits no onSwipeEnd.
+     */
+    private fun cancelTouchGesture() {
+        val side = gestureSide
+        val reportedState = lastEmittedWillEndState
+        isCurrentTouchCancelled = true
+        velocityTracker?.recycle()
+        velocityTracker = null
+        if (!reconcileLogicalState()) return
+        val generation = workGeneration
+        val settledSide = openSide ?: side
+        val settledState = if (isOpen) "open" else "closed"
+        emitFinalProgress(if (isOpen) 1f else 0f, currentTranslation, settledSide)
+        if (generation != workGeneration || reportedState == settledState) return
+        onSwipeStateChange(stateEvent(settledState, settledSide))
     }
 
     private fun cancelGestureTimeout() {
@@ -1159,13 +1175,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
     }
 
-    private fun emitFinalProgress(progress: Float, translationX: Float) {
+    private fun emitFinalProgress(progress: Float, translationX: Float, side: SwipeSide? = activeSide) {
         lastEmittedProgress = progress
         // Use fresh map for each emission
         onSwipeProgress(mapOf(
             "progress" to progress.toDouble(),
             "translationX" to translationX.toDouble()
-        ) + sideMetadata())
+        ) + sideMetadata(side))
     }
 
     override fun onAttachedToWindow() {
@@ -1317,7 +1333,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
     }
 
-    private fun reconcileLogicalState(restartLayoutGuard: Boolean = true) {
+    /** True when the row settled at its logical state now, not in later work. */
+    private fun reconcileLogicalState(restartLayoutGuard: Boolean = true): Boolean {
         val side = openSide
         val deadline = autoCloseDeadline
         val closingSide = autoCloseClosingSide
@@ -1325,13 +1342,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             closingSide != null && isSideEnabled(closingSide) ||
                 isOpen && side != null && isSideEnabled(side) && deadline != null
             )
-        if (!cancelActiveWork(preserveGestureCompletion = resumesCompletion)) return
+        if (!cancelActiveWork(preserveGestureCompletion = resumesCompletion)) return false
         animationSide = null
         if (autoClose && closingSide != null && isSideEnabled(closingSide)) {
             // Continue an actual auto-close animation, preserving its original side/intent.
             animationSide = closingSide
             closeInternal(animated = true, autoCloseCompletion = true)
-            return
+            return false
         }
         if (isOpen && side != null && isSideEnabled(side)) {
             openSide = side
@@ -1346,6 +1363,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
         persistOpenSide(openSide)
         if (autoClose && isOpen && deadline != null) scheduleAutoClose(deadline)
+        return true
     }
 
     private fun persistOpenSide(side: SwipeSide?, key: String? = recyclingKey) {

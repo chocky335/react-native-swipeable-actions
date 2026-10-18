@@ -64,6 +64,8 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
   as the README shows.
 - On Android, a swipe held longer than 5 seconds is now cancelled without an
   `onSwipeEnd`, and the rest of that touch is ignored.
+- A cancelled swipe now reports the position where the row settles to
+  `onProgress` and `onSwipeStateChange`, so a progress UI does not stay mid-drag.
 
 ## 0.1.12 and earlier
 

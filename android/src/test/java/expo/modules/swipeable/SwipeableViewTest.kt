@@ -1902,6 +1902,59 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun cancelledGestureReportsTheSettledProgressAndState() {
+        for (watchdog in listOf(false, true)) for (startOpen in listOf(false, true)) for (crossed in listOf(true, false)) {
+            val case = "watchdog=$watchdog startOpen=$startOpen crossed=$crossed"
+            val row = row()
+            settle()
+            if (startOpen) {
+                row.open(SwipeSide.LEFT)
+                settle()
+            }
+            events.clear()
+            fun touch(action: Int, x: Float) {
+                motion(action, x, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A closed row drags toward open, an open row toward closed.
+            val direction = if (startOpen) -1f else 1f
+            touch(MotionEvent.ACTION_DOWN, 200f)
+            touch(MotionEvent.ACTION_MOVE, 200f + direction * 40f)
+            touch(MotionEvent.ACTION_MOVE, 200f + direction * (if (crossed) 140f else 60f))
+            // Let the frame callback report the mid-drag progress.
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(48))
+            val midDrag = named("onSwipeProgress").last()["progress"] as Double
+            assertTrue(case, midDrag > 0.0 && midDrag < 1.0)
+            assertEquals(case, if (crossed) 1 else 0, named("onSwipeStateChange").size)
+            val reported = events.size
+            if (watchdog) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            } else {
+                touch(MotionEvent.ACTION_CANCEL, 200f + direction * 140f)
+            }
+            settle()
+            val after = events.drop(reported)
+            val settled = if (startOpen) "open" else "closed"
+            assertEquals(case, if (startOpen) 160f else 0f, content(row).translationX, .01f)
+            // The progress and state UIs end at the settled position, not mid-drag.
+            assertEquals(case, listOf(mapOf(
+                "progress" to (if (startOpen) 1.0 else 0.0),
+                "translationX" to (if (startOpen) 160.0 else 0.0),
+                "side" to "left",
+                "recyclingKey" to "row"
+            )), after.filter { it.first == "onSwipeProgress" }.map { it.second })
+            assertEquals(
+                case,
+                if (crossed) listOf(mapOf("state" to settled, "side" to "left", "recyclingKey" to "row")) else emptyList(),
+                after.filter { it.first == "onSwipeStateChange" }.map { it.second }
+            )
+            // A cancel never completes the swipe.
+            assertTrue(case, ends().isEmpty())
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()
