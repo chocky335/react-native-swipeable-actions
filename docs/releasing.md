@@ -183,6 +183,34 @@ tag, overwrite published history, or silently reuse evidence after changing sour
 Create GitHub Release notes from the exact changelog section after verifying npm
 and tag identity. The workflow does not create GitHub Releases.
 
+## After a bad publish
+
+If a published version is broken, recover with a new version. A published npm
+version and its `v<version>` tag are permanent records.
+
+1. A package owner on npm restores the dist-tag to the last good version. The
+   publish workflow cannot do this. Its trusted publishing only publishes.
+   - For an RC: `npm dist-tag add react-native-swipeable-actions@<good> next`
+   - For a stable release: `npm dist-tag add react-native-swipeable-actions@<good> latest`
+   - If `next` has no earlier good version, remove it:
+     `npm dist-tag rm react-native-swipeable-actions next`.
+2. The owner deprecates the bad version, so that npm warns at install:
+   `npm deprecate react-native-swipeable-actions@<bad> "<problem>. Use <good>."`
+3. Never run `npm unpublish`. It breaks lockfiles that already resolve the version,
+   and npm never allows that version number again.
+4. Keep the `v<bad>` tag. Do not move or delete it. Add a note to its GitHub
+   Release that names the problem and the replacement.
+5. Fix the problem on `main` through the normal review. Then prepare the next exact
+   version, for example `1.0.0-rc.<N+1>` after a bad RC. Run the complete procedure
+   on that source: fresh full CI, physical acceptance, verify, then publish. No
+   evidence of the bad version carries over. The publish of the corrective version
+   moves its dist-tag to it.
+6. The readiness gate and the publish workflow accept only `1.0.0-rc.N` and
+   `1.0.0`. A patch release such as `1.0.1` needs a reviewed change first: extend
+   the version pattern in `validateSource` in `scripts/release-readiness.mjs`, add
+   its tests, and update the `version` input text in `publish.yml`. Then the patch
+   goes through this same gate.
+
 Offline gate regression command from a repository checkout:
 `node --test scripts/release-readiness.test.mjs`.
 The [regression suite](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.test.mjs)
