@@ -8,7 +8,7 @@ const {
   withXcodeProject
 } = require('expo/config-plugins')
 
-// iOS 27 stops apps that do not adopt the UIScene lifecycle at launch.
+// An app built with the iOS 27 SDK stops at launch on iOS 27 without the UIScene lifecycle.
 // The Expo SDK 54 template creates its window in the app delegate, so this
 // plugin moves the window into a scene delegate.
 
