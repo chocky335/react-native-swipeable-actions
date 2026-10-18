@@ -16,6 +16,7 @@ export type {
   SwipeableStatic,
   SwipeableViewProps,
   SwipeProgressEvent,
+  SwipeStartEvent,
   SwipeStateEvent
 } from './Swipeable.types'
 export { SwipeableView } from './SwipeableView'
