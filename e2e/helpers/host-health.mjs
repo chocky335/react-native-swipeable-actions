@@ -288,6 +288,67 @@ export function describeHealth(health) {
 }
 
 const firstLine = (error) => String(error?.message ?? error).split('\n')[0]
+const skippedCase = (record) => record.status === 'skipped' || record.pending || record.skipped
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+/** The same evidence with each condition that `failedConditions` names passed. */
+function withConditionsPassed(shard, { receipt, workers }) {
+  const maestroOutcome = shard.maestro ? 'success' : 'skipped'
+  return {
+    receipt: { ...receipt, wdioOutcome: 'success', maestroOutcome },
+    workers: workers.map((records) =>
+      records
+        .filter((record) => record.event !== 'hook-failure' && record.event !== 'hook-skipped')
+        .map((record, index) => {
+          if (record.event === 'warm-up' && index === 1) return { ...record, ok: true }
+          if (record.event === 'test-result')
+            return { ...record, status: 'passed', error: null, pending: false, skipped: false }
+          if (record.event === 'worker-end') return { ...record, result: 0 }
+          return record
+        })
+    )
+  }
+}
+
+/**
+ * Every gate condition that one shard fails: the step outcomes, the warm-up, the cases, the
+ * hooks, the inventory and the worker. The first message of any other gate check comes last.
+ */
+function failedConditions(shard, bundle, context) {
+  const { receipt } = bundle
+  const records = bundle.workers.flat()
+  const conditions = []
+  if (receipt.wdioOutcome !== 'success') conditions.push(`wdio ${receipt.wdioOutcome ?? 'missing'}`)
+  const maestro = shard.maestro ? 'success' : 'skipped'
+  if (receipt.maestroOutcome !== maestro)
+    conditions.push(`maestro ${receipt.maestroOutcome ?? 'missing'} (expected ${maestro})`)
+  if (records[1]?.event === 'warm-up' && records[1].ok !== true) conditions.push('warm-up failed')
+  const results = records.filter((record) => record.event === 'test-result')
+  const skipped = results.filter(skippedCase).length
+  const failed = results.filter(
+    (record) => !skippedCase(record) && (record.status !== 'passed' || record.error != null)
+  ).length
+  if (failed > 0) conditions.push(count(failed, 'failed case'))
+  if (skipped > 0) conditions.push(count(skipped, 'skipped or pending case'))
+  const hooks = records.filter(
+    (record) => record.event === 'hook-failure' || record.event === 'hook-skipped'
+  ).length
+  if (hooks > 0) conditions.push(count(hooks, 'failed or skipped hook'))
+  const key = (record) => JSON.stringify([record.parent, record.title])
+  const expected = new Set(shard.cases.map(key))
+  const finished = new Set(results.map(key).filter((entry) => expected.has(entry)))
+  if (finished.size < expected.size)
+    conditions.push(`${finished.size} of ${expected.size} cases finished`)
+  const end = records.at(-1)
+  if (end?.event === 'worker-end' && end.result !== 0)
+    conditions.push(`worker result ${end.result}`)
+  try {
+    validateShard(shard, withConditionsPassed(shard, bundle), context)
+  } catch (error) {
+    conditions.push(firstLine(error))
+  }
+  return conditions
+}
 
 /** The gate's own checks for one shard. The gate also needs the plan, the build and every shard. */
 async function shardResult(manifest, shard, root) {
@@ -301,7 +362,10 @@ async function shardResult(manifest, shard, root) {
   }
   const check = gateCheck(shard, bundle, manifest)
   if (check.passed !== undefined) return { result: `passed (${check.passed} cases)`, check }
-  return { result: `rejected: ${firstLine(check.error)}`, check }
+  const conditions = failedConditions(shard, bundle, manifest)
+  // The list is never empty for a rejected shard. The gate message is the fallback.
+  if (conditions.length === 0) conditions.push(firstLine(check.error))
+  return { result: `rejected: ${conditions.join(', ')}`, check }
 }
 
 /** The summary repeats the gate checks. Host trouble needs them to reject failed cases only. */

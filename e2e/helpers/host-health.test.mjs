@@ -513,7 +513,7 @@ test('summary lists every planned shard with its gate checks and host class', as
         },
         {
           id: 'swipeable',
-          result: 'rejected: WDIO step did not succeed',
+          result: 'rejected: wdio failure, 1 failed case, worker result 1',
           host:
             'host trouble: all 1 failures have latent-routed gestures ' +
             '(1 of 2 latent-routed gestures in failures), load 512.16'
@@ -525,7 +525,7 @@ test('summary lists every planned shard with its gate checks and host class', as
     assert.match(markdown, /^\| Shard \| Gate checks \| Host \|/m)
     assert.match(
       markdown,
-      /^\| swipeable \| rejected: WDIO step did not succeed \| host trouble: .*, load 512\.16 \| 1 \| 1 \| 2 \| 3 \| 512\.16 \| 0\.4 \|$/m
+      /^\| swipeable \| rejected: wdio failure, 1 failed case, worker result 1 \| host trouble: .*, load 512\.16 \| 1 \| 1 \| 2 \| 3 \| 512\.16 \| 0\.4 \|$/m
     )
     assert.match(
       markdown,
@@ -551,34 +551,79 @@ test('the summary never shows host trouble when its own gate checks find another
   })
 })
 
+test('the gate checks cell lists every failing gate condition on one line', async () => {
+  await temporary(async (directory) => {
+    const shard = shardById('swipeable')
+    const bundle = failingBundle()
+    bundle.receipt.maestroOutcome = 'failure'
+    bundle.workers[0][1].ok = false
+    bundle.workers[0][5].status = 'skipped'
+    bundle.workers[0].splice(6, 2)
+    bundle.receipt.runAttempt = '2'
+    await writeShard(directory, shard, bundle)
+    const rows = await summarize({ ...manifest, shards: [shard] }, directory)
+    const cell =
+      'rejected: wdio failure, maestro failure (expected success), warm-up failed, ' +
+      '1 failed case, 1 skipped or pending case, 24 of 25 cases finished, worker result 1, ' +
+      'Stale receipt: runAttempt'
+    assert.equal(rows[0].result, cell)
+    assert.ok(
+      summaryMarkdown(rows)
+        .split('\n')
+        .includes(
+          `| swipeable | ${cell} | host unknown: no host-health.json | n/a | n/a | n/a | n/a | n/a | n/a |`
+        )
+    )
+  })
+})
+
 test('a table cell keeps one line and escapes the column bar', () => {
   const markdown = summaryMarkdown([{ id: 'x', result: 'rejected: a|b\nc', host: 'h' }])
   assert.match(markdown, /^\| x \| rejected: a\\\|b c \| h \|/m)
 })
 
 // Each case has step outcomes of success, so a result from the receipt alone says passed.
+// Each value is the gate checks cell for the rejection.
 const gateRejections = {
-  'Warm-up failed': (bundle) => {
-    bundle.workers[0][1].ok = false
-  },
-  'Missing/duplicate/unstarted cases': (bundle) => {
-    bundle.workers[0].splice(2, 2)
-  },
-  'Failed/skipped case': (bundle) => {
-    bundle.workers[0][3].status = 'failed'
-  },
-  'Worker failed': (bundle) => {
-    bundle.workers[0].at(-1).result = 1
-  },
-  'Maestro outcome mismatch': (bundle) => {
-    bundle.receipt.maestroOutcome = 'failure'
-  },
-  'Stale receipt: runAttempt': (bundle) => {
-    bundle.receipt.runAttempt = '2'
-  }
+  'Warm-up failed': [
+    (bundle) => {
+      bundle.workers[0][1].ok = false
+    },
+    'warm-up failed'
+  ],
+  'Missing/duplicate/unstarted cases': [
+    (bundle) => {
+      bundle.workers[0].splice(2, 2)
+    },
+    '24 of 25 cases finished, Missing/duplicate/unstarted cases'
+  ],
+  'Failed/skipped case': [
+    (bundle) => {
+      bundle.workers[0][3].status = 'failed'
+    },
+    '1 failed case'
+  ],
+  'Worker failed': [
+    (bundle) => {
+      bundle.workers[0].at(-1).result = 1
+    },
+    'worker result 1'
+  ],
+  'Maestro outcome mismatch': [
+    (bundle) => {
+      bundle.receipt.maestroOutcome = 'failure'
+    },
+    'maestro failure (expected success)'
+  ],
+  'Stale receipt: runAttempt': [
+    (bundle) => {
+      bundle.receipt.runAttempt = '2'
+    },
+    'Stale receipt: runAttempt'
+  ]
 }
 
-for (const [reason, mutate] of Object.entries(gateRejections)) {
+for (const [reason, [mutate, cell]] of Object.entries(gateRejections)) {
   test(`the summary rejects a shard the gate rejects: ${reason}`, async () => {
     const shard = shardById('swipeable')
     const bundle = passingBundle(shard)
@@ -600,7 +645,7 @@ for (const [reason, mutate] of Object.entries(gateRejections)) {
     await temporary(async (directory) => {
       await writeShard(directory, shard, bundle)
       const [row] = await summarize({ ...manifest, shards: [shard] }, directory)
-      assert.equal(row.result, `rejected: ${reason}`)
+      assert.equal(row.result, `rejected: ${cell}`)
     })
   })
 }
