@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -77,6 +77,18 @@ test('consumer plugins are preserved when present', (t) => {
   writeFileSync(path.join(source, 'plugins', 'with-demo.js'), 'module.exports = config => config\n')
   copyConsumerSources(source, destination)
   assert(existsSync(path.join(destination, 'plugins', 'with-demo.js')))
+})
+
+test('the consumer gets every config plugin that the example registers', (t) => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'swipeable-consumer-example-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const example = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'example')
+  copyConsumerSources(example, directory)
+  const plugins = JSON.parse(readFileSync(path.join(directory, 'app.json'), 'utf8')).expo.plugins
+  assert(plugins.includes('./plugins/with-scene-lifecycle'))
+  for (const name of plugins.filter((entry) => typeof entry === 'string' && entry.startsWith('.'))) {
+    assert(existsSync(path.join(directory, `${name}.js`)), `Plugin missing in consumer: ${name}`)
+  }
 })
 
 test('a missing required consumer source still fails', (t) => {
