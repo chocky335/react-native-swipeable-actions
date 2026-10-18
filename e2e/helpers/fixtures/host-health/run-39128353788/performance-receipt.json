@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "sha": "7de18da9088e798b57ce60f2dd284dfc4d74cfd0",
+  "runId": "39128353788",
+  "runAttempt": "1",
+  "id": "performance",
+  "spec": "specs/performance.spec.ts",
+  "sourceHash": "b0fa0c159c7bb37cb838f9815b36fe16ffe68374d33186eb280668492696150c",
+  "wdioOutcome": "failure",
+  "maestroOutcome": "skipped"
+}

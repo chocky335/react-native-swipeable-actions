@@ -18,7 +18,13 @@ import {
   summarize,
   summaryMarkdown
 } from './host-health.mjs'
-import { artifactName, buildManifest, EXPECTED_COUNTS, validateAggregate } from './ios-shards.mjs'
+import {
+  artifactName,
+  buildManifest,
+  EXPECTED_COUNTS,
+  parseRecords,
+  validateAggregate
+} from './ios-shards.mjs'
 
 // The CI host runs in UTC. `log show` prints its local time without a zone.
 process.env.TZ = 'UTC'
@@ -455,6 +461,180 @@ for (const [reason, mutate] of Object.entries(otherRejections)) {
     assert.doesNotMatch(describeHealth(health), /^host trouble/)
   })
 }
+
+// Trimmed from the CI shard evidence of run 39128353788 (performance and swipeable). Each
+// shard has one failed case with one latent-routed gesture in its window. The performance
+// session was quarantined after its only case, and its worker result is 3. The failed
+// WDIO step of the swipeable shard skipped its Maestro step.
+const run = path.join(fixtures, 'run-39128353788')
+const runContext = {
+  sha: '7de18da9088e798b57ce60f2dd284dfc4d74cfd0',
+  runId: '39128353788',
+  runAttempt: '1'
+}
+const runEvidence = {}
+for (const id of ['performance', 'swipeable']) {
+  runEvidence[id] = {
+    receipt: JSON.parse(await readFile(path.join(run, `${id}-receipt.json`), 'utf8')),
+    results: await readFile(path.join(run, `${id}-results.ndjson`), 'utf8'),
+    simulatorLog: await readFile(path.join(run, `${id}-simulator-log.txt`), 'utf8')
+  }
+}
+
+/** A registration source with the cases of the run evidence. */
+function registeredCases(results) {
+  return parseRecords(results)
+    .filter((record) => record.event === 'test-start')
+    .map(
+      ({ parent, title }) =>
+        `describe(${JSON.stringify(parent)}, () => { it(${JSON.stringify(title)}, () => {}) })`
+    )
+    .join('\n')
+}
+
+const runManifest = buildManifest(
+  Object.fromEntries(
+    Object.entries(EXPECTED_COUNTS).map(([spec, count]) => {
+      const id = path.basename(spec, '.spec.ts')
+      if (runEvidence[id]) return [spec, registeredCases(runEvidence[id].results)]
+      return [
+        spec,
+        `describe("suite", () => { for (let i = 0; i < ${count}; i++) it("case " + i, () => {}) })`
+      ]
+    })
+  ),
+  runContext
+)
+const runShard = (id) => runManifest.shards.find((shard) => shard.id === id)
+
+/** The run evidence of one shard. The plan of this test has its own source hash. */
+function runBundle(id) {
+  const { receipt, results } = runEvidence[id]
+  return {
+    receipt: { ...receipt, sourceHash: runShard(id).sourceHash },
+    workers: [parseRecords(results)]
+  }
+}
+
+function classifyRun(id, bundle) {
+  return classify({
+    simulatorLog: runEvidence[id].simulatorLog,
+    hostLoad,
+    results: ndjson(...bundle.workers[0]),
+    gate: gateCheck(runShard(id), bundle, runContext)
+  })
+}
+
+test('run 39128353788: a quarantine after the last failed case is part of that case', () => {
+  const bundle = runBundle('performance')
+  assert.equal(bundle.workers[0].at(-1).result, 3)
+  assert.equal(bundle.receipt.wdioOutcome, 'failure')
+  assert.deepEqual(
+    { ...gateCheck(runShard('performance'), bundle, runContext), error: undefined },
+    { error: undefined, failedCases: 1, onlyFailedCases: true }
+  )
+  const health = classifyRun('performance', bundle)
+  assert.equal(health.status, 'trouble')
+  assert.equal(health.failures, 1)
+  assert.equal(health.failuresWithLatent, 1)
+  assert.match(describeHealth(health), /^host trouble/)
+})
+
+test('run 39128353788: a Maestro step skipped after a failed WDIO step is part of the failed case', () => {
+  const bundle = runBundle('swipeable')
+  assert.equal(bundle.workers[0].at(-1).result, 1)
+  assert.deepEqual(
+    [bundle.receipt.wdioOutcome, bundle.receipt.maestroOutcome],
+    ['failure', 'skipped']
+  )
+  assert.deepEqual(
+    { ...gateCheck(runShard('swipeable'), bundle, runContext), error: undefined },
+    { error: undefined, failedCases: 1, onlyFailedCases: true }
+  )
+  const health = classifyRun('swipeable', bundle)
+  assert.equal(health.status, 'trouble')
+  assert.equal(health.failures, 1)
+  assert.equal(health.failuresWithLatent, 1)
+})
+
+// Each of these is a rejection that the failed case of the run does not cause.
+const runRejections = {
+  'Maestro failure': [
+    'swipeable',
+    (bundle) => {
+      bundle.receipt.maestroOutcome = 'failure'
+    }
+  ],
+  'Maestro cancelled': [
+    'swipeable',
+    (bundle) => {
+      bundle.receipt.maestroOutcome = 'cancelled'
+    }
+  ],
+  'Maestro skipped after a successful WDIO step': [
+    'swipeable',
+    (bundle) => {
+      bundle.receipt.wdioOutcome = 'success'
+    }
+  ],
+  'worker result 3 after a passed last case': [
+    'swipeable',
+    (bundle) => {
+      bundle.workers[0].at(-1).result = 3
+    }
+  ],
+  'worker result 2 for one failed case': [
+    'swipeable',
+    (bundle) => {
+      bundle.workers[0].at(-1).result = 2
+    }
+  ],
+  'worker result 1 for two failed cases': [
+    'swipeable',
+    (bundle) => {
+      Object.assign(bundle.workers[0][5], { status: 'failed', error: { name: 'Error' } })
+    }
+  ],
+  'worker result that is not a count': [
+    'performance',
+    (bundle) => {
+      bundle.workers[0].at(-1).result = { message: 'spec load error' }
+    }
+  ],
+  'quarantine with a hook record': [
+    'performance',
+    (bundle) => {
+      bundle.workers[0].splice(4, 0, {
+        ...bundle.workers[0][3],
+        event: 'hook-failure',
+        hook: 'afterEach'
+      })
+    }
+  ]
+}
+
+for (const [reason, [id, mutate]] of Object.entries(runRejections)) {
+  test(`run 39128353788: a latent-routed failed case with another rejection is mixed: ${reason}`, () => {
+    const bundle = runBundle(id)
+    mutate(bundle)
+    const check = gateCheck(runShard(id), bundle, runContext)
+    assert.equal(check.passed, undefined)
+    assert.equal(check.onlyFailedCases, false)
+    const health = classifyRun(id, bundle)
+    assert.equal(health.status, 'mixed')
+    assert.match(describeHealth(health), /^host mixed: .*, other gate checks fail too/)
+  })
+}
+
+test('the worker result of the failed cases alone is one Mocha failure for each case', () => {
+  const bundle = runBundle('swipeable')
+  Object.assign(bundle.workers[0][5], { status: 'failed', error: { name: 'Error' } })
+  bundle.workers[0].at(-1).result = 2
+  assert.deepEqual(
+    { ...gateCheck(runShard('swipeable'), bundle, runContext), error: undefined },
+    { error: undefined, failedCases: 2, onlyFailedCases: true }
+  )
+})
 
 test('the gate checks pass a passing shard, and it has no failed cases', () => {
   const check = gateCheck(shardById('swipeable'), passingBundle(shardById('swipeable')), context)

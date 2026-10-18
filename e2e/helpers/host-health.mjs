@@ -143,19 +143,43 @@ const failedCase = (record) =>
   record.event === 'test-result' && record.status === 'failed' && !record.pending && !record.skipped
 
 /**
- * The same evidence with each failed case passed, and with the WDIO step and the worker
- * outcomes that a failed case causes. Nothing else changes.
+ * True when the failed cases alone cause the worker result. WDIO gives `after` the Mocha
+ * failure count: one for each failed case and for each failed hook. A hook that fails in
+ * its body has a hook record. A session quarantine fails each later hook before the WDIO
+ * hook wrapper runs, so these hooks have no record (command-scope.ts `wrap`). A quarantine
+ * after the last case adds only these hooks, and the worker ends directly after that case.
  */
-function withFailedCasesPassed({ receipt, workers }) {
+function failedCasesCauseResult(records) {
+  const end = records.at(-1)
+  if (end?.event !== 'worker-end' || !Number.isInteger(end.result)) return false
+  const failed = records.filter(failedCase).length
+  if (failed === 0) return false
+  if (end.result === failed) return true
+  return end.result > failed && records.length > 1 && failedCase(records.at(-2))
+}
+
+/**
+ * The same evidence with each failed case passed, and with the step and worker outcomes
+ * that a failed case causes. CI runs the Maestro step only after a successful WDIO step,
+ * so a failed WDIO step skips it. Nothing else changes.
+ */
+function withFailedCasesPassed(shard, { receipt, workers }) {
+  const wdioFailed = receipt.wdioOutcome === 'failure'
+  const maestroSkipped = shard.maestro && wdioFailed && receipt.maestroOutcome === 'skipped'
   return {
-    receipt: receipt.wdioOutcome === 'failure' ? { ...receipt, wdioOutcome: 'success' } : receipt,
-    workers: workers.map((records) =>
-      records.map((record) => {
+    receipt: {
+      ...receipt,
+      ...(wdioFailed && { wdioOutcome: 'success' }),
+      ...(maestroSkipped && { maestroOutcome: 'success' })
+    },
+    workers: workers.map((records) => {
+      const causedResult = failedCasesCauseResult(records)
+      return records.map((record) => {
         if (failedCase(record)) return { ...record, status: 'passed', error: null }
-        if (record.event === 'worker-end' && record.result === 1) return { ...record, result: 0 }
+        if (record.event === 'worker-end' && causedResult) return { ...record, result: 0 }
         return record
       })
-    )
+    })
   }
 }
 
@@ -171,7 +195,7 @@ export function gateCheck(shard, bundle, context) {
     let onlyFailedCases = false
     if (failedCases > 0) {
       try {
-        validateShard(shard, withFailedCasesPassed(bundle), context)
+        validateShard(shard, withFailedCasesPassed(shard, bundle), context)
         onlyFailedCases = true
       } catch {
         // Another gate check fails too, so the shard has a failure that is not a failed case.
