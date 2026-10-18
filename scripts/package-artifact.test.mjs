@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { copyConsumerSources, createConsumerDirectory, installedConsumerPackage, validateAutolinking, validateIdentity, validateInventory } from './package-artifact.mjs'
 
 const files = [
-  'package.json', 'README.md', 'CHANGELOG.md', 'docs/migration-v1.md', 'docs/support.md',
+  'package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'docs/migration-v1.md', 'docs/support.md',
   'src/index.ts', 'build/index.d.ts', 'build/index.js', 'build/Swipeable.types.d.ts', 'expo-module.config.json',
   'ios/react-native-swipeable-actions.podspec', 'ios/SwipeableView.swift', 'ios/SwipeableModule.swift', 'ios/SwipePhysics.swift',
   'android/build.gradle', 'android/src/main/AndroidManifest.xml',
@@ -23,6 +23,7 @@ for (const entry of [
   'ios/Tests/SwipePhysicsTests.swift', 'node_modules/react/index.js',
   'example/App.tsx', 'e2e/logs/output.json', '.env', 'ios/.DS_Store', '../private', '/private', 'ios\\private'
 ]) test(`rejects non-consumer entry ${entry}`, () => assert.throws(() => validateInventory([...files, entry])))
+test('a missing license fails closed', () => assert.throws(() => validateInventory(files.filter((name) => name !== 'LICENSE')), /Missing package file: LICENSE/))
 test('missing declarations fail closed', () => assert.throws(() => validateInventory(files.filter((name) => name !== 'build/index.d.ts'))))
 test('duplicate inventory entries fail closed', () => assert.throws(() => validateInventory([...files, files[0]])))
 

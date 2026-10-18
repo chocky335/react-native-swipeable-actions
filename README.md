@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
 [![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
+[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](LICENSE)
 
 Native swipeable rows for React Native. Gestures, springs and progress run in
 Swift and Kotlin, so a busy JavaScript thread does not drop swipe frames. It is a
@@ -377,4 +377,4 @@ npm run test:android
 
 ## License
 
-MIT
+[MIT](LICENSE)

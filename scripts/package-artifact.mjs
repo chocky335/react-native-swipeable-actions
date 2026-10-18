@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const packageName = 'react-native-swipeable-actions'
 const required = [
-  'package.json', 'README.md', 'CHANGELOG.md',
+  'package.json', 'README.md', 'CHANGELOG.md', 'LICENSE',
   'docs/migration-v1.md', 'docs/support.md',
   'src/index.ts', 'build/index.d.ts', 'build/index.js',
   'build/Swipeable.types.d.ts', 'expo-module.config.json',
