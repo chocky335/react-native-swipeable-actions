@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "outDir": "./node_modules/.cache/swipeable-type-tests"
+  },
+  "include": ["src/__type_tests__/**/*.ts", "src/__type_tests__/**/*.tsx"],
+  "exclude": ["node_modules", "build", "ios", "android", "src/__tests__", "src/__mocks__"]
+}

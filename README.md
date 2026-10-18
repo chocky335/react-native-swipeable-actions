@@ -288,6 +288,7 @@ not swipes.
 ```ts
 import type {
   SwipeableProps, // Canonical props type
+  SwipeableCommonProps, // Props that every side configuration shares
   SwipeableMethods, // Ref methods
   SwipeableStatic, // Static methods
   SwipeSide, // 'left' | 'right'

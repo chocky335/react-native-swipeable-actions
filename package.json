@@ -38,6 +38,7 @@
     "format:check": "biome format src example e2e",
     "check": "biome check src example e2e",
     "typecheck": "tsc --noEmit",
+    "typecheck:fixtures": "tsc -p tsconfig.type-tests.json",
     "test:package": "node --test scripts/package-artifact.test.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",

@@ -43,8 +43,8 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 - Opt-in `appearance="ios26"` iOS action motion, and the `hapticFeedback`
   prop for the iOS threshold haptic. Reduce Motion removes the motion scaling
   ([#19](https://github.com/chocky335/react-native-swipeable-actions/issues/19)).
-- Type exports `SwipeSide`, `SwipeAppearance`, and the aliases
-  `TwoSidedSwipeableProps` and `SwipeableComponentProps`.
+- Type exports `SwipeSide`, `SwipeAppearance`, `SwipeableCommonProps`, and the
+  aliases `TwoSidedSwipeableProps` and `SwipeableComponentProps`.
 
 ### Fixed
 

@@ -8,6 +8,7 @@ export type {
   NativeSwipeableRef,
   SwipeAppearance,
   SwipeSide,
+  SwipeableCommonProps,
   SwipeableComponentProps,
   TwoSidedSwipeableProps,
   SwipeableMethods,

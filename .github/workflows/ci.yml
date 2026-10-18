@@ -76,6 +76,9 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      - name: TypeScript declaration check of type fixtures
+        run: npm run typecheck:fixtures
+
   test:
     needs: lint
     runs-on: ubuntu-latest
