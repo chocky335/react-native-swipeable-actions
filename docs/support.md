@@ -19,9 +19,8 @@ The package is an Expo module with native code.
 ## iOS 27 and the UIScene lifecycle
 
 An app built with the iOS 27 SDK (Xcode 27) stops at launch on iOS 27 if it does not
-adopt the UIScene lifecycle. This is an app-level requirement of iOS and the Expo app
-template. This package does not
-cause it and cannot fix it.
+adopt the UIScene lifecycle. iOS sets this requirement for the app. The Expo SDK 54
+app template does not meet it. This package does not cause it and cannot fix it.
 
 - The Expo SDK 54 template creates its window in the app delegate. It has no scene
   delegate.
