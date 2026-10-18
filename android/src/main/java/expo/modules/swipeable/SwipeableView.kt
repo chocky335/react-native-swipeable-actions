@@ -724,8 +724,12 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         val generation = workGeneration
         gestureTimeoutRunnable = Runnable {
             if (generation == workGeneration && isGestureActivated) {
-                // Force gesture end if stuck
-                handlePanEnd(0f, 0f)
+                // A stuck gesture ends like an OS cancel, not a release. The finger can
+                // still be down, so the rest of this touch sequence stays consumed.
+                isCurrentTouchCancelled = true
+                velocityTracker?.recycle()
+                velocityTracker = null
+                reconcileLogicalState()
             }
         }
         postDelayed(gestureTimeoutRunnable, GESTURE_TIMEOUT_MS)

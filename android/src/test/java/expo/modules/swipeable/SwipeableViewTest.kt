@@ -1857,6 +1857,51 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun stuckGestureWatchdogCancelsSilentlyAndConsumesHeldTouchUntilFreshDown() {
+        for (dispatch in listOf(false, true)) for (side in SwipeSide.values()) {
+            val row = row()
+            settle()
+            assertTrue(row.isAttachedToWindow)
+            fun touch(action: Int, distance: Float) {
+                motion(action, 200f + side.sign * distance, 10f).useEvent {
+                    if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                }
+            }
+            touch(MotionEvent.ACTION_DOWN, 0f)
+            touch(MotionEvent.ACTION_MOVE, 40f)
+            touch(MotionEvent.ACTION_MOVE, 140f)
+            assertEquals(side.sign * 100f, content(row).translationX, .01f)
+            assertEquals(1, named("onSwipeStart").size)
+            // Hold the finger down past the 5 s stuck-gesture watchdog.
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            settle()
+            assertEquals(0f, content(row).translationX, .01f)
+            assertTrue(ends().isEmpty())
+            consumeCancellation("row", side.value)
+            // The same pointer keeps moving, then lifts: no new swipe and no fabricated release.
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_MOVE, 60f)
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_UP, 180f)
+            settle()
+            assertEquals(1, named("onSwipeStart").size)
+            assertTrue(ends().isEmpty())
+            assertTrue(named("onGestureCancelled").isEmpty())
+            assertEquals(0f, content(row).translationX, .01f)
+            // A fresh ACTION_DOWN starts a normal swipe again.
+            touch(MotionEvent.ACTION_DOWN, 0f)
+            touch(MotionEvent.ACTION_MOVE, 40f)
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_UP, 180f)
+            settle()
+            assertEquals(2, named("onSwipeStart").size)
+            assertEquals(listOf("open:${side.value}"), ends())
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()
