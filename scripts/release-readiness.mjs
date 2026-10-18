@@ -53,7 +53,7 @@ export function validateRun(run, jobs, { sourceSha, repository }) {
   assert.equal(run.path, '.github/workflows/ci.yml', 'Evidence must come from maintained CI')
   assert.equal(run.event, 'workflow_dispatch', 'Full manual CI run required')
   assert.equal(run.head_branch, 'main', 'Evidence must test prepared main source')
-  assert.equal(run.run_attempt, 1, 'Fresh full runs required; rerunning failed jobs is not repeat acceptance')
+  assert.equal(run.run_attempt, 1, 'A fresh full run is required; rerunning failed jobs is not release evidence')
   assert.equal(run.status, 'completed')
   assert.equal(run.conclusion, 'success', 'CI did not fully succeed')
   assert.ok(Number.isFinite(Date.parse(run.run_started_at)))

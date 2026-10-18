@@ -14,7 +14,7 @@ acceptance.
    `npm version prerelease` to infer v1.
 2. In a separately reviewed preparation change, use
    `npm version <version> --no-git-tag-version --ignore-scripts` with the approved
-   exact version. Skip this step if `package.json` already has that version.
+   exact version. Skip that command if `package.json` already has that version.
    Commit package and lockfile identity together with finalized release notes
    under exactly `## <version> - YYYY-MM-DD`. Retain breaking API, migration,
    platform and appearance notes. Leave `Unreleased` for subsequent changes.
