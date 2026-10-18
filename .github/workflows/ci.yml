@@ -34,12 +34,16 @@ on:
         type: boolean
         default: false
 
+# Every job only reads the repository. Artifacts and caches use the runner's own token.
+permissions:
+  contents: read
+
 jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
@@ -48,7 +52,7 @@ jobs:
         run: node --test scripts/package-artifact.test.mjs scripts/release-readiness.test.mjs scripts/jest-setup.test.mjs
       - name: Build and validate consumer artifact
         run: node scripts/package-artifact.mjs pack "$RUNNER_TEMP/swipeable-package"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-package-${{ github.sha }}
           path: ${{ runner.temp }}/swipeable-package/
@@ -57,9 +61,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
@@ -83,15 +87,15 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -124,7 +128,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check pinned iOS toolchain
         run: |
@@ -141,17 +145,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Locate the clean consumer
         run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -162,7 +166,7 @@ jobs:
       - name: Install E2E dependencies
         run: cd e2e && npm ci
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: npm-package-${{ github.sha }}
           path: ${{ runner.temp }}/swipeable-package/
@@ -174,14 +178,14 @@ jobs:
         run: cd "$SWIPEABLE_CONSUMER" && npx expo prebuild --platform android --no-install
 
       - name: Upload consumer acceptance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: package-consumer-android-${{ github.sha }}
           path: ${{ env.SWIPEABLE_CONSUMER }}/consumer-acceptance.json
           if-no-files-found: error
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -203,7 +207,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Cache AVD snapshot
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         id: avd-cache
         with:
           path: |
@@ -213,7 +217,7 @@ jobs:
 
       - name: Generate AVD snapshot
         if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           target: default
@@ -225,7 +229,7 @@ jobs:
           script: echo "AVD snapshot generated"
 
       - name: Run E2E tests
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/android-evidence
         with:
@@ -247,14 +251,14 @@ jobs:
 
       - name: Upload logcat
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: logcat-android
           path: /tmp/logcat.txt
 
       - name: Upload Android failure evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: failure-evidence-android
           path: e2e/logs/android-evidence/
@@ -267,8 +271,8 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
@@ -289,7 +293,7 @@ jobs:
             'if $s == "all" then . else {include: [.include[] | select(.id == $s)]} end' <<< "$MATRIX")
           test "$(jq '.include | length' <<< "$SELECTED")" -gt 0
           echo "matrix=$SELECTED" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ios-plan/
@@ -303,7 +307,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Locate the clean consumer
         run: echo "SWIPEABLE_CONSUMER=$RUNNER_TEMP/swipeable-consumer" >> "$GITHUB_ENV"
@@ -313,7 +317,7 @@ jobs:
           test "$(uname -m)" = arm64
           xcodebuild -version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
@@ -321,7 +325,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: npm-package-${{ github.sha }}
           path: ${{ runner.temp }}/swipeable-package/
@@ -333,7 +337,7 @@ jobs:
         run: cd "$SWIPEABLE_CONSUMER" && npx expo prebuild --platform ios --no-install
 
       - name: Upload consumer acceptance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: package-consumer-ios-${{ github.sha }}
           path: ${{ env.SWIPEABLE_CONSUMER }}/consumer-acceptance.json
@@ -366,7 +370,7 @@ jobs:
             ios-build-artifact/SwipeableDemo.zip
 
       - name: Upload release app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-release-${{ github.sha }}
           path: ios-build-artifact/
@@ -384,9 +388,9 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
@@ -398,7 +402,7 @@ jobs:
         run: cd e2e && npm ci
 
       - name: Download expected inventory
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ios-plan/
@@ -407,7 +411,7 @@ jobs:
         run: node e2e/helpers/ios-shards.mjs verify-plan ios-plan/manifest.json
 
       - name: Download release app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ios-release-${{ github.sha }}
           path: ios-build-artifact/
@@ -510,15 +514,28 @@ jobs:
 
       - name: Upload simulator video
         if: always() && inputs.ios-video
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-video-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
           path: ${{ runner.temp }}/ios-video/
           if-no-files-found: warn
 
+      # A fixed release with its SHA-256 (GitHub release asset digest), not the latest installer script.
       - name: Install Maestro
         if: matrix.maestro
-        run: curl -Ls "https://get.maestro.mobile.dev" | bash
+        env:
+          MAESTRO_VERSION: 2.11.0
+          MAESTRO_SHA256: 5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
+            "https://github.com/mobile-dev-inc/Maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip"
+          echo "${MAESTRO_SHA256}  $RUNNER_TEMP/maestro.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP/maestro"
+          mkdir -p "$HOME/.maestro"
+          cp -R "$RUNNER_TEMP/maestro/maestro/." "$HOME/.maestro/"
+          test -x "$HOME/.maestro/bin/maestro"
+          "$HOME/.maestro/bin/maestro" --version
 
       - name: Run Maestro seekbar regression test
         id: maestro
@@ -553,7 +570,7 @@ jobs:
 
       - name: Upload Appium logs and required shard evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-shard-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
           path: e2e/logs/
@@ -566,20 +583,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: 'npm'
       - name: Install E2E harness dependencies
         run: npm --prefix e2e ci
       - name: Download expected inventory
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ios-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ios-plan/
       - name: Download all shard evidence separately
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ios-shard-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: ios-shards/
