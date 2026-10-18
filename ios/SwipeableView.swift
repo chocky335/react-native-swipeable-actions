@@ -571,7 +571,10 @@ public class SwipeableView: ExpoView {
     ) -> Bool {
         let cancelled = preserveGestureCompletion ? nil :
             gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide)
-        if (panGesture.state == .began || panGesture.state == .changed) {
+        // Like Android, interrupted work consumes only a gesture that already activated.
+        // A pan that has not activated keeps tracking and can activate after that work.
+        if (isGestureActivated || directGesturePending)
+            && (panGesture.state == .began || panGesture.state == .changed) {
             ignoresPanUntilNextBegin = true
         }
         workGeneration += 1
@@ -969,6 +972,8 @@ public class SwipeableView: ExpoView {
             ? gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide) : nil
         if childComponentView === contentView {
             let interrupted = hasPendingInteraction
+            // Like Android, content removal consumes the rest of the pan, activated or not.
+            if panGesture.state == .began || panGesture.state == .changed { ignoresPanUntilNextBegin = true }
             // Invalidate completion/timer generations before returning the child to
             // Fabric's pool, not merely the animator's reference to that child.
             invalidateWork(preservePresentation: false, clearRestore: false)
