@@ -58,6 +58,11 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 - `expo-modules-core` is no longer a peer dependency. A fresh `npm install`
   could pull a newer expo-modules-core than the app's Expo SDK uses. The app now
   gets the version its `expo` package brings.
+- The shipped Jest mock (`jestSetup.js`) no longer calls `onSwipeStart` when a row
+  mounts. Tests that relied on that call must fire the native event themselves,
+  as the README shows.
+- On Android, a swipe held longer than 5 seconds is now cancelled without an
+  `onSwipeEnd`, and the rest of that touch is ignored.
 
 ## 0.1.12 and earlier
 
