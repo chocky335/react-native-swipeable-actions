@@ -9,6 +9,9 @@ The package is an Expo module with native code.
 
 - It needs a native build with Expo Modules: an Expo development build, `expo run`,
   or a bare React Native app with `install-expo-modules`.
+- It needs the New Architecture (Fabric) on iOS and Android. The iOS view does not
+  compile on the legacy architecture (Paper).
+- It needs Expo SDK 54 or newer, React Native 0.81 or newer and React 19.1 or newer.
 - Expo Go cannot load it.
 - Rebuild the iOS and Android apps after every install or upgrade. A JavaScript
   reload or an OTA update cannot change native code.
@@ -19,9 +22,10 @@ The package declares these ranges. They are minimums, not a tested matrix.
 
 | Declaration | Value |
 | --- | --- |
-| `expo` peer | `>=50.0.0` |
-| `react` peer | `>=18.0.0` |
-| `react-native` peer | `>=0.73.0` |
+| `expo` peer | `>=54.0.0` |
+| `react` peer | `>=19.1.0` |
+| `react-native` peer | `>=0.81.0` |
+| Architecture | New Architecture (Fabric) only |
 | iOS deployment target | 13.4 |
 | Android `minSdkVersion` | 23 |
 
@@ -39,10 +43,21 @@ Maestro flows.
 | iOS | iOS 26.4 simulator (iPhone 17 Pro), Xcode 26.6 | 62 E2E cases, Maestro flows, Swift unit tests |
 | Packaging | `npm pack` tarball in a clean Expo app | Install, type check, autolinking, release builds on both platforms |
 
+The Swift unit tests run with `swift test` on macOS in the `test-ios` CI job. They
+cover the platform-independent helpers and state logic: swipe physics, side
+selection, gesture completion, the open-state cache, child roles, rail visibility
+and haptic state. They do not load UIKit or the native view. The E2E suites cover
+the UIKit view on the simulator.
+
+## Not supported
+
+- The legacy architecture (Paper). The iOS view does not compile on it, and no
+  Android run used it.
+- Expo SDK below 54, React Native below 0.81 and React below 19.1. The peer ranges
+  exclude them.
+
 ## Not tested
 
-- The legacy (Paper) architecture.
-- Expo SDK below 54 and React Native below 0.81, even though the peer ranges allow them.
 - iOS versions below the simulator runtime above, and Android API levels other than 34.
 - Physical Android devices for 1.0. Earlier 0.x benchmarks used a Pixel 8 Pro.
 - Haptics and Reduce Motion on a physical iPhone. The maintainer checks them by

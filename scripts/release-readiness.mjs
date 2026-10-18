@@ -14,7 +14,7 @@ import {
 } from '../e2e/helpers/ios-shards.mjs'
 
 export const REQUIRED_JOBS = Object.freeze([
-  'lint', 'test', 'package', 'build-ios', 'e2e-android', 'ios-plan',
+  'lint', 'test', 'test-ios', 'package', 'build-ios', 'e2e-android', 'ios-plan',
   'iOS / performance', 'iOS / rtl', 'iOS / swipe-back', 'iOS / swipeable', 'iOS / two-sided',
   'e2e-ios'
 ])
@@ -70,6 +70,9 @@ export function validateRun(run, jobs, { sourceSha, repository }) {
     const steps = jobs.find((job) => job.name === name).steps
     assert.equal(steps?.find((step) => step.name === 'Run E2E tests')?.conclusion, 'success', 'Missing successful test execution: ' + name)
   }
+  assert.equal(jobs.find((job) => job.name === 'test-ios').steps?.find(
+    (step) => step.name === 'Run Swift unit tests'
+  )?.conclusion, 'success', 'Swift unit tests must actually execute')
   assert.equal(jobs.find((job) => job.name === 'iOS / swipeable').steps?.find(
     (step) => step.name === 'Run Maestro seekbar regression test'
   )?.conclusion, 'success', 'Maestro must actually execute')

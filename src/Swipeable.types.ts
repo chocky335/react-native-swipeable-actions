@@ -60,7 +60,8 @@ export interface SwipeableViewProps extends ViewProps {
   testID?: string
 }
 
-interface SwipeableCommonProps {
+/** Props that every side configuration shares. Wrappers that emit declarations name it. */
+export interface SwipeableCommonProps {
   children: ReactNode
   onLeftSwipeEnd?: (state: 'open' | 'closed') => void
   onRightSwipeEnd?: (state: 'open' | 'closed') => void

@@ -8,6 +8,7 @@ export type {
   NativeSwipeableRef,
   SwipeAppearance,
   SwipeSide,
+  SwipeableCommonProps,
   SwipeableComponentProps,
   TwoSidedSwipeableProps,
   SwipeableMethods,
@@ -15,6 +16,7 @@ export type {
   SwipeableStatic,
   SwipeableViewProps,
   SwipeProgressEvent,
+  SwipeStartEvent,
   SwipeStateEvent
 } from './Swipeable.types'
 export { SwipeableView } from './SwipeableView'

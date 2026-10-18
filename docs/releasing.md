@@ -77,13 +77,14 @@ one supplied run ID. Arbitrary local JSON pass receipts are not a publish input.
 The run must be a successful [CI workflow](https://github.com/chocky335/react-native-swipeable-actions/blob/main/.github/workflows/ci.yml) execution in this
 repository with the exact source SHA and these successful jobs:
 
-- `lint`, `test`, `package`, `build-ios`, `e2e-android`, `ios-plan`
+- `lint`, `test`, `test-ios`, `package`, `build-ios`, `e2e-android`, `ios-plan`
 - `iOS / performance`, `iOS / rtl`, `iOS / swipe-back`, `iOS / swipeable`, `iOS / two-sided`,
   `e2e-ios`
 
 Any additional unsuccessful, duplicate, missing, skipped or unfinished job also
 blocks publication. Each mobile job must have a successful `Run E2E tests` step,
 and swipeable must execute `Run Maestro seekbar regression test` successfully.
+`test-ios` must have a successful `Run Swift unit tests` step.
 
 The package artifact is `npm-package-<full SHA>` **within the supplied run**.
 It contains `package-artifact.json` with `sourceSha`, `cleanSource: true`,
@@ -187,3 +188,31 @@ Offline gate regression command from a repository checkout:
 The [regression suite](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.test.mjs)
 uses synthetic evidence and mocked workflow git/npm commands. It tests rejection
 logic and mutation boundaries; it is not mobile acceptance and never publishes.
+
+## After a bad publish
+
+If a published version is broken, recover with a new version. A published npm
+version and its `v<version>` tag are permanent records.
+
+1. A package owner on npm restores the dist-tag to the last good version. The
+   publish workflow cannot do this. Its trusted publishing only publishes.
+   - For an RC: `npm dist-tag add react-native-swipeable-actions@<good> next`
+   - For a stable release: `npm dist-tag add react-native-swipeable-actions@<good> latest`
+   - If `next` has no earlier good version, remove it:
+     `npm dist-tag rm react-native-swipeable-actions next`.
+2. The owner deprecates the bad version, so that npm warns at install:
+   `npm deprecate react-native-swipeable-actions@<bad> "<problem>. Use <good>."`
+3. Never run `npm unpublish`. It breaks lockfiles that already resolve the version,
+   and npm never allows that version number again.
+4. Keep the `v<bad>` tag. Do not move or delete it. Add a note to its GitHub
+   Release that names the problem and the replacement.
+5. Fix the problem on `main` through the normal review. Then prepare the next exact
+   version, for example `1.0.0-rc.<N+1>` after a bad RC. Run the complete procedure
+   on that source: fresh full CI, physical acceptance, verify, then publish. No
+   evidence of the bad version carries over. The publish of the corrective version
+   moves its dist-tag to it.
+6. The readiness gate and the publish workflow accept only `1.0.0-rc.N` and
+   `1.0.0`. A patch release such as `1.0.1` needs a reviewed change first: extend
+   the version pattern in `validateSource` in `scripts/release-readiness.mjs`, add
+   its tests, and update the `version` input text in `publish.yml`. Then the patch
+   goes through this same gate.

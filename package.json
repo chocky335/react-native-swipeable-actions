@@ -38,6 +38,7 @@
     "format:check": "biome format src example e2e",
     "check": "biome check src example e2e",
     "typecheck": "tsc --noEmit",
+    "typecheck:fixtures": "tsc -p tsconfig.type-tests.json",
     "test:package": "node --test scripts/package-artifact.test.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -65,9 +66,9 @@
   "author": "chocky335",
   "license": "MIT",
   "peerDependencies": {
-    "expo": ">=50.0.0",
-    "react": ">=18.0.0",
-    "react-native": ">=0.73.0"
+    "expo": ">=54.0.0",
+    "react": ">=19.1.0",
+    "react-native": ">=0.81.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.9",

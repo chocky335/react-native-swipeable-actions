@@ -13,6 +13,10 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 
 ### BREAKING CHANGES
 
+- The package requires the New Architecture (Fabric) on iOS and Android. The
+  legacy architecture (Paper) is not supported. The iOS view does not compile on it.
+- The minimum peer versions are now Expo SDK 54 (`expo >=54.0.0`), React Native
+  0.81 (`react-native >=0.81.0`) and React 19.1 (`react >=19.1.0`).
 - Removed `actions`, `actionsWidth` and `actionsPosition`. Pass explicit pairs:
   `rightActions` + `rightActionsWidth` and/or `leftActions` + `leftActionsWidth`
   ([#15](https://github.com/chocky335/react-native-swipeable-actions/issues/15)).
@@ -39,8 +43,9 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 - Opt-in `appearance="ios26"` iOS action motion, and the `hapticFeedback`
   prop for the iOS threshold haptic. Reduce Motion removes the motion scaling
   ([#19](https://github.com/chocky335/react-native-swipeable-actions/issues/19)).
-- Type exports `SwipeSide`, `SwipeAppearance`, and the aliases
-  `TwoSidedSwipeableProps` and `SwipeableComponentProps`.
+- Type exports `SwipeSide`, `SwipeAppearance`, `SwipeableCommonProps`,
+  `SwipeStartEvent`, and the aliases `TwoSidedSwipeableProps` and
+  `SwipeableComponentProps`.
 
 ### Fixed
 
@@ -54,6 +59,18 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 - `expo-modules-core` is no longer a peer dependency. A fresh `npm install`
   could pull a newer expo-modules-core than the app's Expo SDK uses. The app now
   gets the version its `expo` package brings.
+- The shipped Jest mock (`jestSetup.js`) no longer calls `onSwipeStart` when a row
+  mounts. Tests that relied on that call must fire the native event themselves,
+  as the README shows.
+- On Android, a swipe with no touch events for 5 seconds is now cancelled
+  without an `onSwipeEnd`, and the rest of that touch is ignored.
+- A cancelled swipe now reports the position where the row settles to
+  `onProgress` and `onSwipeStateChange`, so a progress UI does not stay mid-drag.
+- An `autoClose` row that a cancelled drag returns to open now waits
+  `autoCloseTimeout` again and closes. Before, it stayed open.
+- On iOS, a pan that has not passed `dragOffsetFromEdge` no longer stops a
+  pending auto-close or a settling animation. That work and a props change also
+  no longer swallow the pan, so the pan can still start a swipe, like on Android.
 
 ## 0.1.12 and earlier
 

@@ -504,9 +504,8 @@ public class SwipeableView: ExpoView {
         appliedConfiguration = next
         var resumeAutoClose: SwipeAutoCloseState?
         if next != previous {
-            if panGesture.state == .began || panGesture.state == .changed {
-                ignoresPanUntilNextBegin = true
-            }
+            // Like Android, the invalidation below consumes only a pan that already activated.
+            // A pan that has not activated keeps tracking and latches against this configuration.
             let logicalSide = openSide
             let reconciled = SwipePhysics.reconcileTwoSidedState(
                 openSide: logicalSide,
@@ -571,7 +570,11 @@ public class SwipeableView: ExpoView {
     ) -> Bool {
         let cancelled = preserveGestureCompletion ? nil :
             gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide)
-        if (panGesture.state == .began || panGesture.state == .changed) {
+        // Like Android, interrupted work consumes only a gesture that already activated.
+        // A pan that has not activated keeps tracking and can activate after that work.
+        let panIsLive = panGesture.state == .began || panGesture.state == .changed
+        let gestureIsLive = isGestureActivated || directGesturePending
+        if gestureIsLive && panIsLive {
             ignoresPanUntilNextBegin = true
         }
         workGeneration += 1
@@ -597,7 +600,8 @@ public class SwipeableView: ExpoView {
         isGestureActivated = false
         directGesturePending = false
         isDragging = false
-        gestureStartTranslation = 0
+        // A pan that has not activated keeps its start, so its offset check stays exact.
+        if gestureIsLive || !panIsLive { gestureStartTranslation = 0 }
         gestureSide = nil
         animationSide = nil
         startOffset = 0
@@ -969,6 +973,15 @@ public class SwipeableView: ExpoView {
             ? gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide) : nil
         if childComponentView === contentView {
             let interrupted = hasPendingInteraction
+            // Like Android, content removal consumes the rest of the pan, activated or not.
+            if panGesture.state == .began || panGesture.state == .changed {
+                ignoresPanUntilNextBegin = true
+            } else if panGesture.state == .possible {
+                // A touch that has not begun would clear the flag at its own .began.
+                // Fail it instead; a failed recognizer sends no action.
+                panGesture.isEnabled = false
+                panGesture.isEnabled = gestureEnabled
+            }
             // Invalidate completion/timer generations before returning the child to
             // Fabric's pool, not merely the animator's reference to that child.
             invalidateWork(preservePresentation: false, clearRestore: false)
@@ -1090,32 +1103,69 @@ public class SwipeableView: ExpoView {
         case .ended:
             handlePanEnded(gesture)
         case .cancelled:
+            guard isGestureActivated else {
+                // A pan that never activated interrupted nothing, so all work stays as it is.
+                gestureStartTranslation = 0
+                savedFirstResponder = nil
+                return
+            }
             let settledSide = openSide
-            guard invalidateWork(preservePresentation: false) else { return }
+            let draggedSide = currentSide
+            let reportedState = lastEmittedWillEndState
+            // The drag cleared the auto-close wait. A row that settles open waits again,
+            // like a release that reopens it, and the auto-close completes the swipe.
+            let restartsAutoClose = autoClose && settledSide != nil
+            guard invalidateWork(
+                preservePresentation: false, preserveGestureCompletion: restartsAutoClose
+            ) else { return }
             openSide = settledSide
             currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
             savedFirstResponder = nil
+            if restartsAutoClose { scheduleAutoClose() }
+            reportCancelledGesture(side: settledSide ?? draggedSide, reportedState: reportedState)
         default:
             break
         }
     }
 
+    /// A cancel returns the row to its logical state. Progress and the intended state
+    /// then report that position, so JS UIs do not stay mid-drag. A cancel never
+    /// completes the swipe, so it emits no onSwipeEnd.
+    private func reportCancelledGesture(side: SwipeSide?, reportedState: String?) {
+        let generation = workGeneration
+        let key = recyclingKey
+        let settledState = isOpen ? "open" : "closed"
+        let progress: CGFloat = isOpen ? 1 : 0
+        onSwipeProgress(payload(["progress": progress, "translationX": currentTranslation], side: side))
+        guard isCurrent(generation, key: key), reportedState != settledState else { return }
+        onSwipeStateChange(payload(["state": settledState], side: side))
+    }
+
     private func handlePanBegan(_ gesture: UIPanGestureRecognizer) {
         cancelFabricTouches()
-        let interruptedSide = currentSide
-        guard invalidateWork() else { return }
         ignoresPanUntilNextBegin = false
         gestureStartTranslation = gesture.translation(in: self).x
-        gestureSide = interruptedSide
-        if gestureSide == nil && dragOffsetFromEdge <= 0 {
-            gestureSide = SwipePhysics.latchedSide(
-                openSide: openSide, translation: gesture.velocity(in: self).x,
-                leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
-            )
-        }
-        if dragOffsetFromEdge <= 0, let side = gestureSide { activateGesture(on: side) }
+        // Like Android, only activation interrupts settling work. A pan that ends or is
+        // cancelled before it activates keeps a pending auto-close and an animation.
+        guard dragOffsetFromEdge <= 0 else { return }
+        let side = currentSide ?? SwipePhysics.latchedSide(
+            openSide: openSide, translation: gesture.velocity(in: self).x,
+            leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
+        )
+        if let side = side { interruptWorkAndActivate(on: side, startTranslation: gestureStartTranslation) }
+    }
+
+    /// Activation takes over the side of the work that it interrupts.
+    @discardableResult
+    private func interruptWorkAndActivate(on side: SwipeSide, startTranslation: CGFloat) -> Bool {
+        guard invalidateWork() else { return false }
+        // The invalidation is this pan's own, so it does not consume the pan.
+        ignoresPanUntilNextBegin = false
+        gestureStartTranslation = startTranslation
+        activateGesture(on: side)
+        return true
     }
 
     private func handlePanChanged(_ gesture: UIPanGestureRecognizer) {
@@ -1123,13 +1173,12 @@ public class SwipeableView: ExpoView {
         if !isGestureActivated {
             let relative = translation - gestureStartTranslation
             guard abs(relative) >= dragOffsetFromEdge else { return }
-            let side = gestureSide ?? SwipePhysics.latchedSide(
+            let side = currentSide ?? SwipePhysics.latchedSide(
                 openSide: openSide, translation: relative,
                 leftWidth: leftActionsWidth, rightWidth: rightActionsWidth
             )
             guard let selected = side else { return }
-            gestureStartTranslation = translation
-            activateGesture(on: selected)
+            guard interruptWorkAndActivate(on: selected, startTranslation: translation) else { return }
         }
         guard let side = currentSide else { return }
         updateGesture(translation: translation - gestureStartTranslation, side: side)
@@ -1139,7 +1188,8 @@ public class SwipeableView: ExpoView {
         guard isGestureActivated, let side = currentSide else {
             gestureStartTranslation = 0
             savedFirstResponder = nil
-            resetFeedback()
+            // A pan that never activated began no feedback and interrupted nothing.
+            if isGestureActivated { resetFeedback() }
             return
         }
         finishGesture(

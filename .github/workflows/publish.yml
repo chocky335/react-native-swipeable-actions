@@ -52,7 +52,7 @@ jobs:
       RELEASE_RUNS: ${{ inputs.ci_runs }}
       RELEASE_ACCEPTANCE: ${{ inputs.acceptance_comment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -62,7 +62,7 @@ jobs:
           REMOTE_MAIN=$(git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --heads origin refs/heads/main)
           test "$REMOTE_MAIN" = "$(printf '%s\trefs/heads/main' "$RELEASE_SOURCE")"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
@@ -84,7 +84,7 @@ jobs:
           --out "$RUNNER_TEMP/verified-release"
 
       - name: Preserve verified release report and tested tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: verified-release-${{ inputs.version }}-${{ github.run_id }}
           path: ${{ runner.temp }}/verified-release/

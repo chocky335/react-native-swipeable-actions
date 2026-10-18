@@ -8,7 +8,12 @@ function getColorIndex(id: string): number {
   return match ? parseInt(match[0], 10) % avatarColors.length : 0
 }
 
-export function RowContent({ item, onPress }: RowContentProps) {
+export function RowContent({
+  item,
+  onPress,
+  accessibilityActions,
+  onAccessibilityAction
+}: RowContentProps) {
   const avatarColor = avatarColors[getColorIndex(item.id)]
   const avatarStyle = useMemo(
     () => [styles.avatar, { backgroundColor: avatarColor }],
@@ -19,6 +24,8 @@ export function RowContent({ item, onPress }: RowContentProps) {
     <TouchableOpacity
       style={styles.rowContent}
       onPress={onPress}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
       testID={`row-pressable-${item.id}`}
     >
       <View style={avatarStyle}>

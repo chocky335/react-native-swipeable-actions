@@ -4,6 +4,15 @@ The component name stays `Swipeable`. All rows now use explicit physical-side
 content/width pairs and one native engine. Rebuild the native app after upgrading.
 Do not mix v1 JavaScript with an older native binary.
 
+## Before you install
+
+- v1 requires the New Architecture (Fabric) on iOS and Android. The legacy
+  architecture (Paper) is not supported. If your app still uses it, stay on 0.x.
+- v1 requires Expo SDK 54 or newer, React Native 0.81 or newer and React 19.1 or
+  newer. Upgrade the app first, then install v1.
+- Install it with `npx expo install react-native-swipeable-actions@next` while
+  1.0 is a release candidate, then rebuild the iOS and Android apps.
+
 ## At a glance
 
 | Kind | 0.x | 1.0 |
@@ -173,6 +182,8 @@ one or both explicit sides; they do not restore removed API inputs or behaviors.
    exchange the library's sides, widths, command arguments or side callbacks.
 2. Update examples, wrappers, mocks and type fixtures to complete explicit pairs.
 3. Keep action padding/gaps inside the declared width and preserve usable targets.
+   Give each row a path to its actions without a swipe, with `accessibilityActions`
+   on the row content. See [Accessibility](../README.md#accessibility).
 4. Keep recycling keys stable through reorder, translation updates and reattachment.
 5. Rebuild iOS/Android and rerun application behavior, including close/reset,
    recycling, disabled edges, child gestures, chat auto-close and RTL.

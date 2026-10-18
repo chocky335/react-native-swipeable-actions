@@ -30,7 +30,8 @@ function fixture(version = '1.0.0-rc.0', runIds = [101]) {
       const jobs = REQUIRED_JOBS.map((name, index) => ({ id: id * 100 + index, name, run_id: id, head_sha: sha,
         status: 'completed', conclusion: 'success', steps: [
           { name: 'Run E2E tests', conclusion: 'success' },
-          { name: 'Run Maestro seekbar regression test', conclusion: 'success' }
+          { name: 'Run Maestro seekbar regression test', conclusion: 'success' },
+          { name: 'Run Swift unit tests', conclusion: 'success' }
         ] }))
       const bundles = Object.fromEntries(manifest.shards.map((shard, index) => {
         const common = { timestamp: '2026-10-16T11:00:00Z', pid: 100, worker: '0-' + index }
@@ -105,6 +106,9 @@ const mutations = {
   'rerun of failed jobs': (v) => { v.runs[0].run.run_attempt = 2 },
   'unfinished run': (v) => { v.runs[0].run.status = 'in_progress' },
   'missing package job': (v) => { v.runs[0].jobs = v.runs[0].jobs.filter((j) => j.name !== 'package') },
+  'missing Swift test job': (v) => { v.runs[0].jobs = v.runs[0].jobs.filter((j) => j.name !== 'test-ios') },
+  'Swift tests skipped': (v) => { v.runs[0].jobs.find((j) => j.name === 'test-ios').steps[2].conclusion = 'skipped' },
+  'Swift test step omitted': (v) => { v.runs[0].jobs.find((j) => j.name === 'test-ios').steps = [] },
   'duplicate job': (v) => { v.runs[0].jobs.push(v.runs[0].jobs[0]) },
   'skipped job': (v) => { v.runs[0].jobs[0].conclusion = 'skipped' },
   'stale job': (v) => { v.runs[0].jobs[0].head_sha = 'b'.repeat(40) },

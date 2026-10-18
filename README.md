@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
 [![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
+[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](LICENSE)
 
 Native swipeable rows for React Native. Gestures, springs and progress run in
 Swift and Kotlin, so a busy JavaScript thread does not drop swipe frames. It is a
@@ -29,6 +29,9 @@ npx expo install react-native-swipeable-actions
 
 This is an [Expo module](https://docs.expo.dev/modules/overview/) with native code.
 
+- Requirements: Expo SDK 54 or newer, React Native 0.81 or newer, React 19.1 or
+  newer, and the New Architecture (Fabric). The legacy architecture (Paper) is
+  not supported.
 - Expo: use a [development build](https://docs.expo.dev/develop/development-builds/introduction/)
   or `npx expo run:ios` / `npx expo run:android`. Expo Go cannot load it.
 - Bare React Native: set up Expo Modules first with `npx install-expo-modules@latest`,
@@ -208,6 +211,41 @@ Swipeable.closeAll();
 Ref commands need a nonempty `recyclingKey` on the row. Numeric keys become strings,
 so `Swipeable.close("7")` reaches the row with `recyclingKey={7}`.
 
+## Accessibility
+
+A swipe is not the only way to reach row actions. Users of screen readers and
+switch control need a path without a swipe. Give the row content
+`accessibilityActions`, and call the same business callbacks as the action buttons.
+
+```tsx
+<Swipeable
+  recyclingKey={item.id}
+  rightActions={<ArchiveButton onPress={() => archive(item.id)} />}
+  rightActionsWidth={88}
+>
+  <Pressable
+    onPress={() => openItem(item.id)}
+    accessibilityActions={[{ name: "archive", label: "Archive" }]}
+    onAccessibilityAction={(event) => {
+      if (event.nativeEvent.actionName === "archive") archive(item.id);
+    }}
+  >
+    <ItemRow item={item} />
+  </Pressable>
+</Swipeable>
+```
+
+- React Native gives these actions to VoiceOver and TalkBack as custom actions.
+  This package has no screen reader tests.
+- A closed row hides its action rails from accessibility. The content actions are
+  then the only path to the row actions.
+- The action widths are yours. The library does not measure action content. With
+  a large text size, a label can need more width than you declared. Make the
+  width bigger as the font scale grows (`useWindowDimensions().fontScale`), or use
+  short labels or icons with an `accessibilityLabel`.
+
+The example list row uses the same pattern.
+
 ## RTL
 
 `left` and `right` are physical edges in every layout direction. RTL does not swap
@@ -285,6 +323,7 @@ not swipes.
 ```ts
 import type {
   SwipeableProps, // Canonical props type
+  SwipeableCommonProps, // Props that every side configuration shares
   SwipeableMethods, // Ref methods
   SwipeableStatic, // Static methods
   SwipeSide, // 'left' | 'right'
@@ -315,6 +354,29 @@ module.exports = {
 The package ships TypeScript source, so keep it in your `transformIgnorePatterns`
 allowlist, as you do for other Expo modules.
 
+- The mock renders both action rails on mount, so your tests can find action
+  content.
+- A mount calls none of your callbacks. The mock never starts a swipe by itself.
+- The ref and static commands are `jest.fn()` mocks. They do not move the row or
+  send events.
+- To test a callback, fire a native-shaped event on the row's `testID`. Put the
+  row's `recyclingKey` (as a string) in `nativeEvent`. Leave it out for a row
+  without a key.
+
+```tsx
+import { fireEvent, screen } from "@testing-library/react-native";
+
+const row = screen.getByTestId("message-42");
+fireEvent(row, "swipeStart", { nativeEvent: { recyclingKey: "42", side: "right" } });
+fireEvent(row, "swipeEnd", {
+  nativeEvent: { state: "open", side: "right", recyclingKey: "42" },
+});
+// onSwipeStart() ran once, then onSwipeEnd("open") and onRightSwipeEnd("open").
+```
+
+The other native events are `swipeStateChange` (`{ state, side }`) and
+`swipeProgress` (`{ progress, translationX, side }`).
+
 ## Compatibility
 
 | | Tested for 1.0 |
@@ -324,9 +386,11 @@ allowlist, as you do for other Expo modules.
 | iOS | iOS Simulator 26, built with Xcode 26 |
 | Android | API 34 emulator |
 
-The peer ranges (`expo >=50`, `react-native >=0.73`) and the minimum targets
-(iOS 13.4, Android API 23) are what the package declares. They are not a tested
-matrix. [docs/support.md](docs/support.md) lists what was tested and what was not.
+The package requires the New Architecture. The legacy architecture (Paper) is not
+supported. The peer ranges (`expo >=54`, `react-native >=0.81`, `react >=19.1`) and
+the minimum targets (iOS 13.4, Android API 23) are what the package declares. They
+are not a tested matrix. [docs/support.md](docs/support.md) lists what was tested
+and what was not.
 
 ## Performance
 
@@ -366,10 +430,10 @@ and the [release checklist](https://github.com/chocky335/react-native-swipeable-
 
 ```sh
 npm test            # Jest
-npm run test:ios    # Swift unit tests
+npm run test:ios    # Swift unit tests: helpers and state logic, no UIKit
 npm run test:android
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)

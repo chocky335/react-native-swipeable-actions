@@ -1857,6 +1857,198 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun stuckGestureWatchdogCancelsSilentlyAndConsumesHeldTouchUntilFreshDown() {
+        for (dispatch in listOf(false, true)) for (side in SwipeSide.values()) {
+            val row = row()
+            settle()
+            assertTrue(row.isAttachedToWindow)
+            fun touch(action: Int, distance: Float) {
+                motion(action, 200f + side.sign * distance, 10f).useEvent {
+                    if (dispatch) row.dispatchTouchEvent(it) else row.onTouchEvent(it)
+                }
+            }
+            touch(MotionEvent.ACTION_DOWN, 0f)
+            touch(MotionEvent.ACTION_MOVE, 40f)
+            touch(MotionEvent.ACTION_MOVE, 140f)
+            assertEquals(side.sign * 100f, content(row).translationX, .01f)
+            assertEquals(1, named("onSwipeStart").size)
+            // Hold the finger down past the 5 s stuck-gesture watchdog.
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            settle()
+            assertEquals(0f, content(row).translationX, .01f)
+            assertTrue(ends().isEmpty())
+            consumeCancellation("row", side.value)
+            // The same pointer keeps moving, then lifts: no new swipe and no fabricated release.
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_MOVE, 60f)
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_UP, 180f)
+            settle()
+            assertEquals(1, named("onSwipeStart").size)
+            assertTrue(ends().isEmpty())
+            assertTrue(named("onGestureCancelled").isEmpty())
+            assertEquals(0f, content(row).translationX, .01f)
+            // A fresh ACTION_DOWN starts a normal swipe again.
+            touch(MotionEvent.ACTION_DOWN, 0f)
+            touch(MotionEvent.ACTION_MOVE, 40f)
+            touch(MotionEvent.ACTION_MOVE, 180f)
+            touch(MotionEvent.ACTION_UP, 180f)
+            settle()
+            assertEquals(2, named("onSwipeStart").size)
+            assertEquals(listOf("open:${side.value}"), ends())
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun stuckGestureWatchdogFiresOnlyAfterFiveSecondsWithoutTouchEvents() {
+        for (direct in listOf(false, true)) {
+            val case = "direct=$direct"
+            fun start(row: SwipeableView) {
+                if (direct) row.handleGestureStart()
+                else motion(MotionEvent.ACTION_DOWN, 200f, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            fun move(row: SwipeableView, distance: Float) {
+                if (direct) row.handleGestureUpdate(distance, 0f)
+                else motion(MotionEvent.ACTION_MOVE, 200f + distance, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            fun release(row: SwipeableView, distance: Float) {
+                if (direct) row.handleGestureEnd(distance, 0f)
+                else motion(MotionEvent.ACTION_UP, 200f + distance, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A slow drag that keeps moving stays live past 5 s and completes.
+            val slow = row()
+            settle()
+            start(slow)
+            move(slow, 40f)
+            for (step in 1..8) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+                move(slow, 40f + step * 10f)
+            }
+            assertTrue(case, named("onGestureCancelled").isEmpty())
+            release(slow, 120f)
+            settle()
+            assertEquals(case, listOf("open:left"), ends())
+            root.removeView(slow)
+            SwipeableView.clearCache()
+            events.clear()
+            // 5 s with no touch events cancels silently, also after earlier moves.
+            val held = row()
+            settle()
+            start(held)
+            move(held, 40f)
+            move(held, 100f)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+            move(held, 110f)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4900))
+            assertTrue(case, named("onGestureCancelled").isEmpty())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+            consumeCancellation("row", "left")
+            release(held, 110f)
+            settle()
+            assertEquals(case, 0f, content(held).translationX, .01f)
+            assertTrue(case, ends().isEmpty())
+            root.removeView(held)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun cancelledGestureReportsTheSettledProgressAndState() {
+        for (watchdog in listOf(false, true)) for (startOpen in listOf(false, true)) for (crossed in listOf(true, false)) {
+            val case = "watchdog=$watchdog startOpen=$startOpen crossed=$crossed"
+            val row = row()
+            settle()
+            if (startOpen) {
+                row.open(SwipeSide.LEFT)
+                settle()
+            }
+            events.clear()
+            fun touch(action: Int, x: Float) {
+                motion(action, x, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A closed row drags toward open, an open row toward closed.
+            val direction = if (startOpen) -1f else 1f
+            touch(MotionEvent.ACTION_DOWN, 200f)
+            touch(MotionEvent.ACTION_MOVE, 200f + direction * 40f)
+            touch(MotionEvent.ACTION_MOVE, 200f + direction * (if (crossed) 140f else 60f))
+            // Let the frame callback report the mid-drag progress.
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(48))
+            val midDrag = named("onSwipeProgress").last()["progress"] as Double
+            assertTrue(case, midDrag > 0.0 && midDrag < 1.0)
+            assertEquals(case, if (crossed) 1 else 0, named("onSwipeStateChange").size)
+            val reported = events.size
+            if (watchdog) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            } else {
+                touch(MotionEvent.ACTION_CANCEL, 200f + direction * 140f)
+            }
+            settle()
+            val after = events.drop(reported)
+            val settled = if (startOpen) "open" else "closed"
+            assertEquals(case, if (startOpen) 160f else 0f, content(row).translationX, .01f)
+            // The progress and state UIs end at the settled position, not mid-drag.
+            assertEquals(case, listOf(mapOf(
+                "progress" to (if (startOpen) 1.0 else 0.0),
+                "translationX" to (if (startOpen) 160.0 else 0.0),
+                "side" to "left",
+                "recyclingKey" to "row"
+            )), after.filter { it.first == "onSwipeProgress" }.map { it.second })
+            assertEquals(
+                case,
+                if (crossed) listOf(mapOf("state" to settled, "side" to "left", "recyclingKey" to "row")) else emptyList(),
+                after.filter { it.first == "onSwipeStateChange" }.map { it.second }
+            )
+            // A cancel never completes the swipe.
+            assertTrue(case, ends().isEmpty())
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
+    @Test fun cancelledDragOfAnOpenAutoCloseRowStillAutoCloses() {
+        for (watchdog in listOf(false, true)) {
+            val case = "watchdog=$watchdog"
+            val row = row()
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 4000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(120f, 0f)
+            row.handleGestureEnd(120f, 0f)
+            settle()
+            assertEquals(case, 160f, content(row).translationX, .01f)
+            fun touch(action: Int, x: Float) {
+                motion(action, x, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A drag of the waiting row takes over the release's completion.
+            touch(MotionEvent.ACTION_DOWN, 200f)
+            touch(MotionEvent.ACTION_MOVE, 160f)
+            touch(MotionEvent.ACTION_MOVE, 150f)
+            assertEquals(2, named("onSwipeStart").size)
+            assertEquals(case, 1, named("onGestureCancelled").size)
+            if (watchdog) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            } else {
+                touch(MotionEvent.ACTION_CANCEL, 150f)
+            }
+            settle()
+            assertEquals(case, 160f, content(row).translationX, .01f)
+            assertTrue(case, ends().isEmpty())
+            // The cancel restarts the wait, and the auto-close completes the drag.
+            repeat(2) { settle() }
+            assertEquals(case, 0f, content(row).translationX, .01f)
+            assertEquals(case, listOf("open:left"), ends())
+            assertEquals(case, 1, named("onGestureCancelled").size)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()

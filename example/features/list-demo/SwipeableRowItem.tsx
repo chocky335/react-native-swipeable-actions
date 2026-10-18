@@ -1,10 +1,16 @@
 import { useCallback } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { type AccessibilityActionEvent, StyleSheet, View } from 'react-native'
 import { Swipeable } from 'react-native-swipeable-actions'
 import { LeaveAction, MuteAction } from './actions'
 import { RowContent } from './RowContent'
 import type { SwipeableRowItemProps } from './types'
 import { DELETE_DELAY_MS } from './utils'
+
+// The same actions as the swipe buttons, for users who cannot swipe.
+const ROW_ACCESSIBILITY_ACTIONS = [
+  { name: 'mute', label: 'Mute' },
+  { name: 'leave', label: 'Leave' }
+]
 
 export function SwipeableRowItem({
   item,
@@ -36,6 +42,14 @@ export function SwipeableRowItem({
     onRowPress(item.id)
   }, [item.id, onRowPress])
 
+  const handleAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName === 'mute') handleMute()
+      else if (event.nativeEvent.actionName === 'leave') handleLeave()
+    },
+    [handleMute, handleLeave]
+  )
+
   const actions = (
     <View style={styles.actionsContainer}>
       <MuteAction onPress={handleMute} />
@@ -61,7 +75,12 @@ export function SwipeableRowItem({
       gestureEnabled={gestureEnabled}
       recyclingKey={item.id}
     >
-      <RowContent item={item} onPress={handleRowPress} />
+      <RowContent
+        item={item}
+        onPress={handleRowPress}
+        accessibilityActions={ROW_ACCESSIBILITY_ACTIONS}
+        onAccessibilityAction={handleAccessibilityAction}
+      />
     </Swipeable>
   )
 }
