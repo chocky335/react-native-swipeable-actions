@@ -758,6 +758,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         onSwipeStateChange(stateEvent(settledState, settledSide))
     }
 
+    /** The watchdog measures inactivity: each move of the live gesture restarts it. */
+    private fun restartGestureTimeout() {
+        val runnable = gestureTimeoutRunnable ?: return
+        removeCallbacks(runnable)
+        postDelayed(runnable, GESTURE_TIMEOUT_MS)
+    }
+
     private fun cancelGestureTimeout() {
         gestureTimeoutRunnable?.let { removeCallbacks(it) }
         gestureTimeoutRunnable = null
@@ -787,6 +794,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
 
     private fun handlePanUpdate(translationX: Float) {
         if (!isGestureActivated || actionsWidthPx <= 0f) return
+        restartGestureTimeout()
 
         val effectiveTranslation = translationX - gestureStartTranslation
 

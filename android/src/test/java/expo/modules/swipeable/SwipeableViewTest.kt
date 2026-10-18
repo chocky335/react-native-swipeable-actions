@@ -1902,6 +1902,59 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun stuckGestureWatchdogFiresOnlyAfterFiveSecondsWithoutTouchEvents() {
+        for (direct in listOf(false, true)) {
+            val case = "direct=$direct"
+            fun start(row: SwipeableView) {
+                if (direct) row.handleGestureStart()
+                else motion(MotionEvent.ACTION_DOWN, 200f, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            fun move(row: SwipeableView, distance: Float) {
+                if (direct) row.handleGestureUpdate(distance, 0f)
+                else motion(MotionEvent.ACTION_MOVE, 200f + distance, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            fun release(row: SwipeableView, distance: Float) {
+                if (direct) row.handleGestureEnd(distance, 0f)
+                else motion(MotionEvent.ACTION_UP, 200f + distance, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A slow drag that keeps moving stays live past 5 s and completes.
+            val slow = row()
+            settle()
+            start(slow)
+            move(slow, 40f)
+            for (step in 1..8) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+                move(slow, 40f + step * 10f)
+            }
+            assertTrue(case, named("onGestureCancelled").isEmpty())
+            release(slow, 120f)
+            settle()
+            assertEquals(case, listOf("open:left"), ends())
+            root.removeView(slow)
+            SwipeableView.clearCache()
+            events.clear()
+            // 5 s with no touch events cancels silently, also after earlier moves.
+            val held = row()
+            settle()
+            start(held)
+            move(held, 40f)
+            move(held, 100f)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000))
+            move(held, 110f)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(4900))
+            assertTrue(case, named("onGestureCancelled").isEmpty())
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+            consumeCancellation("row", "left")
+            release(held, 110f)
+            settle()
+            assertEquals(case, 0f, content(held).translationX, .01f)
+            assertTrue(case, ends().isEmpty())
+            root.removeView(held)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun cancelledGestureReportsTheSettledProgressAndState() {
         for (watchdog in listOf(false, true)) for (startOpen in listOf(false, true)) for (crossed in listOf(true, false)) {
             val case = "watchdog=$watchdog startOpen=$startOpen crossed=$crossed"
