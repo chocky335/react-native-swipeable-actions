@@ -742,7 +742,14 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         isCurrentTouchCancelled = true
         velocityTracker?.recycle()
         velocityTracker = null
-        if (!reconcileLogicalState()) return
+        // The drag cleared the auto-close wait. A row that settles open waits again,
+        // like a release that reopens it, and the auto-close completes the swipe.
+        val deadline = if (autoClose && isOpen) {
+            SystemClock.uptimeMillis() + maxOf(0L, autoCloseTimeout.toLong())
+        } else {
+            null
+        }
+        if (!reconcileLogicalState(deadline = deadline)) return
         val generation = workGeneration
         val settledSide = openSide ?: side
         val settledState = if (isOpen) "open" else "closed"
@@ -1334,9 +1341,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     /** True when the row settled at its logical state now, not in later work. */
-    private fun reconcileLogicalState(restartLayoutGuard: Boolean = true): Boolean {
+    private fun reconcileLogicalState(
+        restartLayoutGuard: Boolean = true,
+        deadline: Long? = autoCloseDeadline
+    ): Boolean {
         val side = openSide
-        val deadline = autoCloseDeadline
         val closingSide = autoCloseClosingSide
         val resumesCompletion = autoClose && (
             closingSide != null && isSideEnabled(closingSide) ||

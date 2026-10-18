@@ -66,6 +66,8 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
   `onSwipeEnd`, and the rest of that touch is ignored.
 - A cancelled swipe now reports the position where the row settles to
   `onProgress` and `onSwipeStateChange`, so a progress UI does not stay mid-drag.
+- An `autoClose` row that a cancelled drag returns to open now waits
+  `autoCloseTimeout` again and closes. Before, it stayed open.
 
 ## 0.1.12 and earlier
 

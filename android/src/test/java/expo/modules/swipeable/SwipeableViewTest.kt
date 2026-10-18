@@ -1955,6 +1955,47 @@ class SwipeableViewTest {
         }
     }
 
+    @Test fun cancelledDragOfAnOpenAutoCloseRowStillAutoCloses() {
+        for (watchdog in listOf(false, true)) {
+            val case = "watchdog=$watchdog"
+            val row = row()
+            settle()
+            row.autoClose = true
+            row.autoCloseTimeout = 4000f
+            row.applyPendingConfiguration()
+            row.handleGestureStart()
+            row.handleGestureUpdate(120f, 0f)
+            row.handleGestureEnd(120f, 0f)
+            settle()
+            assertEquals(case, 160f, content(row).translationX, .01f)
+            fun touch(action: Int, x: Float) {
+                motion(action, x, 10f).useEvent { row.dispatchTouchEvent(it) }
+            }
+            // A drag of the waiting row takes over the release's completion.
+            touch(MotionEvent.ACTION_DOWN, 200f)
+            touch(MotionEvent.ACTION_MOVE, 160f)
+            touch(MotionEvent.ACTION_MOVE, 150f)
+            assertEquals(2, named("onSwipeStart").size)
+            assertEquals(case, 1, named("onGestureCancelled").size)
+            if (watchdog) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5100))
+            } else {
+                touch(MotionEvent.ACTION_CANCEL, 150f)
+            }
+            settle()
+            assertEquals(case, 160f, content(row).translationX, .01f)
+            assertTrue(case, ends().isEmpty())
+            // The cancel restarts the wait, and the auto-close completes the drag.
+            repeat(2) { settle() }
+            assertEquals(case, 0f, content(row).translationX, .01f)
+            assertEquals(case, listOf("open:left"), ends())
+            assertEquals(case, 1, named("onGestureCancelled").size)
+            root.removeView(row)
+            SwipeableView.clearCache()
+            events.clear()
+        }
+    }
+
     @Test fun nativeFollowupPhysicalDragInterruptsSettlementAndDetachConsumesHeldTouch() {
         for (dispatch in listOf(false, true)) {
             val row = row()

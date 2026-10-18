@@ -1094,12 +1094,18 @@ public class SwipeableView: ExpoView {
             let wasActivated = isGestureActivated
             let draggedSide = currentSide
             let reportedState = lastEmittedWillEndState
-            guard invalidateWork(preservePresentation: false) else { return }
+            // The drag cleared the auto-close wait. A row that settles open waits again,
+            // like a release that reopens it, and the auto-close completes the swipe.
+            let restartsAutoClose = wasActivated && autoClose && settledSide != nil
+            guard invalidateWork(
+                preservePresentation: false, preserveGestureCompletion: restartsAutoClose
+            ) else { return }
             openSide = settledSide
             currentTranslation = settledSide.map { $0.sign * width(for: $0) } ?? 0
             contentView?.transform = CGAffineTransform(translationX: currentTranslation, y: 0)
             updateActionsTransform()
             savedFirstResponder = nil
+            if restartsAutoClose { scheduleAutoClose() }
             if wasActivated { reportCancelledGesture(side: settledSide ?? draggedSide, reportedState: reportedState) }
         default:
             break
