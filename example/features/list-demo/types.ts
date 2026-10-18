@@ -1,3 +1,4 @@
+import type { AccessibilityActionEvent, AccessibilityActionInfo } from 'react-native'
 import type { SwipeableMethods } from 'react-native-swipeable-actions'
 
 export type Implementation = 'swipeable' | 'rngh'
@@ -10,6 +11,8 @@ export interface ItemData {
 export interface RowContentProps {
   item: ItemData
   onPress: () => void
+  accessibilityActions?: AccessibilityActionInfo[]
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void
 }
 
 export interface SwipeableRowItemProps {

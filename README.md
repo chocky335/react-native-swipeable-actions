@@ -211,6 +211,41 @@ Swipeable.closeAll();
 Ref commands need a nonempty `recyclingKey` on the row. Numeric keys become strings,
 so `Swipeable.close("7")` reaches the row with `recyclingKey={7}`.
 
+## Accessibility
+
+A swipe is not the only way to reach row actions. Users of screen readers and
+switch control need a path without a swipe. Give the row content
+`accessibilityActions`, and call the same business callbacks as the action buttons.
+
+```tsx
+<Swipeable
+  recyclingKey={item.id}
+  rightActions={<ArchiveButton onPress={() => archive(item.id)} />}
+  rightActionsWidth={88}
+>
+  <Pressable
+    onPress={() => openItem(item.id)}
+    accessibilityActions={[{ name: "archive", label: "Archive" }]}
+    onAccessibilityAction={(event) => {
+      if (event.nativeEvent.actionName === "archive") archive(item.id);
+    }}
+  >
+    <ItemRow item={item} />
+  </Pressable>
+</Swipeable>
+```
+
+- React Native gives these actions to VoiceOver and TalkBack as custom actions.
+  This package has no screen reader tests.
+- A closed row hides its action rails from accessibility. The content actions are
+  then the only path to the row actions.
+- The action widths are yours. The library does not measure action content. With
+  a large text size, a label can need more width than you declared. Make the
+  width bigger as the font scale grows (`useWindowDimensions().fontScale`), or use
+  short labels or icons with an `accessibilityLabel`.
+
+The example list row uses the same pattern.
+
 ## RTL
 
 `left` and `right` are physical edges in every layout direction. RTL does not swap

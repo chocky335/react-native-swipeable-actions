@@ -182,6 +182,8 @@ one or both explicit sides; they do not restore removed API inputs or behaviors.
    exchange the library's sides, widths, command arguments or side callbacks.
 2. Update examples, wrappers, mocks and type fixtures to complete explicit pairs.
 3. Keep action padding/gaps inside the declared width and preserve usable targets.
+   Give each row a path to its actions without a swipe, with `accessibilityActions`
+   on the row content. See [Accessibility](../README.md#accessibility).
 4. Keep recycling keys stable through reorder, translation updates and reattachment.
 5. Rebuild iOS/Android and rerun application behavior, including close/reset,
    recycling, disabled edges, child gestures, chat auto-close and RTL.
