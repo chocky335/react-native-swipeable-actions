@@ -28,8 +28,11 @@ function loadShippedMock() {
   return factory()
 }
 
+// Consumer lifecycle callbacks reach Swipeable only through these native event props.
+const lifecycleProps = ['onSwipeStart', 'onSwipeStateChange', 'onSwipeEnd', 'onSwipeProgress', 'onGestureCancelled']
+
 for (const recyclingKey of [undefined, 'row']) {
-  test(`shipped Jest mock sends native-shaped events (recyclingKey=${recyclingKey})`, () => {
+  test(`shipped Jest mock mounts action rails without a swipe lifecycle (recyclingKey=${recyclingKey})`, () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     const { SwipeableView } = loadShippedMock()
     const received = []
@@ -37,7 +40,7 @@ for (const recyclingKey of [undefined, 'row']) {
     const props = {
       ...(recyclingKey ? { recyclingKey } : {}),
       onActionsNeeded: (event) => received.push(['actions', event.nativeEvent.side, event.nativeEvent.recyclingKey]),
-      onSwipeStart: (event) => received.push(['start', event.nativeEvent.recyclingKey])
+      ...Object.fromEntries(lifecycleProps.map((name) => [name, () => received.push([name])]))
     }
     let tree
     act(() => {
@@ -45,9 +48,13 @@ for (const recyclingKey of [undefined, 'row']) {
     })
     assert.deepEqual(received, [
       ['actions', 'left', recyclingKey],
-      ['actions', 'right', recyclingKey],
-      ['start', recyclingKey]
+      ['actions', 'right', recyclingKey]
     ])
+    // Tests fire native-shaped events through the host View props.
+    const host = tree.root.findByType('View')
+    for (const name of lifecycleProps) assert.equal(host.props[name], props[name], name)
+    assert.equal(host.props.onActionsNeeded, undefined)
     act(() => tree.unmount())
+    assert.equal(received.length, 2, 'Mount and unmount must not call a lifecycle callback')
   })
 }

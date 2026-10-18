@@ -354,6 +354,29 @@ module.exports = {
 The package ships TypeScript source, so keep it in your `transformIgnorePatterns`
 allowlist, as you do for other Expo modules.
 
+- The mock renders both action rails on mount, so your tests can find action
+  content.
+- A mount calls none of your callbacks. The mock never starts a swipe by itself.
+- The ref and static commands are `jest.fn()` mocks. They do not move the row or
+  send events.
+- To test a callback, fire a native-shaped event on the row's `testID`. Put the
+  row's `recyclingKey` (as a string) in `nativeEvent`. Leave it out for a row
+  without a key.
+
+```tsx
+import { fireEvent, screen } from "@testing-library/react-native";
+
+const row = screen.getByTestId("message-42");
+fireEvent(row, "swipeStart", { nativeEvent: { recyclingKey: "42", side: "right" } });
+fireEvent(row, "swipeEnd", {
+  nativeEvent: { state: "open", side: "right", recyclingKey: "42" },
+});
+// onSwipeStart() ran once, then onSwipeEnd("open") and onRightSwipeEnd("open").
+```
+
+The other native events are `swipeStateChange` (`{ state, side }`) and
+`swipeProgress` (`{ progress, translationX, side }`).
+
 ## Compatibility
 
 | | Tested for 1.0 |

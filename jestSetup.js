@@ -13,10 +13,11 @@ jest.mock('./src/SwipeableView.tsx', () => {
   }
 
   const SwipeableView = React.forwardRef((props, ref) => {
+    // The native event props (onSwipeStart, onSwipeEnd and the others) stay on the
+    // host View, so a test can fire native-shaped events with fireEvent.
     const {
       children,
       onActionsNeeded,
-      onSwipeStart,
       testID,
       ...rest
     } = props
@@ -33,10 +34,11 @@ jest.mock('./src/SwipeableView.tsx', () => {
       const nativeEvent = (extra) => ({
         nativeEvent: { ...(recyclingKey != null ? { recyclingKey } : {}), ...extra }
       })
+      // Mount both action rails so tests can find action content. This internal
+      // request calls no consumer callback. A mount never starts a swipe.
       onActionsNeeded?.(nativeEvent({ side: 'left' }))
       onActionsNeeded?.(nativeEvent({ side: 'right' }))
-      onSwipeStart?.(nativeEvent({}))
-    }, [onActionsNeeded, onSwipeStart, recyclingKey])
+    }, [onActionsNeeded, recyclingKey])
 
     return React.createElement(
       View,
