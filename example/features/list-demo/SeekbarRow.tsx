@@ -50,12 +50,14 @@ export function SeekbarRow({
     transform: [{ translateX: thumbX.value }]
   }))
 
+  const sideProps = isReversed
+    ? { leftActions: <SeekbarActions />, leftActionsWidth: 80 }
+    : { rightActions: <SeekbarActions />, rightActionsWidth: 80 }
+
   return (
     <View testID='seekbar-row'>
       <Swipeable
-        actionsPosition={isReversed ? 'left' : 'right'}
-        actionsWidth={80}
-        actions={<SeekbarActions />}
+        {...sideProps}
         friction={friction}
         threshold={threshold}
         dragOffsetFromEdge={dragOffsetFromEdge}
@@ -65,7 +67,7 @@ export function SeekbarRow({
           <Text style={styles.label}>Seekbar</Text>
 
           <GestureDetector gesture={pan}>
-            <Animated.View style={styles.trackHitArea}>
+            <Animated.View style={styles.trackHitArea} testID='seekbar-track'>
               <View style={styles.track}>
                 <Animated.View style={[styles.thumb, thumbStyle]} testID='seekbar-thumb' />
               </View>

@@ -45,6 +45,11 @@ const FLATLIST_OPTIONS: SelectionOption<boolean>[] = [
   { label: 'OFF', value: false, testID: 'toggle-flatlist-off' }
 ]
 
+const EVENT_LOG_OPTIONS: SelectionOption<boolean>[] = [
+  { label: 'ON', value: true, testID: 'toggle-event-log-on' },
+  { label: 'OFF', value: false, testID: 'toggle-event-log-off' }
+]
+
 export function ListConfigSection({ config, callbacks }: ListConfigSectionProps) {
   const {
     implementation,
@@ -54,6 +59,7 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     dragOffset,
     gestureEnabled,
     useFlatList,
+    isEventLogEnabled,
     isBenchmarkRunning
   } = config
 
@@ -65,6 +71,7 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
     onDragOffsetChange,
     onGestureEnabledChange,
     onUseFlatListChange,
+    onEventLogEnabledChange,
     onCloseAll,
     onResetAll,
     onBenchmark,
@@ -120,6 +127,13 @@ export function ListConfigSection({ config, callbacks }: ListConfigSectionProps)
         options={DRAG_OFFSET_OPTIONS}
         value={dragOffset}
         onChange={onDragOffsetChange}
+      />
+
+      <SelectionRow
+        label='Event log'
+        options={EVENT_LOG_OPTIONS}
+        value={isEventLogEnabled}
+        onChange={onEventLogEnabledChange}
       />
 
       <View style={layoutStyles.controlRow}>

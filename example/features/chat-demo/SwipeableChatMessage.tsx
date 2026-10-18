@@ -56,26 +56,26 @@ export function SwipeableChatMessage({
     [progress]
   )
 
-  // Determine actions position based on isReversed and message direction
+  // Select the physical action edge based on isReversed and message direction
   // Default: outgoing=right, incoming=left
   // Reversed: outgoing=left, incoming=right
   const defaultPosition = message.isOutgoing ? 'right' : 'left'
-  const actionsPosition = isReversed
-    ? defaultPosition === 'right'
-      ? 'left'
-      : 'right'
-    : defaultPosition
+  const side = isReversed ? (defaultPosition === 'right' ? 'left' : 'right') : defaultPosition
+
+  const action = <ReplyAction progress={progress} />
+  const sideProps =
+    side === 'left'
+      ? { leftActions: action, leftActionsWidth: REPLY_WIDTH }
+      : { rightActions: action, rightActionsWidth: REPLY_WIDTH }
 
   return (
     <Swipeable
-      actionsPosition={actionsPosition}
-      actionsWidth={REPLY_WIDTH}
+      {...sideProps}
       threshold={threshold}
       friction={friction}
       dragOffsetFromEdge={dragOffsetFromEdge}
       gestureEnabled={gestureEnabled}
       autoClose={true}
-      actions={<ReplyAction progress={progress} />}
       onProgress={setProgress}
       onSwipeStateChange={handleSwipeStateChange}
       onSwipeEnd={handleSwipeEnd}

@@ -23,8 +23,8 @@ describe('SWIPE_DEFAULTS', () => {
     expect(SWIPE_DEFAULTS.DRAG_OFFSET_FROM_EDGE).toBe(0)
   })
 
-  it('defaults to trailing (right-side) actions', () => {
-    expect(SWIPE_DEFAULTS.ACTIONS_POSITION).toBe('right')
+  it('does not expose the removed single-sided position default', () => {
+    expect(SWIPE_DEFAULTS).not.toHaveProperty('ACTIONS_POSITION')
   })
 
   it('defaults gesture to enabled', () => {

@@ -25,3 +25,35 @@ enum SwipeAnimationConfig {
     static let velocityProjectionFactor: CGFloat = 0.15
     static let progressChangeThreshold: CGFloat = 0.001
 }
+
+extension SwipeAnimationConfig {
+    static let actionRailEntryScale: CGFloat = 0.96
+    static let actionRailPopScale: CGFloat = 1.03
+    static let actionRailRestScale: CGFloat = 1.0
+    static let actionRailPopRiseDuration: TimeInterval = 0.12
+    static let actionRailPopSettleDuration: TimeInterval = 0.18
+
+    static func actionRailScale(
+        progress: CGFloat, popElapsed: TimeInterval?, hasPopped: Bool, reduceMotion: Bool
+    ) -> CGFloat {
+        guard !reduceMotion else { return actionRailRestScale }
+        let entryScale = actionRailEntryScale + (actionRailRestScale - actionRailEntryScale) * max(0, min(1, progress))
+        if let elapsed = popElapsed {
+            if elapsed < actionRailPopRiseDuration {
+                // Rise from the scale shown at the crossing, so the pop starts without a jump.
+                let t = CGFloat(max(0, elapsed) / actionRailPopRiseDuration)
+                return entryScale + (actionRailPopScale - entryScale) * t
+            }
+            let t = CGFloat(min(1, (elapsed - actionRailPopRiseDuration) / actionRailPopSettleDuration))
+            return actionRailPopScale + (actionRailRestScale - actionRailPopScale) * (1 - (1 - t) * (1 - t))
+        }
+        if hasPopped { return actionRailRestScale }
+        return entryScale
+    }
+
+    /// Rails span the row and align actions to their outer edge. Scaling about
+    /// that edge, not the rail center, keeps a pop from pushing actions past the row.
+    static func actionRailTranslation(offset: CGFloat, scale: CGFloat, railWidth: CGFloat, side: SwipeSide) -> CGFloat {
+        offset - side.sign * railWidth / 2 * (1 - scale)
+    }
+}
