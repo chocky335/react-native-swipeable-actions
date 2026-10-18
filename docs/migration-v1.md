@@ -4,6 +4,15 @@ The component name stays `Swipeable`. All rows now use explicit physical-side
 content/width pairs and one native engine. Rebuild the native app after upgrading.
 Do not mix v1 JavaScript with an older native binary.
 
+## Before you install
+
+- v1 requires the New Architecture (Fabric) on iOS and Android. The legacy
+  architecture (Paper) is not supported. If your app still uses it, stay on 0.x.
+- v1 requires Expo SDK 54 or newer, React Native 0.81 or newer and React 19.1 or
+  newer. Upgrade the app first, then install v1.
+- Install it with `npx expo install react-native-swipeable-actions@next` while
+  1.0 is a release candidate, then rebuild the iOS and Android apps.
+
 ## At a glance
 
 | Kind | 0.x | 1.0 |

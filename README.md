@@ -29,6 +29,9 @@ npx expo install react-native-swipeable-actions
 
 This is an [Expo module](https://docs.expo.dev/modules/overview/) with native code.
 
+- Requirements: Expo SDK 54 or newer, React Native 0.81 or newer, React 19.1 or
+  newer, and the New Architecture (Fabric). The legacy architecture (Paper) is
+  not supported.
 - Expo: use a [development build](https://docs.expo.dev/develop/development-builds/introduction/)
   or `npx expo run:ios` / `npx expo run:android`. Expo Go cannot load it.
 - Bare React Native: set up Expo Modules first with `npx install-expo-modules@latest`,
@@ -324,9 +327,11 @@ allowlist, as you do for other Expo modules.
 | iOS | iOS Simulator 26, built with Xcode 26 |
 | Android | API 34 emulator |
 
-The peer ranges (`expo >=50`, `react-native >=0.73`) and the minimum targets
-(iOS 13.4, Android API 23) are what the package declares. They are not a tested
-matrix. [docs/support.md](docs/support.md) lists what was tested and what was not.
+The package requires the New Architecture. The legacy architecture (Paper) is not
+supported. The peer ranges (`expo >=54`, `react-native >=0.81`, `react >=19.1`) and
+the minimum targets (iOS 13.4, Android API 23) are what the package declares. They
+are not a tested matrix. [docs/support.md](docs/support.md) lists what was tested
+and what was not.
 
 ## Performance
 

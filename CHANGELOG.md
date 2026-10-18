@@ -13,6 +13,10 @@ apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
 
 ### BREAKING CHANGES
 
+- The package requires the New Architecture (Fabric) on iOS and Android. The
+  legacy architecture (Paper) is not supported. The iOS view does not compile on it.
+- The minimum peer versions are now Expo SDK 54 (`expo >=54.0.0`), React Native
+  0.81 (`react-native >=0.81.0`) and React 19.1 (`react >=19.1.0`).
 - Removed `actions`, `actionsWidth` and `actionsPosition`. Pass explicit pairs:
   `rightActions` + `rightActionsWidth` and/or `leftActions` + `leftActionsWidth`
   ([#15](https://github.com/chocky335/react-native-swipeable-actions/issues/15)).
