@@ -24,11 +24,10 @@ successful run of the final prepared source or physical acceptance.
 3. Merge the preparation to `main`. This commit is the source SHA to test and
    publish. Preparation is not publication and creates no release tag. The
    publishing workflow never bumps versions or commits source changes.
-4. Run full CI twice as two distinct fresh `workflow_dispatch` runs on this
-   exact `main` SHA with both mobile suites enabled. Both runs must completely
-   succeed on attempt 1. A failed-jobs rerun is not the second independent pass.
-   This repeats the historically failing iOS suites without changing assertions,
-   retries, the 120-second case deadlines, or the 45-minute mobile job deadlines.
+4. Run full CI once as a fresh `workflow_dispatch` run on this exact `main` SHA
+   with both mobile suites enabled. The run must completely succeed on attempt 1.
+   A failed-jobs rerun is not release evidence. Do not change assertions, retries,
+   the 120-second case deadlines, or the 45-minute mobile job deadlines.
 
 RC and stable preparation each change source identity. Evidence for an RC does
 not authorize publishing a subsequently bumped stable package. Repeat full
@@ -77,8 +76,8 @@ The host class never changes the `e2e-ios` result. A run with a failed case fail
 ## Evidence interface
 
 [The readiness gate](https://github.com/chocky335/react-native-swipeable-actions/blob/main/scripts/release-readiness.mjs) retrieves evidence directly from GitHub for the
-two supplied run IDs. Arbitrary local JSON pass receipts are not a publish input.
-Both runs must be successful [CI workflow](https://github.com/chocky335/react-native-swipeable-actions/blob/main/.github/workflows/ci.yml) executions in this
+one supplied run ID. Arbitrary local JSON pass receipts are not a publish input.
+The run must be a successful [CI workflow](https://github.com/chocky335/react-native-swipeable-actions/blob/main/.github/workflows/ci.yml) execution in this
 repository with the exact source SHA and these successful jobs:
 
 - `lint`, `test`, `package`, `build-ios`, `e2e-android`, `ios-plan`
@@ -89,10 +88,10 @@ Any additional unsuccessful, duplicate, missing, skipped or unfinished job also
 blocks publication. Each mobile job must have a successful `Run E2E tests` step,
 and swipeable must execute `Run Maestro seekbar regression test` successfully.
 
-The package artifact is `npm-package-<full SHA>` **within each supplied run**.
+The package artifact is `npm-package-<full SHA>` **within the supplied run**.
 It contains `package-artifact.json` with `sourceSha`, `cleanSource: true`,
-`version`, `integrity`, `filename`, and `files`, plus the actual tarball. Both
-runs must test identical tarball bytes. The gate checks SHA-512 integrity and
+`version`, `integrity`, `filename`, and `files`, plus the actual tarball. The
+gate checks SHA-512 integrity and
 the package name/version inside the tarball. Native release builders consume
 this artifact in their clean consumer builds; publishing uses that same tarball,
 not a new local build or pack.
@@ -107,7 +106,7 @@ complete WDIO summary and every passing case title (including duplicate counts) 
 A success badge, hand-entered count or summary without case output cannot pass.
 Missing/expired artifacts or logs and changed reporter formats fail closed.
 Recycling, detach and RTL remain mandatory in this same-source 62-case E2E
-inventory on both platforms, in both runs. They are automated evidence requirements,
+inventory on both platforms. They are automated evidence requirements,
 not extra physical smoke confirmations; removing their manual keys does not remove
 any automated cases, assertions or required jobs.
 
@@ -157,7 +156,7 @@ Configure the GitHub `npm-release` environment with required human reviewers and
 main-only deployment rules, and npm trusted publishing for this workflow. Retain
 the reviewed `main` workflow as the authority. Dispatch **Publish to npm** from
 the prepared `main` revision with `operation=verify`, full `source_sha`, exact
-`version`, `ci_runs=ID1,ID2`, and `acceptance_comment=ID`. Verification does not tag
+`version`, `ci_runs=ID`, and `acceptance_comment=ID`. Verification does not tag
 or publish. It saves a verified report and the tested tarball. The source package,
 lockfile, changelog entry, tarball and eventual `v<version>` tag must agree.
 

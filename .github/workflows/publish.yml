@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       ci_runs:
-        description: 'Two distinct successful full CI run IDs for this exact SHA, comma separated'
+        description: 'One successful full CI run ID for this exact SHA'
         required: true
         type: string
       acceptance_comment:

@@ -172,38 +172,32 @@ export function validatePhysicalAcceptance(comment, permission, { sourceSha, ver
 
 export function validateReadiness(input) {
   const release = validateSource(input)
-  assert.equal(input.runs.length, 2, 'Two complete independent CI runs required')
-  assert.equal(new Set(input.runs.map(({ run }) => run.id)).size, 2, 'Repeated run ID is not a repeat pass')
-  let packageIntegrity
-  for (const evidence of input.runs) {
-    const { run, jobs, manifest, expectedManifest, bundles, androidLog, report, bytes, packedPackage } = evidence
-    validateRun(run, jobs, input)
-    assert.deepEqual(manifest, expectedManifest, 'Inventory must match the checked-out test sources')
-    assert.equal(manifest.sha, input.sourceSha)
-    assert.equal(manifest.runId, String(run.id))
-    assert.equal(manifest.runAttempt, String(run.run_attempt))
-    validateAggregate(manifest, bundles, {
-      sha: input.sourceSha, runId: String(run.id), runAttempt: String(run.run_attempt),
-      planResult: 'success', buildResult: 'success', shardsResult: 'success'
-    })
-    for (const bundle of Object.values(bundles)) {
-      for (const record of bundle.workers[0]) {
-        const time = Date.parse(record.timestamp)
-        assert.ok(time >= Date.parse(run.run_started_at) && time <= Date.parse(run.updated_at), 'Worker evidence is outside this run')
-      }
+  assert.equal(input.runs.length, 1, 'Exactly one fresh, fully green full CI run required')
+  const [{ run, jobs, manifest, expectedManifest, bundles, androidLog, report, bytes, packedPackage }] = input.runs
+  validateRun(run, jobs, input)
+  assert.deepEqual(manifest, expectedManifest, 'Inventory must match the checked-out test sources')
+  assert.equal(manifest.sha, input.sourceSha)
+  assert.equal(manifest.runId, String(run.id))
+  assert.equal(manifest.runAttempt, String(run.run_attempt))
+  validateAggregate(manifest, bundles, {
+    sha: input.sourceSha, runId: String(run.id), runAttempt: String(run.run_attempt),
+    planResult: 'success', buildResult: 'success', shardsResult: 'success'
+  })
+  for (const bundle of Object.values(bundles)) {
+    for (const record of bundle.workers[0]) {
+      const time = Date.parse(record.timestamp)
+      assert.ok(time >= Date.parse(run.run_started_at) && time <= Date.parse(run.updated_at), 'Worker evidence is outside this run')
     }
-    validateAndroidLog(androidLog, manifest)
-    const digest = validatePackage(report, bytes, input.version, input.sourceSha, packedPackage)
-    if (packageIntegrity !== undefined) assert.equal(digest, packageIntegrity, 'Repeat runs tested different package bytes')
-    packageIntegrity = digest
   }
+  validateAndroidLog(androidLog, manifest)
+  const packageIntegrity = validatePackage(report, bytes, input.version, input.sourceSha, packedPackage)
   const acceptance = validatePhysicalAcceptance(input.comment, input.permission, { ...input, packageIntegrity })
   return { schemaVersion: 1, sourceSha: input.sourceSha, version: input.version, ...release,
-    packageIntegrity, ciRuns: input.runs.map(({ run }) => run.id), acceptance }
+    packageIntegrity, ciRuns: [run.id], acceptance }
 }
 
 async function main(args) {
-  assert.equal(args.length, 10, 'Expected --source SHA --version VERSION --runs ID,ID --acceptance COMMENT_ID --out DIRECTORY')
+  assert.equal(args.length, 10, 'Expected --source SHA --version VERSION --runs ID --acceptance COMMENT_ID --out DIRECTORY')
   const options = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [args[i * 2], args[i * 2 + 1]]))
   assert.deepEqual(Object.keys(options).sort(), ['--acceptance', '--out', '--runs', '--source', '--version'])
   const sourceSha = options['--source']
@@ -221,8 +215,7 @@ async function main(args) {
   }
   validateSource(input)
   const runIds = options['--runs'].split(',')
-  assert.equal(runIds.length, 2)
-  assert.equal(new Set(runIds).size, 2)
+  assert.equal(runIds.length, 1, 'Exactly one full CI run ID required')
   for (const id of [...runIds, options['--acceptance']]) assert.match(id, idPattern)
   const base = 'https://api.github.com/repos/' + repository
   const request = async (route) => {

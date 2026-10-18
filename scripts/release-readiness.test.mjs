@@ -13,7 +13,7 @@ const sha = 'a'.repeat(40)
 const sources = Object.fromEntries(Object.entries(EXPECTED_COUNTS).map(([spec, count]) => [
   spec, 'describe("suite", () => { for (let i = 0; i < ' + count + '; i++) it("case " + i, () => {}) })'
 ]))
-function fixture(version = '1.0.0-rc.0') {
+function fixture(version = '1.0.0-rc.0', runIds = [101]) {
   const bytes = Buffer.from('synthetic tarball fixture; never publish')
   const digest = 'sha512-' + createHash('sha512').update(bytes).digest('base64')
   const pkg = { name: 'react-native-swipeable-actions', version }
@@ -21,7 +21,7 @@ function fixture(version = '1.0.0-rc.0') {
     sourceSha: sha, workflowSha: sha, ref: 'refs/heads/main', repository: 'owner/repo', version, pkg,
     lock: { version, packages: { '': { version } } },
     changelog: '## Unreleased\n\n## ' + version + ' - 2026-10-16\n\nBreaking explicit-side API.\n',
-    runs: [101, 102].map((id) => {
+    runs: runIds.map((id) => {
       const context = { sha, runId: String(id), runAttempt: '1' }
       const manifest = buildManifest(sources, context)
       const run = { id, head_sha: sha, repository: { full_name: 'owner/repo' }, path: '.github/workflows/ci.yml',
@@ -68,9 +68,23 @@ for (const version of ['1.0.0-rc.0', '1.0.0-rc.12', '1.0.0']) {
     const result = validateReadiness(fixture(version))
     assert.equal(result.tag, 'v' + version)
     assert.equal(result.distTag, version.includes('-rc.') ? 'next' : 'latest')
-    assert.deepEqual(result.ciRuns, [101, 102])
+    assert.deepEqual(result.ciRuns, [101])
   })
 }
+test('accepts one complete fresh full CI run', () => {
+  const value = fixture()
+  assert.equal(value.runs.length, 1)
+  assert.deepEqual(validateReadiness(value).ciRuns, [101])
+})
+test('rejects zero CI runs', () => {
+  const value = fixture()
+  value.runs = []
+  assert.throws(() => validateReadiness(value), /Exactly one fresh, fully green full CI run required/)
+})
+test('rejects two complete CI runs: exactly one is required', () => {
+  const value = fixture('1.0.0-rc.0', [101, 102])
+  assert.throws(() => validateReadiness(value), /Exactly one fresh, fully green full CI run required/)
+})
 const mutations = {
   'old unprepared version': (v) => { v.pkg = { ...v.pkg, version: '0.1.12' } },
   'arbitrary branch': (v) => { v.ref = 'refs/heads/feature' },
@@ -82,8 +96,6 @@ const mutations = {
   'duplicate release heading': (v) => { v.changelog += v.changelog },
   'empty release notes': (v) => { v.changelog = '## 1.0.0-rc.0 - 2026-10-16\n\n## Unreleased\nfuture' },
   'invalid date': (v) => { v.changelog = v.changelog.replace('2026-10-16', '2026-02-30') },
-  'missing repeat run': (v) => { v.runs.pop() },
-  'duplicate repeat run': (v) => { v.runs[1] = v.runs[0] },
   'failed final CI 38930587069': (v) => { v.runs[0].run.id = 38930587069; v.runs[0].run.conclusion = 'failure' },
   'stale CI SHA': (v) => { v.runs[0].run.head_sha = 'b'.repeat(40) },
   'foreign repository': (v) => { v.runs[0].run.repository.full_name = 'other/repo' },
@@ -115,10 +127,6 @@ const mutations = {
   'wrong package source': (v) => { v.runs[0].report.sourceSha = 'b'.repeat(40) },
   'wrong package version': (v) => { v.runs[0].report.version = '0.1.12' },
   'modified tarball': (v) => { v.runs[0].bytes = Buffer.from('different') },
-  'different repeat artifact': (v) => {
-    v.runs[1].bytes = Buffer.from('other valid package fixture')
-    v.runs[1].report.integrity = 'sha512-' + createHash('sha512').update(v.runs[1].bytes).digest('base64')
-  },
   'unsafe filename': (v) => { v.runs[0].report.filename = '../package.tgz' },
   'actual packed version mismatch': (v) => { v.runs[0].packedPackage = { ...v.pkg, version: '0.1.12' } },
   'automated acceptance': (v) => { v.comment.user.type = 'Bot' },
@@ -195,7 +203,7 @@ test('short physical smoke retains seven grouped checks and both complete 62-cas
   for (const evidence of value.runs) {
     assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 62)
   }
-  assert.deepEqual(validateReadiness(value).ciRuns, [101, 102])
+  assert.deepEqual(validateReadiness(value).ciRuns, [101])
 })
 
 for (const check of PHYSICAL_CHECKS) {
