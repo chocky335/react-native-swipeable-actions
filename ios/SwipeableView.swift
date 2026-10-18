@@ -974,7 +974,14 @@ public class SwipeableView: ExpoView {
         if childComponentView === contentView {
             let interrupted = hasPendingInteraction
             // Like Android, content removal consumes the rest of the pan, activated or not.
-            if panGesture.state == .began || panGesture.state == .changed { ignoresPanUntilNextBegin = true }
+            if panGesture.state == .began || panGesture.state == .changed {
+                ignoresPanUntilNextBegin = true
+            } else if panGesture.state == .possible {
+                // A touch that has not begun would clear the flag at its own .began.
+                // Fail it instead; a failed recognizer sends no action.
+                panGesture.isEnabled = false
+                panGesture.isEnabled = gestureEnabled
+            }
             // Invalidate completion/timer generations before returning the child to
             // Fabric's pool, not merely the animator's reference to that child.
             invalidateWork(preservePresentation: false, clearRestore: false)
