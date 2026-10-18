@@ -504,9 +504,8 @@ public class SwipeableView: ExpoView {
         appliedConfiguration = next
         var resumeAutoClose: SwipeAutoCloseState?
         if next != previous {
-            if panGesture.state == .began || panGesture.state == .changed {
-                ignoresPanUntilNextBegin = true
-            }
+            // Like Android, the invalidation below consumes only a pan that already activated.
+            // A pan that has not activated keeps tracking and latches against this configuration.
             let logicalSide = openSide
             let reconciled = SwipePhysics.reconcileTwoSidedState(
                 openSide: logicalSide,
@@ -573,8 +572,9 @@ public class SwipeableView: ExpoView {
             gestureCompletion.cancel(recyclingKey: recyclingKey, side: currentSide)
         // Like Android, interrupted work consumes only a gesture that already activated.
         // A pan that has not activated keeps tracking and can activate after that work.
-        if (isGestureActivated || directGesturePending)
-            && (panGesture.state == .began || panGesture.state == .changed) {
+        let panIsLive = panGesture.state == .began || panGesture.state == .changed
+        let gestureIsLive = isGestureActivated || directGesturePending
+        if gestureIsLive && panIsLive {
             ignoresPanUntilNextBegin = true
         }
         workGeneration += 1
@@ -600,7 +600,8 @@ public class SwipeableView: ExpoView {
         isGestureActivated = false
         directGesturePending = false
         isDragging = false
-        gestureStartTranslation = 0
+        // A pan that has not activated keeps its start, so its offset check stays exact.
+        if gestureIsLive || !panIsLive { gestureStartTranslation = 0 }
         gestureSide = nil
         animationSide = nil
         startOffset = 0
