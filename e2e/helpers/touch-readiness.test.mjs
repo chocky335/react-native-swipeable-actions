@@ -183,7 +183,10 @@ test('touch readiness gate without a device or transport', async (t) => {
     }
     assert.deepEqual([reasons[0], reasons[1], reasons[3]], READINESS_TIMEOUTS)
     assert.equal(reasons[2], 'the app left the list screen before a drag moved the seekbar thumb')
-    assert.equal(reasons[4], 'the app left the list screen before the seekbar thumb returned to rest')
+    assert.equal(
+      reasons[4],
+      'the app left the list screen before the seekbar thumb returned to rest'
+    )
   })
 
   await t.test('a thumb outside its pan area is dragged through the pan area', async () => {
