@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "sha": "d06730521c230f685bc09a9980ca92d957e47546",
+  "runId": "39273407706",
+  "runAttempt": "1",
+  "id": "swipeable",
+  "spec": "specs/swipeable.spec.ts",
+  "sourceHash": "caab14e149b2d150d01259d86038ca90a1302ff469f821494827566abf747d8c",
+  "wdioOutcome": "failure",
+  "maestroOutcome": "skipped"
+}

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readinessTimeoutAttempt } from './fixtures/host-trouble.mjs'
+import { describeHealth } from './host-health.mjs'
 import {
   artifactName,
   buildManifest,
@@ -7,6 +9,7 @@ import {
   discoverSources,
   EXPECTED_COUNTS,
   parseRecords,
+  shardBundle,
   validateAggregate,
   validateManifest,
   validateRecords
@@ -55,24 +58,33 @@ function fixture() {
       return [
         shard.id,
         {
-          receipt: {
-            version: 1,
-            sha: context.sha,
-            runId: context.runId,
-            runAttempt: context.runAttempt,
-            id: shard.id,
-            spec: shard.spec,
-            sourceHash: shard.sourceHash,
-            wdioOutcome: 'success',
-            maestroOutcome: shard.maestro ? 'success' : 'skipped'
-          },
-          workers: [records]
+          attempts: [
+            {
+              receipt: {
+                version: 1,
+                sha: context.sha,
+                runId: context.runId,
+                runAttempt: context.runAttempt,
+                id: shard.id,
+                spec: shard.spec,
+                sourceHash: shard.sourceHash,
+                attempt: 1,
+                retryReason: null,
+                wdioOutcome: 'success',
+                maestroOutcome: shard.maestro ? 'success' : 'skipped'
+              },
+              workers: [records]
+            }
+          ]
         }
       ]
     })
   )
   return { plan, bundles, run: { ...context } }
 }
+
+/** The only attempt of a shard in `fixture`. */
+const only = (bundle) => bundle.attempts[0]
 
 test('real checkout discovers every eligible spec and all 62 cases without executing bodies', async () => {
   const actual = buildManifest(await discoverSources(), context)
@@ -155,7 +167,8 @@ test('healthy aggregate requires all 62 cases and Maestro exactly once', () => {
     runAttempt: '1',
     passed: 62,
     shards: 5,
-    maestro: 'success'
+    maestro: 'success',
+    retried: {}
   })
 })
 
@@ -167,43 +180,43 @@ const mutations = {
     bundles.extra = bundles.rtl
   },
   'missing receipt': ({ bundles }) => {
-    delete bundles.rtl.receipt
+    delete only(bundles.rtl).receipt
   },
   'wrong receipt SHA': ({ bundles }) => {
-    bundles.rtl.receipt.sha = 'b'.repeat(40)
+    only(bundles.rtl).receipt.sha = 'b'.repeat(40)
   },
   'stale run': ({ bundles }) => {
-    bundles.rtl.receipt.runId = '122'
+    only(bundles.rtl).receipt.runId = '122'
   },
   'stale attempt': ({ bundles }) => {
-    bundles.rtl.receipt.runAttempt = '2'
+    only(bundles.rtl).receipt.runAttempt = '2'
   },
   'wrong shard': ({ bundles }) => {
-    bundles.rtl.receipt.id = 'swipeable'
+    only(bundles.rtl).receipt.id = 'swipeable'
   },
   'wrong spec receipt': ({ bundles }) => {
-    bundles.rtl.receipt.spec = 'specs/swipeable.spec.ts'
+    only(bundles.rtl).receipt.spec = 'specs/swipeable.spec.ts'
   },
   'wrong source digest': ({ bundles }) => {
-    bundles.rtl.receipt.sourceHash = 'b'.repeat(64)
+    only(bundles.rtl).receipt.sourceHash = 'b'.repeat(64)
   },
   'failed WDIO': ({ bundles }) => {
-    bundles.rtl.receipt.wdioOutcome = 'failure'
+    only(bundles.rtl).receipt.wdioOutcome = 'failure'
   },
   'cancelled WDIO': ({ bundles }) => {
-    bundles.rtl.receipt.wdioOutcome = 'cancelled'
+    only(bundles.rtl).receipt.wdioOutcome = 'cancelled'
   },
   'skipped WDIO': ({ bundles }) => {
-    bundles.rtl.receipt.wdioOutcome = 'skipped'
+    only(bundles.rtl).receipt.wdioOutcome = 'skipped'
   },
   'failed Maestro': ({ bundles }) => {
-    bundles.swipeable.receipt.maestroOutcome = 'failure'
+    only(bundles.swipeable).receipt.maestroOutcome = 'failure'
   },
   'missing Maestro': ({ bundles }) => {
-    delete bundles.swipeable.receipt.maestroOutcome
+    delete only(bundles.swipeable).receipt.maestroOutcome
   },
   'Maestro on another shard': ({ bundles }) => {
-    bundles.rtl.receipt.maestroOutcome = 'success'
+    only(bundles.rtl).receipt.maestroOutcome = 'success'
   },
   'failed shard job': ({ run }) => {
     run.shardsResult = 'failure'
@@ -233,10 +246,30 @@ const mutations = {
     plan.shards[1].cases[1] = plan.shards[1].cases[0]
   },
   'missing worker file': ({ bundles }) => {
-    bundles.rtl.workers = []
+    only(bundles.rtl).workers = []
   },
   'duplicate worker file': ({ bundles }) => {
-    bundles.rtl.workers.push(bundles.rtl.workers[0])
+    only(bundles.rtl).workers.push(only(bundles.rtl).workers[0])
+  },
+  'missing attempt': ({ bundles }) => {
+    bundles.rtl.attempts = []
+  },
+  'attempt receipt without its attempt number': ({ bundles }) => {
+    delete only(bundles.rtl).receipt.attempt
+  },
+  'attempt 2 without attempt 1': ({ bundles }) => {
+    only(bundles.rtl).receipt.attempt = 2
+  },
+  'retry reason without a retry': ({ bundles }) => {
+    only(bundles.rtl).receipt.retryReason = 'host trouble: all 1 failures'
+  },
+  'missing retry reason field': ({ bundles }) => {
+    delete only(bundles.rtl).receipt.retryReason
+  },
+  'a green attempt repeated as its own retry': ({ bundles }) => {
+    const second = structuredClone(only(bundles.rtl))
+    second.receipt.attempt = 2
+    bundles.rtl.attempts.push(second)
   }
 }
 for (const [name, mutate] of Object.entries(mutations))
@@ -336,13 +369,13 @@ const recordMutations = {
 for (const [name, mutate] of Object.entries(recordMutations))
   test('evidence rejects ' + name, () => {
     const value = fixture()
-    mutate(value.bundles.rtl.workers[0])
+    mutate(only(value.bundles.rtl).workers[0])
     assert.throws(() => validateAggregate(value.plan, value.bundles, value.run))
   })
 
 test('NDJSON round-trip accepts actual optional fullTitle omission', () => {
   const { plan, bundles } = fixture()
-  const records = bundles.rtl.workers[0]
+  const records = only(bundles.rtl).workers[0]
   for (const record of records) delete record.fullTitle
   assert.equal(
     validateRecords(plan.shards[1], parseRecords(records.map(JSON.stringify).join('\n') + '\n')),
@@ -351,9 +384,9 @@ test('NDJSON round-trip accepts actual optional fullTitle omission', () => {
 })
 test('the gate reads the worker-end quarantine field as evidence only', () => {
   const { plan, bundles, run } = fixture()
-  for (const bundle of Object.values(bundles)) bundle.workers[0].at(-1).quarantine = null
+  for (const bundle of Object.values(bundles)) only(bundle).workers[0].at(-1).quarantine = null
   assert.equal(validateAggregate(plan, bundles, run).passed, 62)
-  const records = bundles.rtl.workers[0]
+  const records = only(bundles.rtl).workers[0]
   records.at(-1).quarantine = {
     reason: 'unresolved request when "suite case 0" ended',
     runnable: 'suite case 0'
@@ -380,4 +413,205 @@ test('artifact names distinguish shard, SHA, run and attempt', () => {
   assert.equal(new Set(variants).size, 5)
   assert.throws(() => artifactName({ ...context, sha: 'short' }, 'rtl'))
   assert.throws(() => validateManifest({ ...manifest, runAttempt: '' }))
+})
+
+// Attempt 1 ends at 11:02:07 in a touch readiness timeout. The fixture records of
+// attempt 2 are at 12:00:00.
+const attemptStart = Date.parse('2026-10-16T11:00:00.000Z')
+
+/**
+ * A swipeable shard with a retry: attempt 1 times out in a relaunch at the given load,
+ * and attempt 2 is the green fixture attempt. Its receipt gives the attempt 1 host class.
+ */
+function retried(load = 300) {
+  const value = fixture()
+  const shard = value.plan.shards.find((entry) => entry.id === 'swipeable')
+  const first = readinessTimeoutAttempt(shard, context, {
+    start: attemptStart,
+    load,
+    file: `/checkout/e2e/${shard.spec}`
+  })
+  const second = only(value.bundles.swipeable)
+  second.receipt.attempt = 2
+  second.receipt.retryReason = describeHealth(first.health)
+  value.bundles.swipeable.attempts = [first, second]
+  return value
+}
+
+test('aggregate accepts one retry after host trouble in attempt 1 and a green attempt 2', () => {
+  const { plan, bundles, run } = retried()
+  const [first] = bundles.swipeable.attempts
+  assert.equal(first.health.status, 'trouble')
+  const result = validateAggregate(plan, bundles, run)
+  assert.equal(result.passed, 62)
+  assert.deepEqual(result.retried, { swipeable: describeHealth(first.health) })
+  assert.match(result.retried.swipeable, /^host trouble: .*1 of 1 touch readiness timeouts/)
+})
+
+const noChange = () => {}
+// Each entry gives the attempt 1 load, a change to the attempts, and the gate message.
+const retryRejections = {
+  'attempt 1 healthy at low load': [
+    20,
+    noChange,
+    /^A retry needs host trouble in host-health\.json/
+  ],
+  'host trouble only in host-health.json, not in the raw evidence': [
+    20,
+    ([first, second]) => {
+      first.health = retried().bundles.swipeable.attempts[0].health
+      second.receipt.retryReason = describeHealth(first.health)
+    },
+    /^A retry needs host trouble: host healthy: .*0 of 1 touch readiness timeouts/
+  ],
+  'attempt 1 without host-health.json': [
+    300,
+    ([first]) => {
+      delete first.health
+    },
+    /^A retry needs host trouble in host-health\.json/
+  ],
+  'attempt 1 without its host load': [
+    300,
+    ([first]) => {
+      delete first.hostLoad
+    },
+    /^A retry needs host trouble: host healthy/
+  ],
+  'attempt 1 with a Maestro failure': [
+    300,
+    ([first]) => {
+      first.receipt.maestroOutcome = 'failure'
+    },
+    /^A Maestro step never gets a retry/
+  ],
+  'attempt 1 cancelled': [
+    300,
+    ([first]) => {
+      first.receipt.wdioOutcome = 'cancelled'
+    },
+    /^A retry needs a failed WDIO step/
+  ],
+  'attempt 1 with a retry reason': [
+    300,
+    ([first]) => {
+      first.receipt.retryReason = 'host trouble'
+    },
+    /^Retry reason on attempt 1/
+  ],
+  'retry reason that differs from the attempt 1 evidence': [
+    300,
+    ([, second]) => {
+      second.receipt.retryReason = 'host trouble: something else'
+    },
+    /^Retry reason differs from the attempt 1 evidence/
+  ],
+  'attempt 2 without a retry reason': [
+    300,
+    ([, second]) => {
+      second.receipt.retryReason = null
+    },
+    /^Retry reason differs from the attempt 1 evidence/
+  ],
+  'attempt 2 incomplete': [
+    300,
+    ([, second]) => {
+      second.workers[0].splice(2, 2)
+    },
+    /^Missing\/duplicate\/unstarted cases/
+  ],
+  'attempt 2 with a failed case': [
+    300,
+    ([, second]) => {
+      second.workers[0][3].status = 'failed'
+    },
+    /^Failed\/skipped case/
+  ],
+  'attempt 2 with a retried case': [
+    300,
+    ([, second]) => {
+      second.workers[0][2].attempt = 1
+    },
+    /^Retried case/
+  ],
+  'attempt 2 with Mocha retry attempts': [
+    300,
+    ([, second]) => {
+      second.workers[0][3].retries.attempts = 1
+    },
+    /^Retry attempts missing\/nonzero/
+  ],
+  'attempt 2 with a failed Maestro step': [
+    300,
+    ([, second]) => {
+      second.receipt.maestroOutcome = 'failure'
+    },
+    /^Maestro outcome mismatch/
+  ],
+  'attempt 2 that starts before attempt 1 ends': [
+    300,
+    ([, second]) => {
+      for (const record of second.workers[0]) record.timestamp = '2026-10-16T11:01:00.000Z'
+    },
+    /^Attempt 2 started before attempt 1 ended/
+  ],
+  'three attempts': [
+    300,
+    (attempts) => {
+      const third = structuredClone(attempts[1])
+      third.receipt.attempt = 3
+      attempts.push(third)
+    },
+    /^More than one retry/
+  ],
+  'attempts out of order': [
+    300,
+    (attempts) => {
+      attempts.reverse()
+    },
+    /^Attempt receipt out of order/
+  ]
+}
+for (const [name, [load, mutate, message]] of Object.entries(retryRejections))
+  test(`aggregate rejects a retry: ${name}`, () => {
+    const { plan, bundles, run } = retried(load)
+    mutate(bundles.swipeable.attempts)
+    assert.throws(
+      () => validateAggregate(plan, bundles, run),
+      (error) => message.test(error.message.split('\n')[0])
+    )
+  })
+
+test('the gate reads each attempt directory of a shard artifact in order', async () => {
+  const { bundles } = retried()
+  const [first, second] = bundles.swipeable.attempts
+  const ndjsonText = (records) => `${records.map((record) => JSON.stringify(record)).join('\n')}\n`
+  const files = {
+    'attempt-1/ios-shard-receipt.json': JSON.stringify(first.receipt),
+    'attempt-1/ios-results/worker-41-1.ndjson': ndjsonText(first.workers[0]),
+    'attempt-1/ios-evidence/host-health.json': JSON.stringify(first.health),
+    'attempt-1/ios-evidence/simulator-log.txt': first.simulatorLog,
+    'attempt-1/ios-evidence/host-load.txt': first.hostLoad,
+    'attempt-1/ios-4723/wdio-appium.log': 'appium\n',
+    'attempt-2/ios-shard-receipt.json': JSON.stringify(second.receipt),
+    'attempt-2/ios-results/worker-42-2.ndjson': ndjsonText(second.workers[0]),
+    'attempt-2/ios-evidence/simulator-log.txt': 'not read for the last attempt\n'
+  }
+  const read = (name) => {
+    assert.ok(name in files, `read of a missing file: ${name}`)
+    return files[name]
+  }
+  const bundle = await shardBundle(Object.keys(files), read)
+  assert.deepEqual(bundle.attempts, [first, { ...second, health: undefined }])
+  assert.equal('simulatorLog' in bundle.attempts[1], false)
+  const attempt1 = Object.keys(files).filter((name) => name.startsWith('attempt-1/'))
+  await assert.rejects(
+    shardBundle([...Object.keys(files), 'ios-shard-receipt.json'], read),
+    /Shard evidence outside an attempt directory/
+  )
+  await assert.rejects(
+    shardBundle([...attempt1, 'attempt-3/ios-shard-receipt.json'], read),
+    /Missing attempt directory: attempt-2\//
+  )
+  assert.deepEqual(await shardBundle([], read), { attempts: [] })
 })

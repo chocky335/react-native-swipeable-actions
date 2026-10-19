@@ -9,7 +9,7 @@ import {
   artifactName,
   buildManifest,
   discoverSources,
-  parseRecords,
+  shardBundle,
   validateAggregate
 } from '../e2e/helpers/ios-shards.mjs'
 
@@ -123,12 +123,14 @@ export function validateReadiness(input) {
   assert.equal(manifest.sha, input.sourceSha)
   assert.equal(manifest.runId, String(run.id))
   assert.equal(manifest.runAttempt, String(run.run_attempt))
-  validateAggregate(manifest, bundles, {
+  // A shard passes with one attempt, or with one retry after host trouble in attempt 1.
+  // The aggregate classifies attempt 1 again from its raw evidence.
+  const ios = validateAggregate(manifest, bundles, {
     sha: input.sourceSha, runId: String(run.id), runAttempt: String(run.run_attempt),
     planResult: 'success', buildResult: 'success', shardsResult: 'success'
   })
   for (const bundle of Object.values(bundles)) {
-    for (const record of bundle.workers[0]) {
+    for (const record of bundle.attempts.flatMap((attempt) => attempt.workers.flat())) {
       const time = Date.parse(record.timestamp)
       assert.ok(time >= Date.parse(run.run_started_at) && time <= Date.parse(run.updated_at), 'Worker evidence is outside this run')
     }
@@ -136,7 +138,7 @@ export function validateReadiness(input) {
   validateAndroidLog(androidLog, manifest)
   const packageIntegrity = validatePackage(report, bytes, input.version, input.sourceSha, packedPackage)
   return { schemaVersion: 1, sourceSha: input.sourceSha, version: input.version, ...release,
-    packageIntegrity, ciRuns: [run.id] }
+    packageIntegrity, ciRuns: [run.id], iosRetries: ios.retried }
 }
 
 async function main(args) {
@@ -215,12 +217,7 @@ async function main(args) {
       const bundles = {}
       for (const shard of manifest.shards) {
         const zip = await archive(artifactName(context, shard.id))
-        bundles[shard.id] = {
-          receipt: zip.json('ios-shard-receipt.json'),
-          workers: zip.names.filter((name) => name.startsWith('ios-results/')).map(
-            (name) => parseRecords(zip.read(name).toString('utf8'))
-          )
-        }
+        bundles[shard.id] = await shardBundle(zip.names, (name) => zip.read(name).toString('utf8'))
       }
       const androidJob = jobs.find((job) => job.name === 'e2e-android')
       const androidLog = await (await request('/actions/jobs/' + androidJob.id + '/logs')).text()

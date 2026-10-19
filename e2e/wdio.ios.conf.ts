@@ -6,7 +6,9 @@ import { type TouchReadiness, waitForTouchReadiness } from './helpers/touch-read
 
 const appiumPort = Number(process.env.APPIUM_PORT || 4723)
 
-const resultsDirectory = path.resolve(__dirname, 'logs', 'ios-results')
+// CI runs each attempt of a shard in its own directory, e2e/logs/attempt-N. Local runs use e2e/logs.
+const logsDirectory = process.env.IOS_ATTEMPT_DIR || path.resolve(__dirname, 'logs')
+const resultsDirectory = path.join(logsDirectory, 'ios-results')
 const resultsFile = path.join(resultsDirectory, `worker-${process.pid}-${Date.now()}.ndjson`)
 
 function failureDetails(error: unknown) {
@@ -92,7 +94,7 @@ export const config: WebdriverIO.Config = {
     [
       'appium',
       {
-        logPath: path.resolve(__dirname, 'logs', `ios-${appiumPort}`),
+        logPath: path.join(logsDirectory, `ios-${appiumPort}`),
         args: { address: '127.0.0.1', port: appiumPort }
       }
     ]

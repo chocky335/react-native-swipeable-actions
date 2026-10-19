@@ -5,6 +5,9 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import vm from 'node:vm'
+// host-health.mjs imports this module too. Each module uses the exports of the other only
+// inside its functions, so the import cycle is safe.
+import { retryReason } from './host-health.mjs'
 
 const require = createRequire(import.meta.url)
 const e2eDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -17,6 +20,11 @@ export const EXPECTED_COUNTS = Object.freeze({
 })
 const TOTAL = 62
 const identityKeys = ['sha', 'runId', 'runAttempt']
+/** One attempt of a shard, and at most one retry after host trouble (docs/releasing.md). */
+export const MAX_ATTEMPTS = 2
+/** Each attempt directory `attempt-N/` of a shard artifact has its own receipt. */
+export const RECEIPT_FILE = 'ios-shard-receipt.json'
+const attemptPattern = /^attempt-([1-9][0-9]*)\//
 
 function identity(value) {
   assert.match(value.sha, /^[a-f0-9]{40}$/, 'full checkout SHA required')
@@ -259,7 +267,7 @@ export function artifactName(context, id) {
   return ['ios-shard', context.sha, context.runId, context.runAttempt, id].join('-')
 }
 
-/** The gate checks for one shard: its receipt, its step outcomes and its worker evidence. */
+/** The gate checks for one attempt: its receipt, its step outcomes and its worker evidence. */
 export function validateShard(shard, { receipt, workers }, context) {
   assert.equal(receipt.version, 1)
   for (const key of identityKeys) assert.equal(receipt[key], context[key], 'Stale receipt: ' + key)
@@ -275,17 +283,109 @@ export function validateShard(shard, { receipt, workers }, context) {
   return validateRecords(shard, workers[0])
 }
 
-/** Reads one shard artifact the way the gate does. */
-export async function loadShardBundle(root) {
-  const receipt = JSON.parse(await readFile(path.join(root, 'ios-shard-receipt.json'), 'utf8'))
-  const results = path.join(root, 'ios-results')
-  const files = await readdir(results, { withFileTypes: true })
-  assert.equal(files.length, 1, 'Missing/duplicate worker artifacts')
-  assert.ok(files[0].isFile() && files[0].name.endsWith('.ndjson'), 'Invalid worker artifact')
+/**
+ * The gate checks for one shard and its attempts. Either one attempt passes, or attempt 1
+ * fails, `retryReason` permits a retry after it, and attempt 2 passes. The gate classifies
+ * attempt 1 again from its raw evidence. Host trouble never passes a case.
+ */
+export function validateShardEvidence(shard, { attempts }, context) {
+  assert.ok(Array.isArray(attempts) && attempts.length > 0, 'Missing attempt evidence')
+  assert.ok(attempts.length <= MAX_ATTEMPTS, 'More than one retry')
+  for (const [index, attempt] of attempts.entries()) {
+    assert.equal(attempt.receipt?.attempt, index + 1, 'Attempt receipt out of order')
+  }
+  const last = attempts.at(-1)
+  const passed = validateShard(shard, last, context)
+  if (attempts.length === 1) {
+    assert.equal(last.receipt.retryReason, null, 'Retry reason without a retry')
+    return passed
+  }
+  const [first] = attempts
+  assert.equal(first.receipt.retryReason, null, 'Retry reason on attempt 1')
+  assert.equal(
+    last.receipt.retryReason,
+    retryReason(shard, first, context),
+    'Retry reason differs from the attempt 1 evidence'
+  )
+  const ended = Date.parse(first.workers.flat().at(-1)?.timestamp)
+  assert.ok(
+    Date.parse(last.workers[0][0].timestamp) > ended,
+    'Attempt 2 started before attempt 1 ended'
+  )
+  return passed
+}
+
+/**
+ * Reads one attempt the way the gate does. `names` lists its files by relative path, and
+ * `read` returns the text of one. With `logs`, the attempt also has its simulator log and
+ * host load: the gate classifies an attempt again before it accepts a retry after it.
+ */
+async function readAttempt(names, read, logs) {
+  const optional = async (name) => (names.includes(name) ? read(name) : undefined)
+  const receipt = JSON.parse(await read(RECEIPT_FILE))
+  const workers = []
+  for (const name of names.filter((entry) => entry.startsWith('ios-results/')).sort()) {
+    workers.push(parseRecords(await read(name)))
+  }
+  // A triage file. A retry check fails closed without it.
+  let health
+  try {
+    health = JSON.parse(await optional('ios-evidence/host-health.json'))
+  } catch {
+    health = undefined
+  }
   return {
     receipt,
-    workers: [parseRecords(await readFile(path.join(results, files[0].name), 'utf8'))]
+    workers,
+    health,
+    ...(logs && {
+      simulatorLog: await optional('ios-evidence/simulator-log.txt'),
+      hostLoad: await optional('ios-evidence/host-load.txt')
+    })
   }
+}
+
+/**
+ * Reads one shard artifact the way the gate does: each attempt directory in order. `names`
+ * lists every file of the artifact by its relative path, and `read` returns the text of one.
+ * Every file must be in attempt-1 to attempt-N, with no gap.
+ */
+export async function shardBundle(names, read) {
+  const numbers = names.map((name) => Number(name.match(attemptPattern)?.[1]))
+  assert.ok(numbers.every(Number.isInteger), 'Shard evidence outside an attempt directory')
+  const count = Math.max(0, ...numbers)
+  const attempts = []
+  for (let attempt = 1; attempt <= count; attempt++) {
+    const directory = `attempt-${attempt}/`
+    const files = names
+      .filter((name) => name.startsWith(directory))
+      .map((name) => name.slice(directory.length))
+    assert.ok(files.length > 0, `Missing attempt directory: ${directory}`)
+    attempts.push(await readAttempt(files, (name) => read(directory + name), attempt < count))
+  }
+  return { attempts }
+}
+
+/** Every file below a directory, by its relative path with `/` separators. */
+async function listFiles(root, relative = '') {
+  const names = []
+  for (const entry of await readdir(path.join(root, relative), { withFileTypes: true })) {
+    const name = relative ? `${relative}/${entry.name}` : entry.name
+    if (entry.isDirectory()) names.push(...(await listFiles(root, name)))
+    else names.push(name)
+  }
+  return names
+}
+
+/** Reads one attempt directory the way the gate does. */
+export async function loadAttempt(directory, logs = false) {
+  const read = (name) => readFile(path.join(directory, name), 'utf8')
+  return readAttempt(await listFiles(directory), read, logs)
+}
+
+/** Reads one shard artifact the way the gate does. */
+export async function loadShardBundle(root) {
+  return shardBundle(await listFiles(root), (name) => readFile(path.join(root, name), 'utf8'))
 }
 
 export function validateAggregate(manifest, bundles, context) {
@@ -301,9 +401,20 @@ export function validateAggregate(manifest, bundles, context) {
     'Missing/extra shard artifacts'
   )
   let passed = 0
-  for (const shard of manifest.shards) passed += validateShard(shard, bundles[shard.id], context)
+  const retried = {}
+  for (const shard of manifest.shards) {
+    const { attempts } = bundles[shard.id]
+    passed += validateShardEvidence(shard, bundles[shard.id], context)
+    if (attempts.length > 1) retried[shard.id] = attempts.at(-1).receipt.retryReason
+  }
   assert.equal(passed, TOTAL)
-  return { ...identity(context), passed, shards: manifest.shards.length, maestro: 'success' }
+  return {
+    ...identity(context),
+    passed,
+    shards: manifest.shards.length,
+    maestro: 'success',
+    retried
+  }
 }
 
 function environmentIdentity() {
@@ -347,17 +458,24 @@ async function main([command, ...args]) {
     await verifiedPlan(args[0], context)
   } else if (command === 'receipt') {
     assert.equal(args.length, 3)
-    const [id, planFile, filename] = args
+    const [id, planFile, directory] = args
     const manifest = validateManifest(JSON.parse(await readFile(planFile, 'utf8')))
     for (const key of identityKeys) assert.equal(manifest[key], context[key])
     const shard = manifest.shards.find((entry) => entry.id === id)
     assert.ok(shard, 'Unknown shard')
-    await save(filename, {
+    const attempt = Number(path.basename(directory).match(/^attempt-([1-9][0-9]*)$/)?.[1])
+    assert.ok(attempt >= 1 && attempt <= MAX_ATTEMPTS, 'Expected an attempt directory')
+    // The receipt of a retry records why it ran: the host class of attempt 1.
+    const previous = path.join(path.dirname(directory), `attempt-${attempt - 1}`)
+    await save(path.join(directory, RECEIPT_FILE), {
       version: 1,
       ...context,
       id,
       spec: shard.spec,
       sourceHash: shard.sourceHash,
+      attempt,
+      retryReason:
+        attempt === 1 ? null : retryReason(shard, await loadAttempt(previous, true), manifest),
       wdioOutcome: process.env.IOS_WDIO_OUTCOME,
       maestroOutcome: process.env.IOS_MAESTRO_OUTCOME
     })

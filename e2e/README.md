@@ -67,7 +67,8 @@ These helpers change only E2E observation overhead, not library behavior or API.
 - Sample an element's rectangle once when both its location and size are needed.
   Keep the sample local to that observation; read it again after UI changes or on
   the next poll. Do not reduce assertions or cache geometry across mutations.
-- Keep the existing 120-second test and 45-minute job budgets. A partial run is
+- Keep the existing 120-second test budget, the 45-minute Android job budget and
+  the 70-minute iOS shard budget (two attempts). A partial run is
   not acceptance, and increasing deadlines is not a substitute for diagnosis.
 - A failed or expired attempt loses permission to send commands. Evidence
   callbacks also have bounded, revocable ownership; remote evidence is not
@@ -94,9 +95,11 @@ does not authorize connecting to or changing any device.
 
 ## Isolated iOS CI coverage
 
-The opt-in iOS E2E workflow runs performance, RTL, swipe-to-go-back, single-side swipeable regression, and two-sided specs in separate jobs with matrix fail-fast disabled. Each job retains the 45-minute limit; test assertions, retries, and per-test deadlines are unchanged. The swipeable shard also runs the required Maestro seekbar regression.
+The opt-in iOS E2E workflow runs performance, RTL, swipe-to-go-back, single-side swipeable regression, and two-sided specs in separate jobs with matrix fail-fast disabled. Each job has a 70-minute limit, so that a retry after host trouble fits. Test assertions, Mocha retries, and per-test deadlines are unchanged. The swipeable shard also runs the required Maestro seekbar regression.
 
-The final `e2e-ios` gate requires all five jobs to succeed, all 62 registered cases to pass exactly once, completed workers, and successful Maestro coverage. Missing, cancelled, skipped, duplicate, failed, or unfinished evidence fails the gate. Artifacts are separated by source SHA, workflow run, attempt, and shard. Registration discovery rejects inventory changes until the reviewed expected spec counts are updated.
+A shard gets at most one retry, inside its job, and only when host trouble explains every failure of attempt 1. The rule is in [Inconclusive host runs](../docs/releasing.md#inconclusive-host-runs). Each attempt writes its results, Appium log, simulator log, host load and host class to `e2e/logs/attempt-N/`. `IOS_ATTEMPT_DIR` sets that directory. Without it, a local run writes to `e2e/logs/`.
+
+The final `e2e-ios` gate requires all five jobs to succeed, all 62 registered cases to pass exactly once in the last attempt of their shard, completed workers, and successful Maestro coverage. A retry passes only after the gate classifies attempt 1 again as host trouble. Missing, cancelled, skipped, duplicate, failed, or unfinished evidence fails the gate. Artifacts are separated by source SHA, workflow run, workflow run attempt, and shard. Registration discovery rejects inventory changes until the reviewed expected spec counts are updated.
 
 Run `cd e2e && npm run test:harness` for the offline shard-evidence regressions alongside the existing harness tests. Offline success does not establish simulator acceptance. Job isolation prevents one serial run from leaving later suites unstarted; it does not change or excuse individual test timeouts.
 

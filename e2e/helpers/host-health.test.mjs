@@ -1,20 +1,29 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { readinessTimeoutAttempt, topSamples, touchLine } from './fixtures/host-trouble.mjs'
 import {
   classify,
+  classifyAttempt,
   describeHealth,
   failureWindows,
   gateCheck,
   HEALTH_FILE,
+  HIGH_LOAD,
+  isReadinessTimeout,
   logTime,
   parseHostLoad,
+  parseLoadSamples,
   parseResults,
   parseSimulatorLog,
+  READINESS_FAILURE,
+  READINESS_TIMEOUTS,
   report,
+  retryReason,
   summarize,
   summaryMarkdown
 } from './host-health.mjs'
@@ -26,8 +35,8 @@ import {
   validateAggregate
 } from './ios-shards.mjs'
 
-// The CI host runs in UTC. `log show` prints its local time without a zone.
-process.env.TZ = 'UTC'
+// CI prints each evidence time in UTC, without a zone. These tests run in the zone of this
+// machine, and one test classifies the same evidence in other zones too.
 
 // Trimmed from the CI shard evidence of run 39053954618 (swipeable).
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'host-health')
@@ -128,13 +137,16 @@ test('max load uses every sample, min idle skips the first top sample', () => {
   })
 })
 
-test('the compact log time is the local time of the host', () => {
-  assert.equal(logTime('2026-10-17 18:04:07.338'), Date.parse('2026-10-17T18:04:07.338Z'))
-  process.env.TZ = 'Asia/Tokyo'
+test('the compact log time is UTC in any zone of the reader', () => {
+  const zone = process.env.TZ
   try {
-    assert.equal(logTime('2026-10-17 18:04:07.338'), Date.parse('2026-10-17T09:04:07.338Z'))
+    for (const reader of ['UTC', 'Asia/Tokyo', 'America/Los_Angeles']) {
+      process.env.TZ = reader
+      assert.equal(logTime('2026-10-17 18:04:07.338'), Date.parse('2026-10-17T18:04:07.338Z'))
+    }
   } finally {
-    process.env.TZ = 'UTC'
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
   }
   assert.ok(Number.isNaN(logTime('Timestamp               Ty')))
 })
@@ -345,6 +357,8 @@ function passingBundle(shard) {
       id: shard.id,
       spec: shard.spec,
       sourceHash: shard.sourceHash,
+      attempt: 1,
+      retryReason: null,
       wdioOutcome: 'success',
       maestroOutcome: shard.maestro ? 'success' : 'skipped'
     },
@@ -352,9 +366,10 @@ function passingBundle(shard) {
   }
 }
 
-async function writeShard(directory, shard, bundle, health) {
-  const { receipt, workers } = bundle ?? {}
-  const root = path.join(directory, artifactName(context, shard.id))
+/** Writes one attempt directory of a shard artifact, and its evidence files. */
+async function writeShard(directory, shard, bundle, health, attempt = 1) {
+  const { receipt, workers, simulatorLog, hostLoad } = bundle ?? {}
+  const root = path.join(directory, artifactName(context, shard.id), `attempt-${attempt}`)
   await mkdir(path.join(root, 'ios-evidence'), { recursive: true })
   if (receipt) await writeFile(path.join(root, 'ios-shard-receipt.json'), JSON.stringify(receipt))
   if (workers) {
@@ -362,6 +377,9 @@ async function writeShard(directory, shard, bundle, health) {
     await writeFile(path.join(root, 'ios-results', 'worker-42-1.ndjson'), ndjson(...workers[0]))
   }
   if (health) await writeFile(path.join(root, 'ios-evidence', HEALTH_FILE), JSON.stringify(health))
+  if (simulatorLog)
+    await writeFile(path.join(root, 'ios-evidence', 'simulator-log.txt'), simulatorLog)
+  if (hostLoad) await writeFile(path.join(root, 'ios-evidence', 'host-load.txt'), hostLoad)
 }
 
 const shardById = (id) => manifest.shards.find((shard) => shard.id === id)
@@ -685,14 +703,14 @@ test('report writes host-health.json next to the evidence, even without inputs',
   await temporary(async (directory) => {
     const shard = shardById('swipeable')
     await writeShard(directory, shard, failingBundle())
-    const root = path.join(directory, artifactName(context, shard.id))
+    const root = path.join(directory, artifactName(context, shard.id), 'attempt-1')
     const evidence = path.join(root, 'ios-evidence')
     await writeFile(path.join(evidence, 'simulator-log.txt'), simulatorLog + failedTestLog)
     await copyFile(path.join(fixtures, 'host-load.txt'), path.join(evidence, 'host-load.txt'))
     const health = await report(manifest, shard.id, root)
     assert.deepEqual(JSON.parse(await readFile(path.join(evidence, HEALTH_FILE), 'utf8')), health)
     assert.deepEqual(health, {
-      version: 3,
+      version: 4,
       status: 'trouble',
       onlyFailedCases: true,
       gestures: 3,
@@ -701,6 +719,7 @@ test('report writes host-health.json next to the evidence, even without inputs',
       latentRoutedInFailures: 1,
       failures: 1,
       failuresWithLatent: 1,
+      failuresExplained: 1,
       failedTests: [
         {
           title: 'suite case 0',
@@ -709,6 +728,7 @@ test('report writes host-health.json next to the evidence, even without inputs',
           latentRoutedGestures: 1
         }
       ],
+      readinessTimeouts: [],
       loadSamples: 3,
       maxLoadAverage: 512.16,
       minIdlePercent: 0.4,
@@ -873,9 +893,9 @@ for (const [reason, [mutate, cell]] of Object.entries(gateRejections)) {
     const bundle = passingBundle(shard)
     mutate(bundle)
     const bundles = Object.fromEntries(
-      manifest.shards.map((entry) => [entry.id, passingBundle(entry)])
+      manifest.shards.map((entry) => [entry.id, { attempts: [passingBundle(entry)] }])
     )
-    bundles[shard.id] = bundle
+    bundles[shard.id] = { attempts: [bundle] }
     const gate = {
       ...context,
       planResult: 'success',
@@ -904,7 +924,10 @@ test('the summary passes a shard only when the gate accepts its evidence', async
     buildResult: 'success',
     shardsResult: 'success'
   }
-  assert.equal(validateAggregate(manifest, bundles, gate).passed, 62)
+  const shardBundles = Object.fromEntries(
+    Object.entries(bundles).map(([id, bundle]) => [id, { attempts: [bundle] }])
+  )
+  assert.equal(validateAggregate(manifest, shardBundles, gate).passed, 62)
   await temporary(async (directory) => {
     for (const shard of manifest.shards) await writeShard(directory, shard, bundles[shard.id])
     const rows = await summarize(manifest, directory)
@@ -919,4 +942,447 @@ test('the summary passes a shard only when the gate accepts its evidence', async
       ]
     )
   })
+})
+
+test('each top sample has its UTC time and its 1-minute load average', () => {
+  assert.deepEqual(parseLoadSamples(hostLoad), [
+    { at: Date.parse('2026-10-17T18:01:14Z'), load: 512.16 },
+    { at: Date.parse('2026-10-17T18:01:48Z'), load: 358.33 },
+    { at: Date.parse('2026-10-17T18:02:02Z'), load: 348.67 }
+  ])
+  assert.ok(Number.isNaN(parseLoadSamples('Load Avg: 1.00, 1.00, 1.00\n')[0].at))
+})
+
+// Synthetic: attempt 1 of the swipeable shard. Its first case passes at 17:51:30, then its
+// afterEach relaunch times out at 17:52:07. Each `top` sample in that window has one load.
+const timeoutStart = Date.parse('2026-10-17T17:50:00.000Z')
+const timeoutAttempt = (load) =>
+  readinessTimeoutAttempt(shardById('swipeable'), context, {
+    start: timeoutStart,
+    load,
+    file: '/checkout/e2e/specs/swipeable.spec.ts'
+  })
+
+test('a touch readiness timeout in a relaunch under high load is host trouble', () => {
+  const attempt = timeoutAttempt(HIGH_LOAD)
+  assert.deepEqual(
+    { ...gateCheck(shardById('swipeable'), attempt, context), error: undefined },
+    { error: undefined, failedCases: 1, onlyFailedCases: true }
+  )
+  const health = attempt.health
+  assert.equal(health.status, 'trouble')
+  assert.equal(health.failuresExplained, 1)
+  assert.deepEqual(health.readinessTimeouts, [
+    {
+      title: 'afterEach',
+      start: '2026-10-17T17:51:30.000Z',
+      end: '2026-10-17T17:52:07.000Z',
+      loadSamples: 4,
+      minLoadAverage: HIGH_LOAD,
+      highLoad: true
+    }
+  ])
+  assert.equal(
+    describeHealth(health),
+    'host trouble: all 1 failures have latent-routed gestures or a touch readiness timeout at ' +
+      'load 100 or more (0 of 0 latent-routed gestures in failures, 1 of 1 touch readiness ' +
+      'timeouts at load 100 or more), load 100'
+  )
+})
+
+test('the same touch readiness timeout under low load is healthy', () => {
+  const health = timeoutAttempt(HIGH_LOAD - 1).health
+  assert.equal(health.status, 'healthy')
+  assert.equal(health.failuresExplained, 0)
+  assert.equal(health.readinessTimeouts[0].highLoad, false)
+  assert.equal(
+    describeHealth(health),
+    'host healthy: 0 of 0 latent-routed gestures in failures, 0 of 1 touch readiness timeouts ' +
+      'at load 100 or more'
+  )
+})
+
+test('a touch readiness timeout needs each load sample in its window at high load', () => {
+  const attempt = timeoutAttempt(300)
+  const at = (seconds) => timeoutStart + seconds * 1000
+  // One sample below the threshold, then no sample in the window at all.
+  for (const samples of [
+    [
+      [at(95), 300],
+      [at(105), HIGH_LOAD - 1],
+      [at(125), 300]
+    ],
+    [
+      [at(60), 300],
+      [at(128), 300]
+    ]
+  ]) {
+    const health = classifyAttempt(
+      shardById('swipeable'),
+      { ...attempt, hostLoad: topSamples(samples) },
+      context
+    )
+    assert.equal(health.status, 'healthy')
+  }
+  const noLoad = classifyAttempt(
+    shardById('swipeable'),
+    { ...attempt, hostLoad: undefined },
+    context
+  )
+  assert.equal(noLoad.status, 'healthy')
+  assert.deepEqual(noLoad.missing, ['host-load.txt'])
+})
+
+test('a touch readiness timeout inside a case body needs a latent-routed gesture, not load', () => {
+  const attempt = timeoutAttempt(300)
+  const records = attempt.workers[0]
+  const [hook] = records.splice(4, 1)
+  Object.assign(records[3], { status: 'failed', error: hook.error })
+  records.at(-1).result = 1
+  const health = classifyAttempt(shardById('swipeable'), attempt, context)
+  assert.deepEqual(health.readinessTimeouts, [])
+  assert.notEqual(health.status, 'trouble')
+})
+
+const readinessMessage = (reason) => `${READINESS_FAILURE} after 3 drag(s) in 30128 ms: ${reason}`
+const appStateReasons = [
+  'the app left the list screen before a drag moved the seekbar thumb',
+  'the seekbar thumb did not return to rest'
+]
+
+test('only the two timeouts of the touch readiness gate can be host trouble', () => {
+  for (const reason of READINESS_TIMEOUTS)
+    assert.equal(isReadinessTimeout(readinessMessage(reason)), true)
+  for (const reason of appStateReasons)
+    assert.equal(isReadinessTimeout(readinessMessage(reason)), false)
+  assert.equal(isReadinessTimeout(`${readinessMessage(READINESS_TIMEOUTS[0])}, then more`), false)
+  assert.equal(isReadinessTimeout(READINESS_TIMEOUTS[0]), false)
+  assert.equal(isReadinessTimeout(undefined), false)
+})
+
+test('a touch readiness failure for an app state stays a real failure under high load', () => {
+  const shard = shardById('swipeable')
+  for (const reason of appStateReasons) {
+    const attempt = timeoutAttempt(300)
+    attempt.workers[0][4].error.message = readinessMessage(reason)
+    assert.equal(gateCheck(shard, attempt, context).onlyFailedCases, false)
+    const health = classifyAttempt(shard, attempt, context)
+    assert.equal(health.status, 'healthy')
+    assert.deepEqual(health.readinessTimeouts, [])
+    assert.throws(
+      () => retryReason(shard, { ...attempt, health }, context),
+      /A retry needs host trouble/
+    )
+  }
+  const lostTouches = timeoutAttempt(300)
+  lostTouches.workers[0][4].error.message = readinessMessage(READINESS_TIMEOUTS[1])
+  assert.equal(classifyAttempt(shard, lostTouches, context).status, 'trouble')
+})
+
+test('a touch readiness timeout under high load needs no simulator log and no gesture', () => {
+  const shard = shardById('swipeable')
+  const attempt = timeoutAttempt(300)
+  for (const simulatorLog of [undefined, 'Timestamp               Ty Process[PID:TID]\n']) {
+    const health = classifyAttempt(shard, { ...attempt, simulatorLog }, context)
+    assert.equal(health.gestures, 0)
+    assert.equal(health.status, 'trouble')
+  }
+  // A failed case needs gesture evidence, so without the simulator log the attempt is unknown.
+  const withCase = timeoutAttempt(300)
+  Object.assign(withCase.workers[0][3], {
+    status: 'failed',
+    error: { name: 'Error', message: 'row did not open' }
+  })
+  const health = classifyAttempt(shard, { ...withCase, simulatorLog: undefined }, context)
+  assert.equal(health.status, 'unknown')
+  assert.equal(describeHealth(health), 'host unknown: no simulator log')
+})
+
+test('a latent-routed gesture in a touch readiness timeout window does not count', () => {
+  const shard = shardById('swipeable')
+  for (const [load, status] of [
+    [20, 'healthy'],
+    [300, 'trouble']
+  ]) {
+    const attempt = timeoutAttempt(load)
+    attempt.simulatorLog += touchLine(timeoutStart + 110000, true)
+    const health = classifyAttempt(shard, attempt, context)
+    assert.equal(health.status, status)
+    assert.equal(health.latentRoutedGestures, 1)
+    assert.equal(health.latentRoutedInFailures, 0)
+    assert.equal(health.failuresWithLatent, 0)
+    assert.match(describeHealth(health), /\b0 of 1 latent-routed gestures in failures, /)
+  }
+})
+
+test('host mixed counts the failures that host trouble explains', () => {
+  const attempt = timeoutAttempt(300)
+  Object.assign(attempt.workers[0][3], {
+    status: 'failed',
+    error: { name: 'Error', message: 'row did not open' }
+  })
+  const health = classifyAttempt(shardById('swipeable'), attempt, context)
+  assert.equal(health.status, 'mixed')
+  assert.equal(health.failuresExplained, 1)
+  assert.equal(
+    describeHealth(health),
+    'host mixed: 1 of 2 failures have latent-routed gestures or a touch readiness timeout at ' +
+      'load 100 or more (0 of 0 latent-routed gestures in failures, 1 of 1 touch readiness ' +
+      'timeouts at load 100 or more), load 300'
+  )
+})
+
+// Classifies CI evidence in a new process with the given zone. The evidence prints UTC
+// times without a zone, so each zone of the reader must give the same host class.
+const zoneProbe = `
+import { readFileSync } from 'node:fs'
+import { classify } from ${JSON.stringify(new URL('./host-health.mjs', import.meta.url).href)}
+const read = (name) => readFileSync(new URL(name, ${JSON.stringify(pathToFileURL(`${fixtures}/`).href)}), 'utf8')
+const gate = { onlyFailedCases: true, failedCases: 1 }
+// Four top samples inside the hook window of run 39273407706, as CI prints them.
+const hookWindow = ['15:27:40', '15:27:50', '15:28:00', '15:28:10']
+  .map((time) => 'Processes: 800 total\\n2026/10/19 ' + time + '\\nLoad Avg: 300.00, 300.00, 300.00 \\n')
+  .join('')
+process.stdout.write(JSON.stringify([
+  classify({
+    simulatorLog: read('simulator-log.txt') + read('simulator-log-failed-test.txt'),
+    hostLoad: read('host-load.txt'),
+    results: read('ios-results.ndjson'),
+    gate
+  }),
+  classify({
+    simulatorLog: read('run-39273407706/swipeable-simulator-log.txt'),
+    hostLoad: read('run-39273407706/swipeable-host-load.txt') + hookWindow,
+    results: read('run-39273407706/swipeable-results.ndjson'),
+    gate
+  })
+]))
+`
+
+test('the host class of the same evidence is the same in each zone of the reader', () => {
+  const classes = {}
+  for (const zone of ['UTC', 'Europe/Kyiv', 'America/Los_Angeles']) {
+    const probe = spawnSync(process.execPath, ['--input-type=module', '--eval', zoneProbe], {
+      env: { ...process.env, TZ: zone },
+      encoding: 'utf8'
+    })
+    assert.equal(probe.status, 0, probe.stderr)
+    classes[zone] = JSON.parse(probe.stdout)
+  }
+  // A latent-routed gesture in a failed case, then a relaunch timeout at high load.
+  assert.deepEqual(
+    classes.UTC.map((health) => [health.status, health.failuresExplained]),
+    [
+      ['trouble', 1],
+      ['trouble', 1]
+    ]
+  )
+  assert.deepEqual(classes['Europe/Kyiv'], classes.UTC)
+  assert.deepEqual(classes['America/Los_Angeles'], classes.UTC)
+})
+
+// Trimmed from the CI shard evidence of run 39273407706 (swipeable). Its 8 cases passed.
+// Then the afterEach relaunch timed out in the touch readiness gate, and the worker
+// quarantined the session in that hook. Mocha started none of the other 17 cases. The
+// host load of the run has samples from 15:16:55 to 15:20:01 only: the WDIO step then
+// sampled its first two minutes. The worker started at 15:21:21.
+const run3 = path.join(fixtures, 'run-39273407706')
+const run3Context = {
+  sha: 'd06730521c230f685bc09a9980ca92d957e47546',
+  runId: '39273407706',
+  runAttempt: '1'
+}
+const run3Results = await readFile(path.join(run3, 'swipeable-results.ndjson'), 'utf8')
+const run3Evidence = {
+  receipt: JSON.parse(await readFile(path.join(run3, 'swipeable-receipt.json'), 'utf8')),
+  simulatorLog: await readFile(path.join(run3, 'swipeable-simulator-log.txt'), 'utf8'),
+  hostLoad: await readFile(path.join(run3, 'swipeable-host-load.txt'), 'utf8')
+}
+// The 8 cases that ran, then 17 cases that never started.
+const run3Manifest = buildManifest(
+  Object.fromEntries(
+    Object.entries(EXPECTED_COUNTS).map(([spec, count]) => {
+      if (spec === 'specs/swipeable.spec.ts')
+        return [
+          spec,
+          `${registeredCases(run3Results)}\ndescribe("Later tests", () => { for (let i = 0; i < 17; i++) it("case " + i, () => {}) })`
+        ]
+      return [
+        spec,
+        `describe("suite", () => { for (let i = 0; i < ${count}; i++) it("case " + i, () => {}) })`
+      ]
+    })
+  ),
+  run3Context
+)
+const run3Shard = run3Manifest.shards.find((shard) => shard.id === 'swipeable')
+// Synthetic: four top samples inside the window of the hook, from 15:27:35.902 to 15:28:12.857.
+const hookWindowLoad = (load) =>
+  topSamples(
+    ['15:27:40', '15:27:50', '15:28:00', '15:28:10'].map((time) => [
+      Date.parse(`2026-10-19T${time}Z`),
+      load
+    ])
+  )
+
+function run3Attempt(hostLoadText) {
+  const attempt = {
+    receipt: {
+      ...run3Evidence.receipt,
+      sourceHash: run3Shard.sourceHash,
+      attempt: 1,
+      retryReason: null
+    },
+    workers: [parseRecords(run3Results)],
+    simulatorLog: run3Evidence.simulatorLog,
+    hostLoad: hostLoadText
+  }
+  return { ...attempt, health: classifyAttempt(run3Shard, attempt, run3Context) }
+}
+
+test('run 39273407706: the relaunch timeout, its quarantine and the unstarted cases are host trouble at high load', () => {
+  const attempt = run3Attempt(run3Evidence.hostLoad + hookWindowLoad(300))
+  const records = attempt.workers[0]
+  assert.equal(records.filter((record) => record.event === 'test-start').length, 8)
+  assert.equal(records.at(-1).result, 2)
+  assert.deepEqual(
+    { ...gateCheck(run3Shard, attempt, run3Context), error: undefined },
+    { error: undefined, failedCases: 1, onlyFailedCases: true }
+  )
+  assert.equal(attempt.health.status, 'trouble')
+  assert.equal(attempt.health.latentRoutedGestures, 1)
+  assert.equal(attempt.health.latentRoutedInFailures, 0)
+  assert.equal(
+    retryReason(run3Shard, attempt, run3Context),
+    'host trouble: all 1 failures have latent-routed gestures or a touch readiness timeout at ' +
+      'load 100 or more (0 of 1 latent-routed gestures in failures, 1 of 1 touch readiness ' +
+      'timeouts at load 100 or more), load 385.07'
+  )
+})
+
+test('run 39273407706: the same relaunch timeout is healthy at low load or without a sample in its window', () => {
+  for (const hostLoadText of [
+    run3Evidence.hostLoad + hookWindowLoad(20),
+    // The run itself: the load samples end before the worker starts.
+    run3Evidence.hostLoad
+  ]) {
+    const attempt = run3Attempt(hostLoadText)
+    assert.equal(attempt.health.status, 'healthy')
+    assert.match(describeHealth(attempt.health), /^host healthy: 0 of 1 latent-routed gestures/)
+    assert.throws(() => retryReason(run3Shard, attempt, run3Context), /A retry needs host trouble/)
+  }
+})
+
+// Each of these is a rejection that the relaunch timeout of the run does not cause.
+const timeoutRejections = {
+  'a case after the timeout hook': (records) => {
+    const [start, result] = records.slice(2, 4).map((record) => ({
+      ...record,
+      ...run3Shard.cases[8],
+      timestamp: '2026-10-19T15:28:12.900Z'
+    }))
+    records.splice(-1, 0, start, result)
+  },
+  'an unfinished case before the timeout hook': (records) => {
+    records.splice(-3, 1)
+  },
+  'a gap in the started cases, as from a grep filter': (records) => {
+    records.splice(4, 2)
+  },
+  'a skipped case': (records) => {
+    records[3].status = 'skipped'
+  },
+  'another hook failure': (records) => {
+    records.splice(4, 0, { ...records.at(-2), error: { name: 'Error', message: 'other' } })
+  },
+  'a failed warm-up': (records) => {
+    records[1].ok = false
+  },
+  'a quarantine that starts in another runnable': (records) => {
+    records.at(-1).quarantine.runnable = 'Swipeable E2E Tests "after all" hook'
+  },
+  'a worker that did not finish': (records) => {
+    records.pop()
+  }
+}
+
+for (const [reason, mutate] of Object.entries(timeoutRejections)) {
+  test(`run 39273407706: a relaunch timeout at high load with another rejection is not host trouble: ${reason}`, () => {
+    const attempt = run3Attempt(run3Evidence.hostLoad + hookWindowLoad(300))
+    mutate(attempt.workers[0])
+    const check = gateCheck(run3Shard, attempt, run3Context)
+    assert.equal(check.passed, undefined)
+    assert.equal(check.onlyFailedCases, false)
+    const health = classifyAttempt(run3Shard, attempt, run3Context)
+    assert.notEqual(health.status, 'trouble')
+  })
+}
+
+for (const [reason, mutate] of Object.entries({
+  'a Maestro failure': (receipt) => {
+    receipt.maestroOutcome = 'failure'
+  },
+  'a cancelled WDIO step': (receipt) => {
+    receipt.wdioOutcome = 'cancelled'
+  }
+})) {
+  test(`run 39273407706: a relaunch timeout at high load with ${reason} is not host trouble`, () => {
+    const attempt = run3Attempt(run3Evidence.hostLoad + hookWindowLoad(300))
+    mutate(attempt.receipt)
+    assert.notEqual(classifyAttempt(run3Shard, attempt, run3Context).status, 'trouble')
+    assert.throws(() => retryReason(run3Shard, attempt, run3Context))
+  })
+}
+
+test('a retry follows attempt 1 only, with host trouble in host-health.json and in the evidence', () => {
+  const attempt = run3Attempt(run3Evidence.hostLoad + hookWindowLoad(300))
+  assert.match(retryReason(run3Shard, attempt, run3Context), /^host trouble: /)
+  const retry = (change) => () => {
+    const value = structuredClone(attempt)
+    change(value)
+    retryReason(run3Shard, value, run3Context)
+  }
+  assert.throws(
+    retry((value) => {
+      value.receipt.attempt = 2
+    }),
+    /Only attempt 1 can have a retry/
+  )
+  assert.throws(
+    retry((value) => {
+      delete value.health
+    }),
+    /A retry needs host trouble in host-health.json/
+  )
+  assert.throws(
+    retry((value) => {
+      value.hostLoad = run3Evidence.hostLoad
+    }),
+    /A retry needs host trouble: host healthy/
+  )
+})
+
+test('the summary has one row for each attempt and gives the gate verdict on the retry', async () => {
+  const shard = shardById('swipeable')
+  for (const [load, verdict] of [
+    [300, '; retry accepted'],
+    [20, '; retry rejected: A retry needs host trouble in host-health.json']
+  ]) {
+    await temporary(async (directory) => {
+      const first = timeoutAttempt(load)
+      const second = passingBundle(shard)
+      second.receipt.attempt = 2
+      second.receipt.retryReason = describeHealth(first.health)
+      await writeShard(directory, shard, first, first.health, 1)
+      await writeShard(directory, shard, second, undefined, 2)
+      const rows = await summarize({ ...manifest, shards: [shard] }, directory)
+      assert.deepEqual(
+        rows.map(({ id }) => id),
+        ['swipeable (attempt 1)', 'swipeable (attempt 2)']
+      )
+      assert.match(rows[0].result, /^rejected: wdio failure, .*1 failed or skipped hook/)
+      assert.equal(rows[0].host, describeHealth(first.health))
+      assert.equal(rows[1].result, `passed (25 cases)${verdict}`)
+    })
+  }
 })
