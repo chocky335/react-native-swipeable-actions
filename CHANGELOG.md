@@ -5,12 +5,13 @@ the entry for the matching version.
 
 ## Unreleased
 
-## 1.0.0 - 2026-10-19
+## 1.0.0 - 2026-10-20
 
 First stable v1 release. Install it with
-`npx expo install react-native-swipeable-actions`. Rebuild the iOS and Android
+`npx expo install react-native-swipeable-actions@^1`. Rebuild the iOS and Android
 apps after you upgrade. Read the [v1 migration guide](docs/migration-v1.md).
-The package code is the same as in 1.0.0-rc.0.
+The package code is the same as in 1.0.0-rc.0. The lists below are the changes
+since 0.1.12.
 
 ### BREAKING CHANGES
 
