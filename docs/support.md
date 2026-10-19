@@ -16,6 +16,19 @@ The package is an Expo module with native code.
 - Rebuild the iOS and Android apps after every install or upgrade. A JavaScript
   reload or an OTA update cannot change native code.
 
+## iOS 27 and the UIScene lifecycle
+
+An app built with the iOS 27 SDK (Xcode 27) stops at launch on iOS 27 if it does not
+adopt the UIScene lifecycle. iOS sets this requirement for the app. The Expo SDK 54
+app template does not meet it. This package does not cause it and cannot fix it.
+
+- The Expo SDK 54 template creates its window in the app delegate. It has no scene
+  delegate.
+- The example app adopts the UIScene lifecycle with a local config plugin,
+  `example/plugins/with-scene-lifecycle.js`.
+- Built with Xcode 27, the example app launched on a physical iPhone 11 Pro Max with
+  iOS 27.0.1. Only the launch was checked. The E2E suites did not run on iOS 27.
+
 ## Declared ranges
 
 The package declares these ranges. They are minimums, not a tested matrix.

@@ -392,6 +392,11 @@ the minimum targets (iOS 13.4, Android API 23) are what the package declares. Th
 are not a tested matrix. [docs/support.md](docs/support.md) lists what was tested
 and what was not.
 
+An app built with the iOS 27 SDK (Xcode 27) stops at launch on iOS 27 if it does not
+adopt the UIScene lifecycle. iOS sets this requirement for the app. The Expo SDK 54
+app template does not meet it, and this package does not affect it. The example app adopts the UIScene lifecycle. Built with Xcode 27,
+it launched on a physical iPhone with iOS 27.0.1. Only the launch was checked.
+
 ## Performance
 
 Android 16, Pixel 8 Pro, list demo with 100 items. Measured with 0.1.x.
