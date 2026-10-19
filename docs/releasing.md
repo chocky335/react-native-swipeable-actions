@@ -22,8 +22,11 @@ checks cannot replace a successful run of the prepared source.
    publishing workflow never bumps versions or commits source changes.
 4. Run full CI once as a fresh `workflow_dispatch` run on this exact `main` SHA
    with both mobile suites enabled. The run must completely succeed on attempt 1.
-   A failed-jobs rerun is not release evidence. Do not change assertions, retries,
-   the 120-second case deadlines, or the 45-minute mobile job deadlines.
+   A failed-jobs rerun is not release evidence. Do not change assertions, Mocha
+   retries, the 120-second case deadlines, or the mobile job deadlines (45 minutes,
+   and 70 minutes for an iOS shard, which can run two attempts).
+   The only retry is the one [shard retry after host trouble](#inconclusive-host-runs)
+   inside an iOS shard job.
    If the [physical iPhone check](#physical-iphone-check) applies, do it on the
    same SHA.
 
@@ -68,42 +71,79 @@ The Prepare step 4 CI run is the only check that the tools still work with an ov
 
 ## Inconclusive host runs
 
-Each iOS shard writes `ios-evidence/host-health.json`. It compares the simulator log
-with the NDJSON results in `ios-results/`. Each failure has a window: a failed test
-from its start to its result, a failed hook, or a failed warm-up. A test without a
-result fails, and its window ends at the next record. A gesture counts in the window
-that contains its start. The `e2e-ios` job summary
-shows the gate checks and one host class for each shard. The gate checks column
-uses the same checks as the gate for that shard: the step outcomes, the warm-up
-and the full case inventory. It lists each condition that fails.
+Each iOS shard job runs its spec in an attempt directory: `attempt-1/`, and
+`attempt-2/` after a retry. Each attempt has its own receipt, NDJSON results in
+`ios-results/`, Appium log, simulator log, host load and `ios-evidence/host-health.json`.
+The host load has a `top` sample every 5 seconds for the whole attempt.
 
-- `host trouble`: the gate rejects the shard only for failed cases, and the window
-  of each failed case contains at least one gesture that went to latent system
-  gesture destinations of the app scene. The simulator sent these gestures to
-  SpringBoard first, and the app did not get them. A Maestro step that a failed WDIO
-  step skipped is part of the failed cases. The worker result is part of them only when
-  it is one Mocha failure for each failed case, or when the worker ends directly after a
-  failed last case and its worker-end record shows a quarantine that started in that
-  case. A failed Maestro step or warm-up, a skipped, pending or unfinished case, a
-  failed hook, a failed worker or a missing case is a real failure, and the shard is
-  never `host trouble`.
-- `host mixed`: some failure windows contain latent-routed gestures, and other
-  failure windows do not, or the gate also rejects the shard for another reason.
-  The failures without them, and the other rejections, are real failures.
-- `host healthy`: no failure window contains a latent-routed gesture, or the shard
-  has no failure. A latent-routed gesture during a passed warm-up or test does not count.
-- `host unknown`: the shard has no usable simulator log, or it has latent-routed
+`host-health.json` compares the simulator log and the host load with the NDJSON
+results. Each failure has a window: a failed test from its start to its result, a
+failed hook, or a failed warm-up. A test without a result fails, and its window ends
+at the next record. A gesture counts in the window that contains its start. A load
+sample counts in the window that contains its time. The `e2e-ios` job summary shows
+the gate checks and one host class for each attempt. The gate checks column uses the
+same checks as the gate for that attempt: the step outcomes, the warm-up and the full
+case inventory. It lists each condition that fails.
+
+- `host trouble`: the gate rejects the attempt only for failed cases and touch
+  readiness timeouts, and host trouble explains each of them.
+  - A failed case needs at least one gesture in its window that went to latent
+    system gesture destinations of the app scene. The simulator sent these
+    gestures to SpringBoard first, and the app did not get them.
+  - A touch readiness timeout is a hook that fails with `Touch readiness gate
+    failed`, for example the relaunch in `afterEach`. Its window needs at least one
+    load sample, and each sample in it needs a 1-minute load average of 100 or more.
+    The runner has 3 vCPUs. At load 100, a relaunch that needs 1 CPU second on an
+    idle host needs about 33 seconds. That is more than the 30-second phase of the
+    readiness gate. A host that keeps up has a load near 3. In the stored shard
+    evidence of three runs, the overload never fell below load 136.
+
+  These effects of the failures are part of them:
+  - A Maestro step that a failed WDIO step skipped.
+  - A worker result of one Mocha failure for each failure.
+  - A larger worker result, when the worker ends directly after the last failure
+    and its worker-end record shows a quarantine that started in that failure.
+  - The cases that never started, when a touch readiness timeout ends the worker.
+    Mocha starts no later case of the suite after a failed hook.
+
+  A failed Maestro step or warm-up, a skipped, pending or unfinished case, another
+  failed hook, a failed worker or any other missing case is a real failure. Then
+  the attempt is never `host trouble`.
+- `host mixed`: host trouble explains some failure windows and not others, or the
+  gate also rejects the attempt for another reason. The other failures and
+  rejections are real failures.
+- `host healthy`: host trouble explains no failure window, or the attempt has no
+  failure. A latent-routed gesture during a passed warm-up or test does not count.
+- `host unknown`: the attempt has no usable simulator log, or it has latent-routed
   gestures and no test results.
 
 The summary shows the latent-routed gestures in failure windows and in total.
-The host class never changes the `e2e-ios` result. A run with a failed case fails.
+Host trouble never makes a case pass. It only permits one retry of a shard:
 
-1. If each failed shard of a failed run shows `host trouble`, the run is
-   "inconclusive (host)". It is not release evidence. One failure without a
-   latent-routed gesture in its window makes the run a real failure.
-2. Never retry individual tests or failed jobs.
+1. If attempt 1 fails, the `Run E2E tests` step classifies it. The step retries the
+   shard once, in the same job, only when all of these are true:
+   - The WDIO run of attempt 1 failed, and Maestro did not run.
+   - The classifier finds `host trouble` in the raw evidence of attempt 1.
+   - The `host-health.json` of attempt 1 says `host trouble`.
+2. Before attempt 2, the step boots the simulator again. Attempt 2 starts a new
+   Appium server, WebDriverAgent session and app.
+3. Attempt 2 must pass every case of the shard, with no Mocha retry. Maestro runs
+   once, after the WDIO run that passed. A Maestro failure never gets a retry.
+4. The receipt of attempt 2 records `attempt: 2` and its `retryReason`: the host
+   class of attempt 1. The shard artifact keeps both attempts.
+5. A shard never gets a second retry. If attempt 2 fails, the shard fails.
+
+The iOS shard job deadline is 70 minutes, so that two attempts fit. A job that
+reaches its deadline fails.
+
+1. If the last attempt of each failed shard shows `host trouble`, the run is
+   "inconclusive (host)". It is not release evidence. One failure that host trouble
+   does not explain makes the run a real failure.
+2. Never rerun failed jobs, and never retry individual tests. The shard retry above
+   is the only retry.
 3. Dispatch a fresh full run only after an inconclusive (host) run.
-4. Release evidence is a fully green full run.
+4. Release evidence is a fully green full run. A shard that passes in its retry is
+   green.
 
 ## Evidence interface
 
@@ -130,10 +170,18 @@ this artifact in their clean consumer builds; publishing uses that same tarball,
 not a new local build or pack.
 
 iOS uses the existing `ios-plan-<sha>-<run>-1` and
-`ios-shard-<sha>-<run>-1-<shard>` artifacts. The gate rediscovers the maintained
+`ios-shard-<sha>-<run>-1-<shard>` artifacts. Each shard artifact has `attempt-1/`,
+and `attempt-2/` after a retry. The gate rediscovers the maintained
 inventory from the prepared checkout, compares source hashes and case identities,
-then validates raw NDJSON, worker completion, receipts, zero retries/skips,
-all 62 cases and Maestro. Records must belong to the run's time interval.
+then validates raw NDJSON, worker completion, receipts, zero Mocha retries and
+skips, all 62 cases and Maestro. A shard passes with one green attempt, or with a
+green attempt 2 after a [retry](#inconclusive-host-runs). For a retry, the gate
+classifies attempt 1 again from its raw NDJSON, host load and simulator log. Both
+that verdict and the stored `host-health.json` must say `host trouble`, and the
+receipt of attempt 2 must give the same retry reason. A third attempt, a retry
+after an attempt 1 that host trouble does not explain, and an incomplete or retried
+attempt 2 fail closed. The report lists each retried shard and its reason in
+`iosRetries`. Records of every attempt must belong to the run's time interval.
 Android uses the actual `e2e-android` job log: five completed spec workers, the
 complete WDIO summary and every passing case title (including duplicate counts) are required.
 A success badge, hand-entered count or summary without case output cannot pass.
