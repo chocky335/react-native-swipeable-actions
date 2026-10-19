@@ -31,6 +31,13 @@ not authorize publishing a subsequently bumped stable package. Repeat full
 acceptance on the stable source. If `main` moves before publication, prepare and
 test the intended current revision again; never rewrite evidence to match it.
 
+## Dependency advisories
+
+The published package has no runtime dependencies. Advisories in `package-lock.json`
+come from the development and peer tooling tree (React Native, Expo, test tools).
+Before each release, run `npm audit --package-lock-only`. Update a critical advisory
+within its existing semver range. Do not run `npm audit fix --force`.
+
 ## Inconclusive host runs
 
 Each iOS shard writes `ios-evidence/host-health.json`. It compares the simulator log
