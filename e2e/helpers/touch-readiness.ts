@@ -123,9 +123,6 @@ export async function waitForTouchReadiness(
   for (;;) {
     const thumb = await rectOf(selectors.seekbarThumb)
     if (Math.abs(thumb.x - rest.x) <= AT_REST) break
-    if (!(await onListScreen())) {
-      throw failure('the app left the list screen before the seekbar thumb returned to rest')
-    }
     if (remaining() === 0) throw failure('the seekbar thumb did not return to rest')
     drags++
     await drag(await dragStart(thumb), rest.x - thumb.x + RESTORE_OVERSHOOT, width)

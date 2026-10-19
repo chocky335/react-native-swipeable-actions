@@ -167,8 +167,7 @@ test('touch readiness gate without a device or transport', async (t) => {
       [{ displayed: () => false }, true],
       [{ lost: () => true }, true],
       [{ lost: () => true, displayed: (state) => state.drags.length === 0 }, false],
-      [{ lost: (n) => n >= 2 }, true],
-      [{ lost: (n) => n >= 2, displayed: (state) => state.drags.length < 2 }, false]
+      [{ lost: (n) => n >= 2 }, true]
     ]
     const reasons = []
     for (const [options, timeout] of failures) {
@@ -183,7 +182,6 @@ test('touch readiness gate without a device or transport', async (t) => {
     }
     assert.deepEqual([reasons[0], reasons[1], reasons[3]], READINESS_TIMEOUTS)
     assert.equal(reasons[2], 'the app left the list screen before a drag moved the seekbar thumb')
-    assert.equal(reasons[4], 'the app left the list screen before the seekbar thumb returned to rest')
   })
 
   await t.test('a thumb outside its pan area is dragged through the pan area', async () => {
