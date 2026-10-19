@@ -2,7 +2,7 @@
 
 The mobile suites exercise the demo through WebdriverIO and Appium. The command
 ownership regressions exercise the installed test framework and HTTP transport
-offline; they do not replace Android, iOS, or physical-device acceptance.
+offline; they do not replace Android, iOS, or the physical iPhone check.
 
 ## Offline harness checks
 

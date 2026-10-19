@@ -7,8 +7,9 @@ checks cannot replace a successful run of the prepared source.
 
 ## Prepare an unpublished exact version
 
-1. Finish the implementation and its independent review. Final acceptance must
-   use the exact prepared source and version. Release candidates use an explicit
+1. Finish the implementation and its independent review. If the
+   [physical iPhone check](#physical-iphone-check) applies, do it now. The full CI
+   run must use the exact prepared source and version. Release candidates use an explicit
    `1.0.0-rc.N`, and the stable release uses `1.0.0`. Never use
    `npm version prerelease` to infer v1.
 2. In a separately reviewed preparation change, use
@@ -26,8 +27,8 @@ checks cannot replace a successful run of the prepared source.
    the 120-second case deadlines, or the 45-minute mobile job deadlines.
 
 RC and stable preparation each change source identity. Evidence for an RC does
-not authorize publishing a subsequently bumped stable package. Repeat full
-acceptance on the stable source. If `main` moves before publication, prepare and
+not authorize publishing a subsequently bumped stable package. Repeat the full
+CI run on the stable source. If `main` moves before publication, prepare and
 test the intended current revision again; never rewrite evidence to match it.
 
 ## Dependency advisories
@@ -142,8 +143,8 @@ inventory on both platforms. They are automated evidence requirements.
 ## Physical iPhone check
 
 Simulators cannot show haptics. Run this check on a physical iPhone before you
-prepare a release, if `ios/` or haptics, appearance or Reduce Motion code changed
-since the last check. The publish workflow does not check it.
+prepare a release, if `ios/` code changed since the last check, or if TypeScript
+code for haptics, appearance or Reduce Motion changed. The publish workflow does not check it.
 
 1. Build the example app in Release configuration on the iPhone.
 2. Inspect the default row and action appearance.
@@ -152,10 +153,12 @@ since the last check. The publish workflow does not check it.
    sure the feedback does not repeat.
 5. Feel feedback with haptics on. Make sure nothing plays with haptics off.
 6. Make sure programmatic changes, cancellation and auto-close play no feedback.
-7. Change Reduce Motion while the app runs, and check its live effect.
+7. Change Reduce Motion while the app runs. Check its live effect on motion, and
+   make sure Auto feedback does not change.
 
-If a check fails, fix it before you prepare the release. Write the device and the
-iOS version in the preparation PR.
+If a check fails, fix it before you prepare the release. Write the tested commit
+SHA, the device and the iOS version in the preparation PR. The next check compares
+against that SHA.
 
 ## Verify, then publish
 
