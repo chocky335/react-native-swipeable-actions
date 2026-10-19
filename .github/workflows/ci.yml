@@ -499,7 +499,8 @@ jobs:
           TOP_PID=
           VIDEO_PID=
           stop_samplers() {
-            if [ -n "$TOP_PID" ]; then kill "$TOP_PID" 2>/dev/null || true; fi
+            # Wait for top to exit, so that host-load.txt is complete before a reader opens it.
+            if [ -n "$TOP_PID" ]; then kill "$TOP_PID" 2>/dev/null && wait "$TOP_PID" || true; fi
             # SIGINT lets simctl finish the movie file.
             if [ -n "$VIDEO_PID" ]; then kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true; fi
             TOP_PID=
@@ -514,14 +515,16 @@ jobs:
           fi
           # The simulator can stall in an attempt, and a relaunch can time out under load.
           # Keep the simulator log from the attempt start on, and sample host load for the
-          # whole attempt, to explain a lost touch or a slow relaunch.
+          # whole attempt, to explain a lost touch or a slow relaunch. Each evidence time is
+          # UTC, because the gate classifies the evidence again on another host. The host
+          # class reads only the load and CPU lines of top, so top prints no process list.
           run_attempt() {
             export IOS_ATTEMPT_DIR="$GITHUB_WORKSPACE/e2e/logs/attempt-$1"
             export E2E_ARTIFACT_DIR="$IOS_ATTEMPT_DIR/ios-evidence"
-            IOS_TEST_START=$(date '+%Y-%m-%d %H:%M:%S')
+            IOS_TEST_START=$(TZ=UTC date '+%Y-%m-%d %H:%M:%S+0000')
             printf 'IOS_ATTEMPT=%s\nIOS_TEST_START=%s\n' "$1" "$IOS_TEST_START" >> "$GITHUB_ENV"
             mkdir -p "$E2E_ARTIFACT_DIR"
-            top -l 0 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
+            TZ=UTC top -l 0 -s 5 -n 0 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
             TOP_PID=$!
             if [ "$IOS_VIDEO" = true ]; then
               mkdir -p "$RUNNER_TEMP/ios-video"
@@ -534,12 +537,14 @@ jobs:
             return "$status"
           }
           if run_attempt 1; then exit 0; fi
+          # A filtered run is diagnosis only, and the gate rejects it. It never gets a retry.
+          if [ -n "$IOS_GREP" ]; then exit 1; fi
           # The retry check needs the receipt and the simulator log of attempt 1.
           # Maestro runs after this step, so it did not run for attempt 1.
           ATTEMPT_1="$GITHUB_WORKSPACE/e2e/logs/attempt-1"
           IOS_WDIO_OUTCOME=failure IOS_MAESTRO_OUTCOME=skipped \
             node e2e/helpers/ios-shards.mjs receipt "$IOS_SHARD" ios-plan/manifest.json "$ATTEMPT_1"
-          xcrun simctl spawn "$IOS_UDID" log show --start "$IOS_TEST_START" --style compact \
+          xcrun simctl spawn "$IOS_UDID" log show --timezone UTC --start "$IOS_TEST_START" --style compact \
             --predicate "$IOS_LOG_PREDICATE" > "$ATTEMPT_1/ios-evidence/simulator-log.txt" 2>&1 || true
           if ! node e2e/helpers/host-health.mjs retry ios-plan/manifest.json "$IOS_SHARD" "$ATTEMPT_1"; then
             exit 1
@@ -549,6 +554,18 @@ jobs:
           xcrun simctl shutdown "$IOS_UDID" || true
           xcrun simctl bootstatus "$IOS_UDID" -b
           run_attempt 2
+
+      # The WDIO step stops its samplers. If the runner ends that step without its EXIT trap,
+      # for example on a cancel, this step stops them before a later step reads the evidence.
+      - name: Stop host samplers
+        if: always()
+        run: |
+          pkill -f '^top -l 0 -s 5 -n 0$' || true
+          pkill -INT -f 'simctl io .* recordVideo' || true
+          for _ in $(seq 30); do
+            pgrep -f '^top -l 0 -s 5 -n 0$|simctl io .* recordVideo' > /dev/null || break
+            sleep 1
+          done
 
       - name: Upload simulator video
         if: always() && inputs.ios-video
@@ -601,8 +618,8 @@ jobs:
           mkdir -p "$EVIDENCE"
           if [ ! -e "$EVIDENCE/simulator-log.txt" ]; then
             if [ -n "${IOS_TEST_START:-}" ]; then WINDOW=(--start "$IOS_TEST_START"); else WINDOW=(--last 10m); fi
-            xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show "${WINDOW[@]}" --style compact \
-              --predicate "$IOS_LOG_PREDICATE" > "$EVIDENCE/simulator-log.txt" 2>&1 || true
+            xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show --timezone UTC "${WINDOW[@]}" \
+              --style compact --predicate "$IOS_LOG_PREDICATE" > "$EVIDENCE/simulator-log.txt" 2>&1 || true
           fi
 
       # Classifies the host for triage. Only the WDIO step uses a host class: for its one retry.

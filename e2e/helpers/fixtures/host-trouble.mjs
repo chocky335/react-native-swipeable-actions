@@ -2,19 +2,20 @@
 import { classifyAttempt, READINESS_FAILURE } from '../host-health.mjs'
 
 const pad = (value, width = 2) => String(value).padStart(width, '0')
-const localDate = (date) =>
-  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-const localTime = (date) =>
-  `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+// CI prints each evidence time in UTC: `TZ=UTC top` and `log show --timezone UTC`.
+const utcDate = (date) =>
+  `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+const utcTime = (date) =>
+  `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
 
-/** `top -l` output: one sample for each [time in ms, 1-minute load average], in local time. */
+/** `top -l -n 0` output: one sample for each [time in ms, 1-minute load average], in UTC. */
 export function topSamples(samples) {
   return samples
     .map(([at, load]) => {
       const date = new Date(at)
       return [
         'Processes: 800 total, 80 running, 120 stuck, 600 sleeping, 3000 threads ',
-        `${localDate(date).replaceAll('-', '/')} ${localTime(date)}`,
+        `${utcDate(date).replaceAll('-', '/')} ${utcTime(date)}`,
         `Load Avg: ${load}, ${load}, ${load} `,
         'CPU usage: 50.0% user, 50.0% sys, 0.0% idle '
       ].join('\n')
@@ -23,14 +24,18 @@ export function topSamples(samples) {
     .concat('\n')
 }
 
-/** One `log show --style compact` line of a touch that reaches the app, in local time. */
-export function touchLine(at) {
+/**
+ * One `log show --style compact` line of a touch, in UTC. A touch reaches the app. A latent
+ * touch goes to the latent system gesture destinations of the app scene first.
+ */
+export function touchLine(at, latent = false) {
   const date = new Date(at)
+  const destinations = latent ? 'sceneID:com.swipeabledemo.app-default' : ''
   return (
-    `${localDate(date)} ${localTime(date)}.${pad(date.getMilliseconds(), 3)} Df backboardd[5005:e726] ` +
+    `${utcDate(date)} ${utcTime(date)}.${pad(date.getUTCMilliseconds(), 3)} Df backboardd[5005:e726] ` +
     '[com.apple.BackBoard:TouchEvents] init: <BKDirectTouchState: 0x10d1b1b20; touchScreen; ' +
-    'builtin; senderID: 0x1; contacts: []; destinations: [sceneID:com.swipeabledemo.app-default]; ' +
-    'latentSystemGestureDestinations: ()>\n'
+    `builtin; senderID: ${latent ? '0x2' : '0x1'}; contacts: []; ` +
+    `destinations: [sceneID:com.swipeabledemo.app-default]; latentSystemGestureDestinations: (${destinations})>\n`
   )
 }
 

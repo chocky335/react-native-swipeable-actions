@@ -74,7 +74,9 @@ The Prepare step 4 CI run is the only check that the tools still work with an ov
 Each iOS shard job runs its spec in an attempt directory: `attempt-1/`, and
 `attempt-2/` after a retry. Each attempt has its own receipt, NDJSON results in
 `ios-results/`, Appium log, simulator log, host load and `ios-evidence/host-health.json`.
-The host load has a `top` sample every 5 seconds for the whole attempt.
+The host load has a `top` sample every 5 seconds for the whole attempt. The simulator
+log and the host load give their times in UTC, so the gate reads them the same way on
+any host.
 
 `host-health.json` compares the simulator log and the host load with the NDJSON
 results. Each failure has a window: a failed test from its start to its result, a
@@ -90,9 +92,13 @@ case inventory. It lists each condition that fails.
   - A failed case needs at least one gesture in its window that went to latent
     system gesture destinations of the app scene. The simulator sent these
     gestures to SpringBoard first, and the app did not get them.
-  - A touch readiness timeout is a hook that fails with `Touch readiness gate
-    failed`, for example the relaunch in `afterEach`. Its window needs at least one
-    load sample, and each sample in it needs a 1-minute load average of 100 or more.
+  - A touch readiness timeout is a hook that fails in the touch readiness gate
+    because the list screen seekbar did not appear, or because the seekbar thumb
+    never moved. An example is the relaunch in `afterEach`. If the app left the list
+    screen, or the thumb did not return to rest, the hook failure is a real failure.
+    The window of a timeout needs at least one load sample, and each sample in it
+    needs a 1-minute load average of 100 or more. It needs no simulator log, and a
+    latent-routed gesture in its window does not count.
     The runner has 3 vCPUs. At load 100, a relaunch that needs 1 CPU second on an
     idle host needs about 33 seconds. That is more than the 30-second phase of the
     readiness gate. A host that keeps up has a load near 3. In the stored shard
@@ -103,8 +109,9 @@ case inventory. It lists each condition that fails.
   - A worker result of one Mocha failure for each failure.
   - A larger worker result, when the worker ends directly after the last failure
     and its worker-end record shows a quarantine that started in that failure.
-  - The cases that never started, when a touch readiness timeout ends the worker.
-    Mocha starts no later case of the suite after a failed hook.
+  - The cases that never started, when a touch readiness timeout ends the worker
+    and the cases that started are the first cases of the plan. Mocha starts no
+    later case of the suite after a failed hook.
 
   A failed Maestro step or warm-up, a skipped, pending or unfinished case, another
   failed hook, a failed worker or any other missing case is a real failure. Then
@@ -114,14 +121,15 @@ case inventory. It lists each condition that fails.
   rejections are real failures.
 - `host healthy`: host trouble explains no failure window, or the attempt has no
   failure. A latent-routed gesture during a passed warm-up or test does not count.
-- `host unknown`: the attempt has no usable simulator log, or it has latent-routed
-  gestures and no test results.
+- `host unknown`: the attempt has no usable simulator log and a failure other than
+  a touch readiness timeout, or it has latent-routed gestures and no test results.
 
-The summary shows the latent-routed gestures in failure windows and in total.
-Host trouble never makes a case pass. It only permits one retry of a shard:
+The summary shows the latent-routed gestures in the windows of failed cases and in
+total. Host trouble never makes a case pass. It only permits one retry of a shard:
 
 1. If attempt 1 fails, the `Run E2E tests` step classifies it. The step retries the
    shard once, in the same job, only when all of these are true:
+   - The run has no `ios-grep` filter. A filtered run never gets a retry.
    - The WDIO run of attempt 1 failed, and Maestro did not run.
    - The classifier finds `host trouble` in the raw evidence of attempt 1.
    - The `host-health.json` of attempt 1 says `host trouble`.

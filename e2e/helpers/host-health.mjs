@@ -23,6 +23,25 @@ export const HEALTH_FILE = 'host-health.json'
 export const READINESS_FAILURE = 'Touch readiness gate failed'
 
 /**
+ * The reasons of the touch readiness gate that a stalled host explains: the gate waited for
+ * the list screen or for a thumb move until its phase timed out. The other reasons are app
+ * states (the app left the list screen, the thumb did not return to rest), so they stay real
+ * failures.
+ */
+export const READINESS_TIMEOUTS = Object.freeze([
+  'the list screen seekbar did not appear',
+  'the seekbar thumb never moved, so touches do not reach the app'
+])
+
+/** True for the error message of a touch readiness timeout that host trouble can explain. */
+export function isReadinessTimeout(message) {
+  const reason = String(message).match(
+    new RegExp(`^${READINESS_FAILURE} after \\d+ drag\\(s\\) in \\d+ ms: (.*)$`)
+  )?.[1]
+  return READINESS_TIMEOUTS.includes(reason)
+}
+
+/**
  * The 1-minute load average from which the host alone explains a touch readiness timeout.
  * The runner has 3 vCPUs, so at load L a runnable thread gets about 3/L of one CPU. A relaunch
  * that needs 1 CPU second on an idle host then needs about L/3 seconds, and from load 90 on it
@@ -75,8 +94,9 @@ export function parseHostLoad(text) {
 }
 
 /**
- * Each `top -l` sample with its time and 1-minute load average. `top` prints the local time
- * of the shard host before the load, like `log show`. A sample without a time has none.
+ * Each `top -l` sample with its time and 1-minute load average. `top` prints a time without
+ * a zone before the load. CI runs it with TZ=UTC, so the time is UTC in any zone of the
+ * reader. A sample without a time has none.
  */
 export function parseLoadSamples(text) {
   const samples = []
@@ -85,7 +105,7 @@ export function parseLoadSamples(text) {
     const time = line.match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}):(\d{2})\s*$/)
     if (time) {
       const [year, month, day, hour, minute, second] = time.slice(1).map(Number)
-      at = new Date(year, month - 1, day, hour, minute, second).getTime()
+      at = Date.UTC(year, month - 1, day, hour, minute, second)
       continue
     }
     const load = line.match(/^Load Avg: ([0-9.]+),/)
@@ -107,14 +127,15 @@ async function optionalText(filename) {
 }
 
 /**
- * `log show --style compact` prints the local time of the shard host without a zone.
- * The report step runs on the same host, so the local zone of this process applies.
+ * `log show --style compact` prints a time without a zone. CI runs it with `--timezone UTC`,
+ * so the time is UTC. The gate classifies again on another host, so the zone of the reader
+ * must not apply.
  */
 export function logTime(stamp) {
   const parts = stamp.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})$/)
   if (!parts) return NaN
   const [year, month, day, hour, minute, second, ms] = parts.slice(1).map(Number)
-  return new Date(year, month - 1, day, hour, minute, second, ms).getTime()
+  return Date.UTC(year, month - 1, day, hour, minute, second, ms)
 }
 
 /** Reads the NDJSON worker results. A truncated or invalid line is ignored. */
@@ -133,11 +154,11 @@ export function parseResults(text) {
   return records
 }
 
-/** True for a hook that fails in the touch readiness gate, for example in a relaunch. */
+/** True for a hook that times out in the touch readiness gate, for example in a relaunch. */
 const readinessFailure = (record) =>
   record.event === 'hook-failure' &&
   typeof record.error?.message === 'string' &&
-  record.error.message.startsWith(READINESS_FAILURE)
+  isReadinessTimeout(record.error.message)
 
 /**
  * One [start, end] window for each failure in the order of the records: a failed test,
@@ -234,31 +255,33 @@ function failuresCauseResult(records) {
 
 /**
  * Passed records for each case that never started, when a touch readiness hook failure ends
- * the worker. Mocha starts no later case of the suite after a failed hook. Any other case
- * that did not start, or that started and did not finish, stays a gate rejection.
+ * the worker. Mocha starts no later case of the suite after a failed hook. The cases that
+ * started must be the first cases of the plan, in its order: Mocha runs the cases of these
+ * specs in plan order. A gap, such as from a grep filter, is not part of the timeout. Any
+ * other case that did not start, or that started and did not finish, stays a gate rejection.
  */
 function unstartedCasesPassed(shard, records) {
   const hook = records.at(-2)
   if (records.at(-1)?.event !== 'worker-end' || !readinessFailure(hook ?? {})) return []
   const key = (record) => JSON.stringify([record.parent, record.title])
-  const started = new Set(records.filter((record) => record.event === 'test-start').map(key))
+  const started = records.filter((record) => record.event === 'test-start').map(key)
+  const first = shard.cases.slice(0, started.length).map(key)
+  if (started.some((entry, index) => entry !== first[index])) return []
   const { pid, worker } = records[0] ?? {}
-  return shard.cases
-    .filter((entry) => !started.has(key(entry)))
-    .flatMap((entry) => {
-      const metadata = { timestamp: hook.timestamp, pid, worker, ...entry, file: hook.file }
-      return [
-        { ...metadata, event: 'test-start', attempt: 0 },
-        {
-          ...metadata,
-          event: 'test-result',
-          attempt: 0,
-          status: 'passed',
-          duration: 0,
-          retries: { attempts: 0, limit: 0 }
-        }
-      ]
-    })
+  return shard.cases.slice(started.length).flatMap((entry) => {
+    const metadata = { timestamp: hook.timestamp, pid, worker, ...entry, file: hook.file }
+    return [
+      { ...metadata, event: 'test-start', attempt: 0 },
+      {
+        ...metadata,
+        event: 'test-result',
+        attempt: 0,
+        status: 'passed',
+        duration: 0,
+        retries: { attempts: 0, limit: 0 }
+      }
+    ]
+  })
 }
 
 /**
@@ -319,8 +342,9 @@ const highLoad = (failure) => failure.minLoadAverage !== null && failure.minLoad
 /**
  * `gate` is the result of `gateCheck` for the shard. Without it, the shard is never host
  * trouble. A failed case needs a latent-routed gesture in its window. A touch readiness
- * hook failure needs high load in its window instead: at least one `top` sample, and each
- * sample at HIGH_LOAD or more.
+ * timeout needs high load in its window instead: at least one `top` sample, and each sample
+ * at HIGH_LOAD or more. Latent-routed gestures in the window of a timeout do not count, and
+ * a timeout needs no simulator log.
  */
 export function classify({ simulatorLog, hostLoad, results, gate }) {
   const missing = []
@@ -353,26 +377,30 @@ export function classify({ simulatorLog, hostLoad, results, gate }) {
       }
     }
   )
-  const failuresWithLatent = failures.filter((window) => window.latentRoutedGestures > 0).length
+  // Only the windows of failed cases use gestures.
+  const cases = failures.filter((failure) => !failure.readinessTimeout)
+  const failuresWithLatent = cases.filter((window) => window.latentRoutedGestures > 0).length
   const failuresExplained = failures.filter((failure) =>
     failure.readinessTimeout ? highLoad(failure) : failure.latentRoutedGestures > 0
   ).length
   // Host trouble explains a shard only when the gate rejects it for these failures alone,
   // and host trouble explains each of them.
   const onlyFailedCases = gate?.onlyFailedCases === true && gate.failedCases === failures.length
+  // Without gestures, only readiness timeouts can be classified: they use load samples.
+  const needsGestures = failures.length === 0 || cases.length > 0
   let status = 'healthy'
-  if (routing.gestures === 0) status = 'unknown'
+  if (routing.gestures === 0 && needsGestures) status = 'unknown'
   else if (results === undefined && routing.latentRoutedGestures > 0) status = 'unknown'
   else if (onlyFailedCases && failures.length > 0 && failuresExplained === failures.length)
     status = 'trouble'
-  else if (failuresWithLatent > 0 || failuresExplained > 0) status = 'mixed'
+  else if (failuresExplained > 0) status = 'mixed'
   const time = (at) => (Number.isFinite(at) ? new Date(at).toISOString() : null)
   return {
     version: 4,
     status,
     onlyFailedCases,
     ...routing,
-    latentRoutedInFailures: latent.filter((at) => failures.some((w) => inside(w, at))).length,
+    latentRoutedInFailures: latent.filter((at) => cases.some((w) => inside(w, at))).length,
     failures: failures.length,
     failuresWithLatent,
     failuresExplained,
@@ -483,7 +511,8 @@ export function describeHealth(health) {
     return `host trouble: all ${health.failures} failures have ${causes} (${gestures}), load ${load}`
   if (health.status === 'mixed') {
     const other = health.onlyFailedCases ? '' : ', other gate checks fail too'
-    const explained = timeouts.length > 0 ? health.failuresExplained : health.failuresWithLatent
+    // Version 3 has no failuresExplained. Its failures with latent gestures are the explained ones.
+    const explained = health.failuresExplained ?? health.failuresWithLatent
     return `host mixed: ${explained} of ${health.failures} failures have ${causes}${other} (${gestures}), load ${load}`
   }
   if (health.status === 'healthy') return `host healthy: ${gestures}`

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { READINESS_FAILURE } from './host-health.mjs'
+import { isReadinessTimeout, READINESS_FAILURE, READINESS_TIMEOUTS } from './host-health.mjs'
 import readiness from './touch-readiness.ts'
 
 const { relaunchApp, waitForTouchReadiness } = readiness
@@ -161,12 +161,30 @@ test('touch readiness gate without a device or transport', async (t) => {
     })
   })
 
-  await t.test('the host classifier knows each gate failure by its message start', async () => {
-    await withFixture({ displayed: () => false }, async () => {
-      await assert.rejects(waitForTouchReadiness(fast), (error) =>
-        error.message.startsWith(`${READINESS_FAILURE} after `)
-      )
-    })
+  await t.test('the host classifier counts only the two timeouts of the gate', async () => {
+    // Each gate failure, and whether a stalled host can explain it.
+    const failures = [
+      [{ displayed: () => false }, true],
+      [{ lost: () => true }, true],
+      [{ lost: () => true, displayed: (state) => state.drags.length === 0 }, false],
+      [{ lost: (n) => n >= 2 }, false]
+    ]
+    const reasons = []
+    for (const [options, timeout] of failures) {
+      await withFixture(options, async () => {
+        await assert.rejects(waitForTouchReadiness(fast), (error) => {
+          reasons.push(error.message.slice(error.message.indexOf(' ms: ') + 5))
+          assert.ok(error.message.startsWith(`${READINESS_FAILURE} after `))
+          assert.equal(isReadinessTimeout(error.message), timeout, error.message)
+          return true
+        })
+      })
+    }
+    assert.deepEqual(reasons.slice(0, 2), READINESS_TIMEOUTS)
+    assert.deepEqual(reasons.slice(2), [
+      'the app left the list screen before a drag moved the seekbar thumb',
+      'the seekbar thumb did not return to rest'
+    ])
   })
 
   await t.test('a thumb outside its pan area is dragged through the pan area', async () => {
