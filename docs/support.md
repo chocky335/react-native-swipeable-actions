@@ -44,7 +44,7 @@ The package declares these ranges. They are minimums, not a tested matrix.
 
 ## Tested for 1.0
 
-Every configuration below ran the release candidate. The E2E suite has 62 cases
+Every configuration below ran the 1.0 release. The E2E suite has 62 cases
 (25 single-sided, 19 two-sided, 14 RTL, 3 swipe to go back, 1 performance) plus the
 Maestro flows.
 

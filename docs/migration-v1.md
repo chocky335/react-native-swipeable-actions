@@ -10,8 +10,8 @@ Do not mix v1 JavaScript with an older native binary.
   architecture (Paper) is not supported. If your app still uses it, stay on 0.x.
 - v1 requires Expo SDK 54 or newer, React Native 0.81 or newer and React 19.1 or
   newer. Upgrade the app first, then install v1.
-- Install it with `npx expo install react-native-swipeable-actions@next` while
-  1.0 is a release candidate, then rebuild the iOS and Android apps.
+- Install it with `npx expo install react-native-swipeable-actions`, then rebuild
+  the iOS and Android apps.
 
 ## At a glance
 
