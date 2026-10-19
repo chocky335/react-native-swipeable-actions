@@ -40,14 +40,20 @@ their own peer versions. Advisories in `e2e/package-lock.json` reach only the E2
 Audit both lockfiles in the version change of Prepare step 2, before the Prepare step 4
 CI run. A lockfile change after that CI run voids it.
 
-1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
-2. For each critical advisory with a fix in the same major, run
+1. Check the current override first. `e2e/package.json` forces `shell-quote`, because
+   `@appium/support` pins it exactly. Remove the override, run
+   `npm install --package-lock-only` in `e2e/`, and run the audit. If the audit shows
+   a critical advisory, restore both files with
+   `git checkout -- e2e/package.json e2e/package-lock.json`.
+2. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
+3. For each critical advisory with a fix in the same major, run
    `npm update <package> --package-lock-only`.
-3. If the audit still shows the old version, add an `overrides` entry in that folder's
-   `package.json`. Use a caret range in the same major, for example
-   `"shell-quote": "^1.12.0"`.
-4. Read the lockfile diff. Then run the audit again.
-5. Open an issue that names the advisory and the blocking tool in these cases:
+4. If the audit still shows the old version, use one of these:
+   - For a direct dependency, change its version in `package.json`.
+   - For a transitive copy, add an `overrides` entry in that folder's `package.json`.
+     Use a caret range in the same major, for example `"shell-quote": "^1.12.0"`.
+5. Read the lockfile diff. Then run the audit again.
+6. Open an issue that names the advisory and the blocking tool in these cases:
    - The fix needs a new major version.
    - An override makes the Prepare step 4 CI run fail. Remove that override in a new
      preparation change.
@@ -56,12 +62,6 @@ CI run. A lockfile change after that CI run voids it.
    `npm audit fix --force`.
 
 The Prepare step 4 CI run is the only check that the tools still work with an override.
-
-Current override: `e2e/package.json` forces `shell-quote`, because `@appium/support`
-pins it exactly. In the Prepare step 2 change, remove the override and run
-`npm install --package-lock-only` in `e2e/`. Then run the audit. If the audit shows a
-critical advisory, restore both files with
-`git checkout -- e2e/package.json e2e/package-lock.json`.
 
 ## Inconclusive host runs
 
