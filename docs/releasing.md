@@ -31,6 +31,40 @@ not authorize publishing a subsequently bumped stable package. Repeat full
 acceptance on the stable source. If `main` moves before publication, prepare and
 test the intended current revision again; never rewrite evidence to match it.
 
+## Dependency advisories
+
+The published package has no runtime dependencies. Advisories in the root lockfile come
+from development tools and from the peer tree (React Native, Expo). Consumer apps install
+their own peer versions. Advisories in `e2e/package-lock.json` reach only the E2E hosts.
+
+Audit both lockfiles in the version change of Prepare step 2, before the Prepare step 4
+CI run. A lockfile change after that CI run voids it.
+
+1. Check the current override first. `e2e/package.json` forces `shell-quote`, because
+   `@appium/support` pins it exactly. Remove the override, run
+   `npm install --package-lock-only` in `e2e/`, and run the audit. If the audit shows
+   a critical `shell-quote` advisory, restore both files with
+   `git checkout -- e2e/package.json e2e/package-lock.json`.
+2. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
+3. For each critical advisory with a fix in the same major, run
+   `npm update <package> --package-lock-only`.
+4. If the audit still shows the old version, use one of these:
+   - For a direct dependency, change its version in `package.json`.
+   - For a transitive copy, add an `overrides` entry in that folder's `package.json`.
+     Use a caret range in the same major, for example `"shell-quote": "^1.12.0"`.
+
+   Then run `npm install --package-lock-only` in that folder.
+5. Read the lockfile diff. Then run the audit again.
+6. Open an issue that names the advisory and the blocking tool in these cases:
+   - The fix needs a new major version.
+   - An override makes the Prepare step 4 CI run fail. Remove that override in a new
+     preparation change.
+
+   Link the issue from the `## <version>` entry in `CHANGELOG.md`. Do not run
+   `npm audit fix --force`.
+
+The Prepare step 4 CI run is the only check that the tools still work with an override.
+
 ## Inconclusive host runs
 
 Each iOS shard writes `ios-evidence/host-health.json`. It compares the simulator log
