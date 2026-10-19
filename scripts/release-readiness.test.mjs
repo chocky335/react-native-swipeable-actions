@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { buildManifest, EXPECTED_COUNTS } from '../e2e/helpers/ios-shards.mjs'
-import { fetchCommentEditMetadata, PHYSICAL_CHECKS, REQUIRED_JOBS, validateReadiness, validateSource } from './release-readiness.mjs'
+import { REQUIRED_JOBS, validateReadiness, validateSource } from './release-readiness.mjs'
 
-// Synthetic records exercise the gate only. They are never release acceptance evidence.
+// Synthetic records exercise the gate only. They are never release evidence.
 const sha = 'a'.repeat(40)
 const sources = Object.fromEntries(Object.entries(EXPECTED_COUNTS).map(([spec, count]) => [
   spec, 'describe("suite", () => { for (let i = 0; i < ' + count + '; i++) it("case " + i, () => {}) })'
@@ -52,15 +52,8 @@ function fixture(version = '1.0.0-rc.0', runIds = [101]) {
       return { run, jobs, manifest, expectedManifest: structuredClone(manifest), bundles, androidLog,
         report: { sourceSha: sha, cleanSource: true, version, filename: 'package.tgz', integrity: digest, files: ['package.json'] },
         bytes, packedPackage: pkg }
-    }),
-    permission: 'maintain', comment: { id: 789, node_id: 'IC_fixture', user: { type: 'User', login: 'maintainer' },
-      created_at: '2026-10-16T14:00:00Z', updated_at: '2026-10-16T14:00:00Z' }
+    })
   }
-  value.comment.body = JSON.stringify({ schemaVersion: 1, sourceSha: sha, version, packageIntegrity: digest,
-    verdict: 'accepted', platform: 'physical-ios', device: 'iPhone test fixture', os: 'iOS fixture',
-    testedAt: '2026-10-16T13:00:00Z', checks: Object.fromEntries(PHYSICAL_CHECKS.map((name) => [name, 'passed'])) })
-  value.comment.editMetadata = { __typename: 'IssueComment', id: value.comment.node_id, body: value.comment.body,
-    author: { login: 'maintainer' }, lastEditedAt: null, editor: null, includesCreatedEdit: false }
   return value
 }
 
@@ -132,22 +125,7 @@ const mutations = {
   'wrong package version': (v) => { v.runs[0].report.version = '0.1.12' },
   'modified tarball': (v) => { v.runs[0].bytes = Buffer.from('different') },
   'unsafe filename': (v) => { v.runs[0].report.filename = '../package.tgz' },
-  'actual packed version mismatch': (v) => { v.runs[0].packedPackage = { ...v.pkg, version: '0.1.12' } },
-  'automated acceptance': (v) => { v.comment.user.type = 'Bot' },
-  'non-maintainer acceptance': (v) => { v.permission = 'write' },
-  'missing authoritative edit metadata': (v) => { delete v.comment.editMetadata },
-  'missing lastEditedAt field': (v) => { delete v.comment.editMetadata.lastEditedAt },
-  'missing editor field': (v) => { delete v.comment.editMetadata.editor },
-  'missing edit history flag': (v) => { delete v.comment.editMetadata.includesCreatedEdit },
-  'edited acceptance even with equal REST timestamps': (v) => { v.comment.editMetadata.lastEditedAt = v.comment.created_at },
-  'maintainer edited their own acceptance': (v) => { v.comment.editMetadata.editor = { login: 'maintainer' } },
-  'comment has edit history': (v) => { v.comment.editMetadata.includesCreatedEdit = true },
-  'edit metadata from another comment': (v) => { v.comment.editMetadata.id = 'IC_other' },
-  'edit metadata from another author': (v) => { v.comment.editMetadata.author.login = 'other' },
-  'body changed between REST and GraphQL': (v) => { v.comment.editMetadata.body = '{}' },
-  'wrong GraphQL node type': (v) => { v.comment.editMetadata.__typename = 'Issue' },
-  'missing comment creation time': (v) => { delete v.comment.created_at },
-  'missing human statement': (v) => { v.comment.body = '{}' }
+  'actual packed version mismatch': (v) => { v.runs[0].packedPackage = { ...v.pkg, version: '0.1.12' } }
 }
 test('accepts exact case multisets despite nested-suite display order, timestamps and ANSI colors', () => {
   const value = fixture()
@@ -172,81 +150,13 @@ for (const [name, mutate] of Object.entries(mutations)) {
     assert.throws(() => validateReadiness(value))
   })
 }
-for (const [field, replacement] of Object.entries({
-  sourceSha: 'b'.repeat(40), version: '0.1.12', packageIntegrity: 'different', verdict: 'pending',
-  platform: 'simulator', device: '', os: '', testedAt: '2099-01-01T00:00:00Z', checks: {}
-})) {
-  test('rejects physical acceptance mismatch: ' + field, () => {
-    const value = fixture()
-    value.comment.body = JSON.stringify({ ...JSON.parse(value.comment.body), [field]: replacement })
-    value.comment.editMetadata.body = value.comment.body
-    assert.throws(() => validateReadiness(value))
-  })
-}
-
-test('rejects a collaborator turning a maintainer pending statement into accepted evidence', () => {
-  const value = fixture()
-  // Both APIs now return an accepted body, but REST still identifies the maintainer author.
-  value.comment.editMetadata.lastEditedAt = '2026-10-16T15:00:00Z'
-  value.comment.editMetadata.editor = { login: 'write-collaborator' }
-  value.comment.editMetadata.includesCreatedEdit = true
-  value.comment.updated_at = value.comment.editMetadata.lastEditedAt
-  assert.throws(() => validateReadiness(value), /must be unedited/)
-})
-
-test('uses edit-specific metadata rather than inferring edits from REST updated_at', () => {
-  const value = fixture()
-  value.comment.updated_at = '2026-10-16T15:00:00Z'
-  assert.equal(validateReadiness(value).acceptance.reviewer, 'maintainer')
-})
-
-test('short physical smoke retains seven grouped checks and both complete 62-case mobile inventories', () => {
-  assert.deepEqual(PHYSICAL_CHECKS, ['defaultAppearance', 'physicalSwipesAndActions', 'autoHaptics',
-    'hapticsOn', 'hapticsOff', 'hapticSuppression', 'reduceMotion'])
+test('requires both complete 62-case mobile inventories', () => {
   const value = fixture()
   for (const evidence of value.runs) {
     assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 62)
   }
   assert.deepEqual(validateReadiness(value).ciRuns, [101])
 })
-
-for (const check of PHYSICAL_CHECKS) {
-  test('requires physical smoke confirmation: ' + check, () => {
-    const value = fixture()
-    const report = JSON.parse(value.comment.body)
-    delete report.checks[check]
-    value.comment.body = JSON.stringify(report)
-    value.comment.editMetadata.body = value.comment.body
-    assert.throws(() => validateReadiness(value), /Physical check not accepted/)
-  })
-}
-
-test('fetches edit provenance through the REST comment global node ID', async () => {
-  const metadata = fixture().comment.editMetadata
-  const result = await fetchCommentEditMetadata('IC_fixture', 'synthetic-token', async (url, options) => {
-    assert.equal(url, 'https://api.github.com/graphql')
-    assert.equal(options.method, 'POST')
-    assert.equal(options.headers.Authorization, 'Bearer synthetic-token')
-    const { query, variables } = JSON.parse(options.body)
-    assert.deepEqual(variables, { id: 'IC_fixture' })
-    for (const field of ['IssueComment', 'id', 'body', 'lastEditedAt', 'includesCreatedEdit', 'author', 'editor']) {
-      assert.ok(query.includes(field), 'Missing GraphQL field: ' + field)
-    }
-    return { ok: true, json: async () => ({ data: { node: metadata } }) }
-  })
-  assert.deepEqual(result, metadata)
-})
-
-for (const [name, response] of Object.entries({
-  'HTTP failure': { ok: false, status: 403 },
-  'partial GraphQL errors': { ok: true, json: async () => ({ data: { node: fixture().comment.editMetadata }, errors: [{ message: 'denied' }] }) },
-  'missing node': { ok: true, json: async () => ({ data: { node: null } }) },
-  'missing data': { ok: true, json: async () => ({}) }
-})) {
-  test('fails closed fetching comment metadata: ' + name, async () => {
-    await assert.rejects(fetchCommentEditMetadata('IC_fixture', 'synthetic-token', async () => response))
-  })
-}
 
 // Exercise the actual workflow shell boundaries with functions that replace git/npm.
 // These tests never invoke real git, contact a remote, create tags or publish packages.

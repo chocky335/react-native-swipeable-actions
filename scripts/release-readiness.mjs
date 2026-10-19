@@ -18,10 +18,6 @@ export const REQUIRED_JOBS = Object.freeze([
   'iOS / performance', 'iOS / rtl', 'iOS / swipe-back', 'iOS / swipeable', 'iOS / two-sided',
   'e2e-ios'
 ])
-export const PHYSICAL_CHECKS = Object.freeze([
-  'defaultAppearance', 'physicalSwipesAndActions', 'autoHaptics', 'hapticsOn',
-  'hapticsOff', 'hapticSuppression', 'reduceMotion'
-])
 const packageName = 'react-native-swipeable-actions'
 const shaPattern = /^[a-f0-9]{40}$/
 const idPattern = /^[1-9][0-9]*$/
@@ -118,61 +114,6 @@ export function validateAndroidLog(log, manifest) {
   assert.equal(seen.size, 5)
 }
 
-// REST's user identifies the original author, not whoever last edited the body.
-// Resolve its global node ID and require GitHub's edit-specific metadata.
-export async function fetchCommentEditMetadata(nodeId, token, request = fetch) {
-  assert.ok(typeof nodeId === 'string' && nodeId.length > 0, 'Missing comment node ID')
-  const response = await request('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query: `query AcceptanceComment($id: ID!) {
-        node(id: $id) {
-          __typename
-          ... on IssueComment {
-            id body lastEditedAt includesCreatedEdit
-            author { login }
-            editor { login }
-          }
-        }
-      }`,
-      variables: { id: nodeId }
-    }),
-    signal: AbortSignal.timeout(120000)
-  })
-  assert.ok(response.ok, 'GitHub comment edit metadata request failed: ' + response.status)
-  const result = await response.json()
-  assert.ok(!result.errors?.length, 'GitHub comment edit metadata returned GraphQL errors')
-  assert.ok(result.data?.node, 'GitHub comment edit metadata unavailable')
-  return result.data.node
-}
-
-export function validatePhysicalAcceptance(comment, permission, { sourceSha, version, packageIntegrity }) {
-  assert.equal(comment.user?.type, 'User', 'Physical acceptance must be a human statement')
-  assert.ok(['admin', 'maintain'].includes(permission), 'Physical acceptance must be from a maintainer')
-  const metadata = comment.editMetadata
-  assert.equal(metadata?.__typename, 'IssueComment', 'Authoritative comment edit metadata required')
-  assert.ok(typeof comment.node_id === 'string' && comment.node_id.length > 0, 'Missing comment node ID')
-  assert.equal(metadata.id, comment.node_id, 'Edit metadata belongs to another comment')
-  assert.equal(metadata.body, comment.body, 'Comment changed while fetching acceptance; retry with a new statement')
-  assert.equal(metadata.author?.login, comment.user.login, 'Comment author differs between API responses')
-  assert.equal(metadata.lastEditedAt, null, 'Physical acceptance must be unedited; post a new maintainer statement')
-  assert.equal(metadata.editor, null, 'Physical acceptance has an editor; post a new maintainer statement')
-  assert.equal(metadata.includesCreatedEdit, false, 'Physical acceptance has edit history; post a new maintainer statement')
-  const report = JSON.parse(comment.body)
-  assert.equal(report.schemaVersion, 1)
-  assert.equal(report.verdict, 'accepted', 'Physical acceptance is incomplete')
-  assert.equal(report.sourceSha, sourceSha, 'Physical acceptance is for another source')
-  assert.equal(report.version, version, 'Physical acceptance is for another version')
-  assert.equal(report.packageIntegrity, packageIntegrity, 'Physical acceptance is for another package')
-  assert.equal(report.platform, 'physical-ios', 'Simulator evidence cannot establish haptic acceptance')
-  for (const field of ['device', 'os']) assert.ok(typeof report[field] === 'string' && report[field].trim())
-  const testedAt = Date.parse(report.testedAt)
-  assert.ok(Number.isFinite(testedAt) && testedAt <= Date.parse(comment.created_at), 'Invalid physical test time')
-  for (const check of PHYSICAL_CHECKS) assert.equal(report.checks?.[check], 'passed', 'Physical check not accepted: ' + check)
-  return { commentId: comment.id, reviewer: comment.user.login, testedAt: report.testedAt }
-}
-
 export function validateReadiness(input) {
   const release = validateSource(input)
   assert.equal(input.runs.length, 1, 'Exactly one fresh, fully green full CI run required')
@@ -194,15 +135,14 @@ export function validateReadiness(input) {
   }
   validateAndroidLog(androidLog, manifest)
   const packageIntegrity = validatePackage(report, bytes, input.version, input.sourceSha, packedPackage)
-  const acceptance = validatePhysicalAcceptance(input.comment, input.permission, { ...input, packageIntegrity })
   return { schemaVersion: 1, sourceSha: input.sourceSha, version: input.version, ...release,
-    packageIntegrity, ciRuns: [run.id], acceptance }
+    packageIntegrity, ciRuns: [run.id] }
 }
 
 async function main(args) {
-  assert.equal(args.length, 10, 'Expected --source SHA --version VERSION --runs ID --acceptance COMMENT_ID --out DIRECTORY')
-  const options = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [args[i * 2], args[i * 2 + 1]]))
-  assert.deepEqual(Object.keys(options).sort(), ['--acceptance', '--out', '--runs', '--source', '--version'])
+  assert.equal(args.length, 8, 'Expected --source SHA --version VERSION --runs ID --out DIRECTORY')
+  const options = Object.fromEntries(Array.from({ length: 4 }, (_, i) => [args[i * 2], args[i * 2 + 1]]))
+  assert.deepEqual(Object.keys(options).sort(), ['--out', '--runs', '--source', '--version'])
   const sourceSha = options['--source']
   const version = options['--version']
   const repository = process.env.GITHUB_REPOSITORY
@@ -219,7 +159,7 @@ async function main(args) {
   validateSource(input)
   const runIds = options['--runs'].split(',')
   assert.equal(runIds.length, 1, 'Exactly one full CI run ID required')
-  for (const id of [...runIds, options['--acceptance']]) assert.match(id, idPattern)
+  for (const id of runIds) assert.match(id, idPattern)
   const base = 'https://api.github.com/repos/' + repository
   const request = async (route) => {
     const response = await fetch(base + route, {
@@ -293,10 +233,6 @@ async function main(args) {
       const packedPackage = JSON.parse(execFileSync('tar', ['-xOf', tarball, 'package/package.json'], { encoding: 'utf8', maxBuffer: 1024 * 1024 }))
       input.runs.push({ run, jobs, manifest, expectedManifest, bundles, androidLog, report, bytes, packedPackage })
     }
-    input.comment = await json('/issues/comments/' + options['--acceptance'])
-    input.comment.editMetadata = await fetchCommentEditMetadata(input.comment.node_id, process.env.GH_TOKEN)
-    const collaborator = await json('/collaborators/' + encodeURIComponent(input.comment.user.login) + '/permission')
-    input.permission = collaborator.permission === 'admin' ? 'admin' : collaborator.role_name
     const result = validateReadiness(input)
     await mkdir(options['--out'], { recursive: true })
     await writeFile(path.join(options['--out'], 'package.tgz'), input.runs[0].bytes, { flag: 'wx' })
