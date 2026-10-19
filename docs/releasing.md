@@ -41,12 +41,20 @@ Audit both lockfiles in the version change of Prepare step 2, before the Prepare
 CI run. A lockfile change after that CI run voids it.
 
 1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
-2. If a critical advisory has a fixed version inside the existing range, update it with
-   `npm update <package> --package-lock-only`. If a nested copy keeps the old version,
-   add an `overrides` entry in that folder's `package.json`.
-3. Read the lockfile diff. Then run the audit again.
-4. If a critical fix needs a major upgrade, open an issue that names the advisory and the
-   tool. Link the issue from the `CHANGELOG.md` entry. Do not run `npm audit fix --force`.
+2. If a critical advisory has a fixed version inside the existing range, run
+   `npm update <package> --package-lock-only`. This command also prunes extraneous
+   lockfile entries.
+3. If a parent package pins the old version exactly, add an `overrides` entry in that
+   folder's `package.json`. Use a fixed version with the same major. The override goes
+   past the pin, so only the Prepare step 4 CI run proves that the tools still work.
+4. Read the lockfile diff. Then run the audit again.
+5. If a critical fix needs a new major version, open an issue that names the advisory
+   and the tool. Link the issue from the `Unreleased` entry in `CHANGELOG.md`. Do not
+   run `npm audit fix --force`.
+
+Current overrides: `e2e/package.json` forces `proxy-addr` and `shell-quote` past the
+exact pins in the Appium 3.5 packages. When you upgrade Appium, remove both overrides
+and audit again.
 
 ## Inconclusive host runs
 
