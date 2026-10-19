@@ -136,6 +136,9 @@ With `autoClose`, a completed swipe snaps back closed and reports
 `onSwipeEnd("open")` once. The `"open"` state means the swipe passed the threshold.
 It does not mean the row stays open.
 
+`autoClose` applies to swipes only. A programmatic `open()` on an `autoClose` row
+stays open and does not report `onSwipeEnd`.
+
 ```tsx
 <Swipeable
   recyclingKey={message.id}
@@ -271,6 +274,7 @@ start/end actions, map them to left/right yourself.
 - `hapticFeedback` controls the native threshold haptic on iOS. If you omit it,
   it follows the preset: on for `ios26`, off for `default`.
 - Reduce Motion removes the action scaling. It does not change the haptic setting.
+  The row still slides open and closed with its normal animation.
 - Both options have no effect on Android.
 - Rounded or inset buttons and multiple actions are your own action content.
 
