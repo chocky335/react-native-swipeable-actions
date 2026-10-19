@@ -74,8 +74,8 @@ the UIKit view on the simulator.
 - iOS versions below the simulator runtime above, and Android API levels other than 34.
 - Physical Android devices for 1.0. Earlier 0.x benchmarks used a Pixel 8 Pro.
 - Haptics and Reduce Motion on a physical iPhone. The maintainer checks them by
-  hand when the iOS code or the haptics, appearance or Reduce Motion code
-  changes. This page will name the device for 1.0.0.
+  hand when the iOS code, the haptics, appearance or Reduce Motion code, or the
+  example app's React Native or Expo version changes. This page will name the device for 1.0.0.
 
 If you run the package on another configuration, an issue with the result helps,
 whether it works or not.

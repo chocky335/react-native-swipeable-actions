@@ -149,7 +149,7 @@ prepared SHA in these cases. The publish workflow does not check it.
 - No earlier check SHA is recorded.
 - Since the last check SHA, one of these changed: `ios/` code, TypeScript code for
   haptics, appearance or Reduce Motion, or the React Native or Expo version in
-  `package-lock.json`.
+  `example/package.json`.
 
 Steps:
 
@@ -229,7 +229,7 @@ version and its `v<version>` tag are permanent records.
    Release that names the problem and the replacement.
 5. Fix the problem on `main` through the normal review. Then prepare the next exact
    version, for example `1.0.0-rc.<N+1>` after a bad RC. Run the complete procedure
-   on that source: the physical iPhone check if it applies, fresh full CI, verify,
+   on that source: fresh full CI, the physical iPhone check if it applies, verify,
    then publish. No
    evidence of the bad version carries over. The publish of the corrective version
    moves its dist-tag to it.
