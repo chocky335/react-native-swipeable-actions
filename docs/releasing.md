@@ -41,10 +41,10 @@ Audit both lockfiles in the version change of Prepare step 2, before the Prepare
 CI run. A lockfile change after that CI run voids it.
 
 1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
-2. If the fixed version fits the range of each parent, run
+2. For each critical advisory with a fix in the same major, run
    `npm update <package> --package-lock-only`.
-3. If a parent range or an exact pin holds the old version, add an `overrides` entry in
-   that folder's `package.json`. Use a caret range in the same major, for example
+3. If the audit still shows the old version, add an `overrides` entry in that folder's
+   `package.json`. Use a caret range in the same major, for example
    `"shell-quote": "^1.12.0"`.
 4. Read the lockfile diff. Then run the audit again.
 5. Open an issue that names the advisory and the blocking tool in these cases:
@@ -57,10 +57,11 @@ CI run. A lockfile change after that CI run voids it.
 
 The Prepare step 4 CI run is the only check that the tools still work with an override.
 
-Current overrides: `e2e/package.json` forces `proxy-addr` and `shell-quote`, because
-Appium packages hold old versions through exact pins and nested copies. Before each
-release, remove both overrides, run `npm install --package-lock-only` in `e2e/`, and run
-the audit. If the audit has no critical advisory, leave the overrides out.
+Current override: `e2e/package.json` forces `shell-quote`, because `@appium/support`
+pins it exactly. In the Prepare step 2 change, remove the override and run
+`npm install --package-lock-only` in `e2e/`. Then run the audit. If the audit shows a
+critical advisory, restore both files with
+`git checkout -- e2e/package.json e2e/package-lock.json`.
 
 ## Inconclusive host runs
 
