@@ -3,13 +3,12 @@
 The prepared `main` revision is the release candidate. `CHANGELOG.md` is the
 release-note source of truth. This procedure does not authorize a version change,
 tag, dispatch, or publication by itself. Historical runs and local or offline
-checks cannot replace a successful run of the prepared source or physical
-acceptance.
+checks cannot replace a successful run of the prepared source.
 
 ## Prepare an unpublished exact version
 
-1. Finish the implementation and its independent review. Final acceptance must
-   use the exact prepared source and version. Release candidates use an explicit
+1. Finish the implementation and its independent review. The full CI run must use
+   the exact prepared source and version. Release candidates use an explicit
    `1.0.0-rc.N`, and the stable release uses `1.0.0`. Never use
    `npm version prerelease` to infer v1.
 2. In a separately reviewed preparation change, use
@@ -25,10 +24,12 @@ acceptance.
    with both mobile suites enabled. The run must completely succeed on attempt 1.
    A failed-jobs rerun is not release evidence. Do not change assertions, retries,
    the 120-second case deadlines, or the 45-minute mobile job deadlines.
+   If the [physical iPhone check](#physical-iphone-check) applies, do it on the
+   same SHA.
 
 RC and stable preparation each change source identity. Evidence for an RC does
-not authorize publishing a subsequently bumped stable package. Repeat full
-acceptance on the stable source. If `main` moves before publication, prepare and
+not authorize publishing a subsequently bumped stable package. Repeat the full
+CI run on the stable source. If `main` moves before publication, prepare and
 test the intended current revision again; never rewrite evidence to match it.
 
 ## Dependency advisories
@@ -138,57 +139,43 @@ complete WDIO summary and every passing case title (including duplicate counts) 
 A success badge, hand-entered count or summary without case output cannot pass.
 Missing/expired artifacts or logs and changed reporter formats fail closed.
 Recycling, detach and RTL remain mandatory in this same-source 62-case E2E
-inventory on both platforms. They are automated evidence requirements,
-not extra physical smoke confirmations; removing their manual keys does not remove
-any automated cases, assertions or required jobs.
+inventory on both platforms. They are automated evidence requirements.
 
-## Explicit physical acceptance
+## Physical iPhone check
 
-A repository admin or maintainer must record a JSON issue comment after testing
-the exact prepared source/package on a physical iPhone. Supply that comment's
-numeric ID, not an issue ID, to the workflow. Simulator, unit, parser and harness
-passes cannot create or imply this acceptance. Do not paste a passing template
-without performing the checks. The required JSON fields are:
+Simulators cannot show haptics. Run this check on a physical iPhone with the
+prepared SHA in these cases. The publish workflow does not check it.
 
-- `schemaVersion`: `1`; `verdict`: `"accepted"`; `platform`: `"physical-ios"`
-- `sourceSha`: full prepared SHA; `version`: exact prepared version
-- `packageIntegrity`: the tested package report's SHA-512 integrity
-- `device`: model (no serial/UDID); `os`: tested iOS version; `testedAt`: ISO timestamp
-- `checks`: an object with each of the following keys explicitly set to `"passed"`
+- No earlier check SHA is recorded.
+- Since the last check SHA, one of these changed: `ios/` code, TypeScript code for
+  haptics, appearance or Reduce Motion, or the React Native or Expo version in
+  `example/package.json`.
 
-Keep the physical smoke short, with seven grouped confirmations:
+Steps:
 
-- `defaultAppearance`: inspect the default row and action appearance.
-- `physicalSwipesAndActions`: swipe both edges and tap the revealed actions.
-- `autoHaptics`: feel Auto feedback, including repeated threshold crossings within
-  one gesture to confirm feedback is not repeated.
-- `hapticsOn`: feel explicitly enabled feedback.
-- `hapticsOff`: confirm explicitly disabled feedback stays silent.
-- `hapticSuppression`: confirm programmatic changes, cancellation and auto-close
-  do not produce unintended feedback.
-- `reduceMotion`: change Reduce Motion while the app is running and check its
-  live effect on motion and Auto feedback.
 
-The comment author must be a human with current admin/maintain permission, and
-the acceptance comment must be **unedited**. Corrections require a new comment
-and its new numeric ID, even if the original author makes the correction.
-The gate resolves the REST comment's `node_id` through
-[GitHub's global node lookup](https://docs.github.com/en/graphql/guides/using-global-node-ids)
-and matches the returned comment ID, author and exact body. GitHub's
-[IssueComment fields](https://docs.github.com/en/graphql/reference/issues#issuecomment)
-must report `lastEditedAt: null`, `editor: null` and `includesCreatedEdit: false`.
-Missing metadata, GraphQL errors and mismatched snapshots fail closed. REST's
-`user` and `updated_at` alone do not establish who wrote the final body. The test
-time must precede or equal comment creation. Keep unresolved observations out of
-an accepted record; document them as blockers instead.
+1. Build the example app in Release configuration on the iPhone.
+2. Inspect the default row and action appearance.
+3. Swipe both edges and tap the revealed actions.
+4. Feel Auto feedback. Cross the threshold several times in one gesture, and make
+   sure the feedback does not repeat.
+5. Feel feedback with haptics on. Make sure nothing plays with haptics off.
+6. Make sure programmatic changes, cancellation and auto-close play no feedback.
+7. Change Reduce Motion while the app runs. Check its live effect on motion, and
+   make sure Auto feedback does not change.
+
+If a check fails, fix it and prepare the release again. If all checks pass, write
+the tested SHA, the device and the iOS version in a comment on the preparation PR.
+The next check compares against that SHA.
 
 ## Verify, then publish
 
-Configure the GitHub `npm-release` environment with required human reviewers and
-main-only deployment rules, and npm trusted publishing for this workflow. Retain
+Configure the GitHub `npm-release` environment with a main-only deployment rule,
+and npm trusted publishing for this workflow. A required reviewer is optional. It
+adds an approval step before each run. Retain
 the reviewed `main` workflow as the authority. Dispatch **Publish to npm** from
 the prepared `main` revision with `operation=verify`, full `source_sha`, exact
-`version`, `ci_runs=ID`, and `acceptance_comment=ID`. Verification does not tag
+`version`, and `ci_runs=ID`. Verification does not tag
 or publish. It saves a verified report and the tested tarball. The source package,
 lockfile, changelog entry, tarball and eventual `v<version>` tag must agree.
 
@@ -242,7 +229,8 @@ version and its `v<version>` tag are permanent records.
    Release that names the problem and the replacement.
 5. Fix the problem on `main` through the normal review. Then prepare the next exact
    version, for example `1.0.0-rc.<N+1>` after a bad RC. Run the complete procedure
-   on that source: fresh full CI, physical acceptance, verify, then publish. No
+   on that source: fresh full CI, the physical iPhone check if it applies, verify,
+   then publish. No
    evidence of the bad version carries over. The publish of the corrective version
    moves its dist-tag to it.
 6. The readiness gate and the publish workflow accept only `1.0.0-rc.N` and

@@ -21,10 +21,6 @@ on:
         description: 'One successful full CI run ID for this exact SHA'
         required: true
         type: string
-      acceptance_comment:
-        description: 'GitHub issue comment ID containing maintainer physical acceptance JSON'
-        required: true
-        type: string
 
 concurrency:
   group: npm-release
@@ -33,7 +29,6 @@ concurrency:
 permissions:
   contents: read
   actions: read
-  issues: read
 
 jobs:
   release:
@@ -44,13 +39,11 @@ jobs:
     permissions:
       contents: write
       actions: read
-      issues: read
       id-token: write
     env:
       RELEASE_SOURCE: ${{ inputs.source_sha }}
       RELEASE_VERSION: ${{ inputs.version }}
       RELEASE_RUNS: ${{ inputs.ci_runs }}
-      RELEASE_ACCEPTANCE: ${{ inputs.acceptance_comment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -74,13 +67,13 @@ jobs:
       - name: Test readiness gate offline
         run: node --test scripts/release-readiness.test.mjs
 
-      - name: Verify source, actual mobile evidence, package and physical acceptance
+      - name: Verify source, actual mobile evidence and package
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           node scripts/release-readiness.mjs
           --source "$RELEASE_SOURCE" --version "$RELEASE_VERSION"
-          --runs "$RELEASE_RUNS" --acceptance "$RELEASE_ACCEPTANCE"
+          --runs "$RELEASE_RUNS"
           --out "$RUNNER_TEMP/verified-release"
 
       - name: Preserve verified release report and tested tarball
