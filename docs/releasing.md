@@ -41,23 +41,26 @@ Audit both lockfiles in the version change of Prepare step 2, before the Prepare
 CI run. A lockfile change after that CI run voids it.
 
 1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
-2. If a critical advisory has a fixed version in the same major, run
+2. If the fixed version fits the range of each parent, run
    `npm update <package> --package-lock-only`.
-3. If a nested copy keeps the old version, add an `overrides` entry in that folder's
-   `package.json`, for example `"shell-quote": "^1.12.0"`.
+3. If a parent range or an exact pin holds the old version, add an `overrides` entry in
+   that folder's `package.json`. Use a caret range in the same major, for example
+   `"shell-quote": "^1.12.0"`.
 4. Read the lockfile diff. Then run the audit again.
-5. If a critical fix needs a new major version, open an issue that names the advisory
-   and the tool. Link the issue from the `## <version>` entry in `CHANGELOG.md`. Do
-   not run `npm audit fix --force`.
+5. Open an issue that names the advisory and the blocking tool in these cases:
+   - The fix needs a new major version.
+   - An override makes the Prepare step 4 CI run fail. Remove that override in a new
+     preparation change.
+
+   Link the issue from the `## <version>` entry in `CHANGELOG.md`. Do not run
+   `npm audit fix --force`.
 
 The Prepare step 4 CI run is the only check that the tools still work with an override.
-If that run fails because of an override, remove the override in a new preparation
-change and use step 5.
 
-Current overrides: `e2e/package.json` forces `proxy-addr` and `shell-quote`. The copies
-nested under `appium-uiautomator2-driver` and `appium-xcuitest-driver` kept old versions,
-and their `@appium/support` pins `shell-quote` exactly. When a driver upgrade ships the
-fixed versions, remove both overrides and audit again.
+Current overrides: `e2e/package.json` forces `proxy-addr` and `shell-quote`, because
+Appium packages hold old versions through exact pins and nested copies. Before each
+release, remove both overrides, run `npm install --package-lock-only` in `e2e/`, and run
+the audit. If the audit has no critical advisory, leave the overrides out.
 
 ## Inconclusive host runs
 
