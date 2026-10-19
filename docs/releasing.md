@@ -7,9 +7,8 @@ checks cannot replace a successful run of the prepared source.
 
 ## Prepare an unpublished exact version
 
-1. Finish the implementation and its independent review. If the
-   [physical iPhone check](#physical-iphone-check) applies, do it now. The full CI
-   run must use the exact prepared source and version. Release candidates use an explicit
+1. Finish the implementation and its independent review. The full CI run must use
+   the exact prepared source and version. Release candidates use an explicit
    `1.0.0-rc.N`, and the stable release uses `1.0.0`. Never use
    `npm version prerelease` to infer v1.
 2. In a separately reviewed preparation change, use
@@ -25,6 +24,8 @@ checks cannot replace a successful run of the prepared source.
    with both mobile suites enabled. The run must completely succeed on attempt 1.
    A failed-jobs rerun is not release evidence. Do not change assertions, retries,
    the 120-second case deadlines, or the 45-minute mobile job deadlines.
+   If the [physical iPhone check](#physical-iphone-check) applies, do it on the
+   same SHA.
 
 RC and stable preparation each change source identity. Evidence for an RC does
 not authorize publishing a subsequently bumped stable package. Repeat the full
@@ -142,9 +143,16 @@ inventory on both platforms. They are automated evidence requirements.
 
 ## Physical iPhone check
 
-Simulators cannot show haptics. Run this check on a physical iPhone before you
-prepare a release, if `ios/` code changed since the last check, or if TypeScript
-code for haptics, appearance or Reduce Motion changed. The publish workflow does not check it.
+Simulators cannot show haptics. Run this check on a physical iPhone with the
+prepared SHA in these cases. The publish workflow does not check it.
+
+- No earlier check SHA is recorded.
+- Since the last check SHA, one of these changed: `ios/` code, TypeScript code for
+  haptics, appearance or Reduce Motion, or the React Native or Expo version in
+  `package-lock.json`.
+
+Steps:
+
 
 1. Build the example app in Release configuration on the iPhone.
 2. Inspect the default row and action appearance.
@@ -156,9 +164,9 @@ code for haptics, appearance or Reduce Motion changed. The publish workflow does
 7. Change Reduce Motion while the app runs. Check its live effect on motion, and
    make sure Auto feedback does not change.
 
-If a check fails, fix it before you prepare the release. Write the tested commit
-SHA, the device and the iOS version in the preparation PR. The next check compares
-against that SHA.
+If a check fails, fix it and prepare the release again. If all checks pass, write
+the tested SHA, the device and the iOS version in a comment on the preparation PR.
+The next check compares against that SHA.
 
 ## Verify, then publish
 
