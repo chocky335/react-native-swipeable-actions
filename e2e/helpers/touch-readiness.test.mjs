@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { READINESS_FAILURE } from './host-health.mjs'
 import readiness from './touch-readiness.ts'
 
 const { relaunchApp, waitForTouchReadiness } = readiness
@@ -157,6 +158,14 @@ test('touch readiness gate without a device or transport', async (t) => {
         /after 0 drag\(s\) in \d+ ms: the list screen seekbar did not appear/
       )
       assert.equal(state.drags.length, 0)
+    })
+  })
+
+  await t.test('the host classifier knows each gate failure by its message start', async () => {
+    await withFixture({ displayed: () => false }, async () => {
+      await assert.rejects(waitForTouchReadiness(fast), (error) =>
+        error.message.startsWith(`${READINESS_FAILURE} after `)
+      )
     })
   })
 

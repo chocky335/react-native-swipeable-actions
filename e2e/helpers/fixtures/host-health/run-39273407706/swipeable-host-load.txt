@@ -1,0 +1,96 @@
+Processes: 767 total, 145 running, 29 stuck, 593 sleeping, 2984 threads 
+2026/10/19 15:16:55
+Load Avg: 385.07, 289.20, 152.36 
+CPU usage: 39.88% user, 60.11% sys, 0.0% idle 
+Processes: 770 total, 6 running, 151 stuck, 613 sleeping, 2872 threads 
+2026/10/19 15:17:00
+Load Avg: 383.46, 290.46, 153.61 
+CPU usage: 49.26% user, 44.76% sys, 5.97% idle 
+Processes: 773 total, 4 running, 157 stuck, 612 sleeping, 2820 threads 
+2026/10/19 15:17:05
+Load Avg: 352.99, 285.68, 152.72 
+CPU usage: 32.29% user, 27.19% sys, 40.50% idle 
+Processes: 787 total, 4 running, 163 stuck, 620 sleeping, 2765 threads 
+2026/10/19 15:17:10
+Load Avg: 299.18, 276.37, 150.97 
+CPU usage: 30.60% user, 44.42% sys, 24.96% idle 
+Processes: 791 total, 4 running, 162 stuck, 625 sleeping, 2834 threads 
+2026/10/19 15:17:16
+Load Avg: 275.30, 271.80, 150.09 
+CPU usage: 18.35% user, 32.31% sys, 49.33% idle 
+Processes: 790 total, 102 running, 60 stuck, 628 sleeping, 2866 threads 
+2026/10/19 15:17:21
+Load Avg: 253.34, 267.31, 149.22 
+CPU usage: 30.34% user, 34.32% sys, 35.33% idle 
+Processes: 769 total, 192 running, 13 stuck, 564 sleeping, 2982 threads 
+2026/10/19 15:17:53
+Load Avg: 330.75, 284.43, 159.50 
+CPU usage: 60.48% user, 39.7% sys, 0.43% idle 
+Processes: 773 total, 208 running, 10 stuck, 555 sleeping, 3013 threads 
+2026/10/19 15:18:01
+Load Avg: 353.03, 290.68, 163.18 
+CPU usage: 55.22% user, 44.77% sys, 0.0% idle 
+Processes: 766 total, 122 running, 80 stuck, 564 sleeping, 2975 threads 
+2026/10/19 15:18:07
+Load Avg: 345.66, 290.19, 163.75 
+CPU usage: 45.42% user, 54.57% sys, 0.0% idle 
+Processes: 760 total, 13 running, 120 stuck, 627 sleeping, 2810 threads 
+2026/10/19 15:18:19
+Load Avg: 296.51, 281.52, 162.15 
+CPU usage: 33.75% user, 45.92% sys, 20.32% idle 
+Processes: 769 total, 2 running, 134 stuck, 633 sleeping, 2854 threads 
+2026/10/19 15:18:24
+Load Avg: 278.85, 278.11, 161.64 
+CPU usage: 29.34% user, 51.91% sys, 18.73% idle 
+Processes: 772 total, 4 running, 134 stuck, 634 sleeping, 2783 threads 
+2026/10/19 15:18:29
+Load Avg: 256.60, 273.51, 160.70 
+CPU usage: 23.20% user, 33.61% sys, 43.18% idle 
+Processes: 763 total, 2 running, 138 stuck, 623 sleeping, 2759 threads 
+2026/10/19 15:18:36
+Load Avg: 218.66, 264.81, 158.94 
+CPU usage: 28.59% user, 34.51% sys, 36.88% idle 
+Processes: 749 total, 141 running, 12 stuck, 596 sleeping, 2783 threads 
+2026/10/19 15:18:47
+Load Avg: 229.91, 265.60, 160.45 
+CPU usage: 45.95% user, 52.42% sys, 1.62% idle 
+Processes: 739 total, 226 running, 2 stuck, 511 sleeping, 2791 threads 
+2026/10/19 15:19:02
+Load Avg: 282.96, 275.53, 165.82 
+CPU usage: 59.56% user, 40.43% sys, 0.0% idle 
+Processes: 730 total, 219 running, 2 stuck, 509 sleeping, 2788 threads 
+2026/10/19 15:19:08
+Load Avg: 298.18, 278.81, 167.62 
+CPU usage: 55.34% user, 44.65% sys, 0.0% idle 
+Processes: 728 total, 118 running, 72 stuck, 538 sleeping, 2802 threads 
+2026/10/19 15:19:13
+Load Avg: 309.69, 281.52, 169.23 
+CPU usage: 58.61% user, 41.38% sys, 0.0% idle 
+Processes: 726 total, 72 running, 72 stuck, 582 sleeping, 2758 threads 
+2026/10/19 15:19:19
+Load Avg: 297.79, 279.52, 169.18 
+CPU usage: 56.64% user, 43.35% sys, 0.0% idle 
+Processes: 726 total, 156 running, 3 stuck, 567 sleeping, 2697 threads 
+2026/10/19 15:19:31
+Load Avg: 289.25, 278.19, 169.99 
+CPU usage: 56.19% user, 43.71% sys, 0.8% idle 
+Processes: 734 total, 25 running, 134 stuck, 575 sleeping, 2823 threads 
+2026/10/19 15:19:36
+Load Avg: 276.67, 276.08, 170.52 
+CPU usage: 46.44% user, 53.55% sys, 0.0% idle 
+Processes: 735 total, 2 running, 152 stuck, 581 sleeping, 2693 threads 
+2026/10/19 15:19:41
+Load Avg: 264.84, 273.64, 170.28 
+CPU usage: 31.30% user, 38.14% sys, 30.54% idle 
+Processes: 734 total, 3 running, 142 stuck, 589 sleeping, 2677 threads 
+2026/10/19 15:19:46
+Load Avg: 243.80, 269.13, 169.29 
+CPU usage: 39.45% user, 36.40% sys, 24.14% idle 
+Processes: 730 total, 5 running, 130 stuck, 595 sleeping, 2664 threads 
+2026/10/19 15:19:56
+Load Avg: 224.43, 264.70, 168.31 
+CPU usage: 36.86% user, 42.66% sys, 20.47% idle 
+Processes: 734 total, 153 running, 4 stuck, 577 sleeping, 2731 threads 
+2026/10/19 15:20:01
+Load Avg: 226.94, 263.86, 169.14 
+CPU usage: 52.12% user, 46.72% sys, 1.15% idle 
