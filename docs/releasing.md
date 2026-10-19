@@ -33,10 +33,21 @@ test the intended current revision again; never rewrite evidence to match it.
 
 ## Dependency advisories
 
-The published package has no runtime dependencies. Advisories in `package-lock.json`
-come from the development and peer tooling tree (React Native, Expo, test tools).
-Before each release, run `npm audit --package-lock-only`. Update a critical advisory
-within its existing semver range. Do not run `npm audit fix --force`.
+The published package has no runtime dependencies. Advisories in the lockfiles come
+from development and test tooling (React Native, Expo, Appium, WebdriverIO).
+
+Run the audit while you prepare the version (step 2), before the CI run in step 4. A
+lockfile change after step 4 voids that run.
+
+1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
+2. Update each critical advisory that has a fix inside its existing semver range.
+3. If a critical advisory needs a tool upgrade (for example a new Appium release),
+   record it in the release notes or an issue with the tool and the advisory. Do not
+   run `npm audit fix --force`.
+
+Known for 1.0.0-rc.0: `e2e/package-lock.json` has critical advisories inside the
+Appium tree (`@appium/support`, `proxy-addr`, `shell-quote`). They affect only the
+E2E test machines. They need an Appium upgrade, which is planned after 1.0.0.
 
 ## Inconclusive host runs
 
