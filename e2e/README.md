@@ -103,7 +103,7 @@ The final `e2e-ios` gate requires all five jobs to succeed, all 62 registered ca
 
 Run `cd e2e && npm run test:harness` for the offline shard-evidence regressions alongside the existing harness tests. Offline success does not establish simulator acceptance. Job isolation prevents one serial run from leaving later suites unstarted; it does not change or excuse individual test timeouts.
 
-## Upcoming 1.0.0 API migration
+## 1.0.0 API migration
 
 The demo now uses explicit physical-side content/width pairs for every row. The original
 25 cases in `swipeable.spec.ts` remain, alongside 19 two-sided, 14 RTL, 3 swipe-to-go-back and
@@ -118,4 +118,4 @@ only an existing test ID, not an accepted prop or fallback path. Press-counter t
 Migrated single-side rows intentionally adopt the canonical engine's disabled-edge,
 state-callback and instant-close/cache behavior. See
 [the intentional behavior changes](../docs/migration-v1.md#intentional-behavior-changes).
-Historical runs do not establish acceptance of this upcoming release.
+Historical runs do not establish acceptance of a later release.
