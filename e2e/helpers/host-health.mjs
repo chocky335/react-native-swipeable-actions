@@ -24,13 +24,13 @@ export const READINESS_FAILURE = 'Touch readiness gate failed'
 
 /**
  * The reasons of the touch readiness gate that a stalled host explains: the gate waited for
- * the list screen, a thumb move or the thumb's return to rest until its phase timed out. The
- * other reason is an app state (the app left the list screen), so it stays a real failure.
+ * the list screen or for a thumb move until its phase timed out. The other reasons are app
+ * states (the app left the list screen, the thumb did not return to rest), so they stay real
+ * failures.
  */
 export const READINESS_TIMEOUTS = Object.freeze([
   'the list screen seekbar did not appear',
-  'the seekbar thumb never moved, so touches do not reach the app',
-  'the seekbar thumb did not return to rest'
+  'the seekbar thumb never moved, so touches do not reach the app'
 ])
 
 /** True for the error message of a touch readiness timeout that host trouble can explain. */
