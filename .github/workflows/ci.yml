@@ -384,9 +384,13 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.ios-plan.outputs.matrix) }}
     runs-on: macos-26
-    timeout-minutes: 45
+    # Two attempts: the first, and one retry after host trouble (docs/releasing.md).
+    timeout-minutes: 70
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      # The simulator log of one attempt: the app, the touch path and WebDriverAgent.
+      IOS_LOG_PREDICATE: >-
+        subsystem == "com.swipeabledemo.app" OR process == "SwipeableDemo" OR process == "backboardd" OR process == "SpringBoard" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -477,10 +481,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -quiet
 
+      # A shard gets at most one retry, in this step, and only after host trouble in attempt 1
+      # (docs/releasing.md). Each attempt keeps its own evidence in e2e/logs/attempt-N.
       - name: Run E2E tests
         id: wdio
         env:
-          E2E_ARTIFACT_DIR: ${{ github.workspace }}/e2e/logs/ios-evidence
           IOS_DEVICE_NAME: ${{ steps.sim.outputs.device_name }}
           IOS_UDID: ${{ steps.sim.outputs.udid }}
           IOS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Release-iphonesimulator/SwipeableDemo.app
@@ -488,29 +493,62 @@ jobs:
           IOS_WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-build
           IOS_GREP: ${{ inputs.ios-grep }}
           IOS_VIDEO: ${{ inputs.ios-video }}
+          IOS_SHARD: ${{ matrix.id }}
+          IOS_SPEC: ${{ matrix.spec }}
         run: |
-          # The simulator can stall early in this step. Keep its logs from this point on,
-          # and sample host load for the first two minutes, to explain a lost touch.
-          echo "IOS_TEST_START=$(date '+%Y-%m-%d %H:%M:%S')" >> "$GITHUB_ENV"
-          mkdir -p "$E2E_ARTIFACT_DIR"
-          top -l 24 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
-          TOP_PID=$!
+          TOP_PID=
           VIDEO_PID=
-          if [ "$IOS_VIDEO" = true ]; then
-            mkdir -p "$RUNNER_TEMP/ios-video"
-            xcrun simctl io "$IOS_UDID" recordVideo --codec h264 --force "$RUNNER_TEMP/ios-video/simulator.mp4" &
-            VIDEO_PID=$!
-          fi
-          # SIGINT lets simctl finish the movie file.
-          trap 'kill "$TOP_PID" 2>/dev/null || true; [ -n "$VIDEO_PID" ] && kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true' EXIT
-          cd e2e
+          stop_samplers() {
+            if [ -n "$TOP_PID" ]; then kill "$TOP_PID" 2>/dev/null || true; fi
+            # SIGINT lets simctl finish the movie file.
+            if [ -n "$VIDEO_PID" ]; then kill -INT "$VIDEO_PID" 2>/dev/null && wait "$VIDEO_PID" || true; fi
+            TOP_PID=
+            VIDEO_PID=
+          }
+          trap stop_samplers EXIT
+          GREP_ARGS=()
           if [ -n "$IOS_GREP" ]; then
             # Mocha reads grep as a regular expression. Match the text of the input only.
-            GREP_PATTERN=$(node helpers/test-filter.mjs "$IOS_GREP")
-            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1 --mochaOpts.grep "$GREP_PATTERN"
-          else
-            npm run test:ios -- --spec "${{ matrix.spec }}" --maxInstances 1
+            GREP_PATTERN=$(node e2e/helpers/test-filter.mjs "$IOS_GREP")
+            GREP_ARGS=(--mochaOpts.grep "$GREP_PATTERN")
           fi
+          # The simulator can stall in an attempt, and a relaunch can time out under load.
+          # Keep the simulator log from the attempt start on, and sample host load for the
+          # whole attempt, to explain a lost touch or a slow relaunch.
+          run_attempt() {
+            export IOS_ATTEMPT_DIR="$GITHUB_WORKSPACE/e2e/logs/attempt-$1"
+            export E2E_ARTIFACT_DIR="$IOS_ATTEMPT_DIR/ios-evidence"
+            IOS_TEST_START=$(date '+%Y-%m-%d %H:%M:%S')
+            printf 'IOS_ATTEMPT=%s\nIOS_TEST_START=%s\n' "$1" "$IOS_TEST_START" >> "$GITHUB_ENV"
+            mkdir -p "$E2E_ARTIFACT_DIR"
+            top -l 0 -s 5 -o cpu -n 15 > "$E2E_ARTIFACT_DIR/host-load.txt" 2>&1 &
+            TOP_PID=$!
+            if [ "$IOS_VIDEO" = true ]; then
+              mkdir -p "$RUNNER_TEMP/ios-video"
+              xcrun simctl io "$IOS_UDID" recordVideo --codec h264 --force "$RUNNER_TEMP/ios-video/attempt-$1.mp4" &
+              VIDEO_PID=$!
+            fi
+            local status=0
+            (cd e2e && npm run test:ios -- --spec "$IOS_SPEC" --maxInstances 1 "${GREP_ARGS[@]}") || status=$?
+            stop_samplers
+            return "$status"
+          }
+          if run_attempt 1; then exit 0; fi
+          # The retry check needs the receipt and the simulator log of attempt 1.
+          # Maestro runs after this step, so it did not run for attempt 1.
+          ATTEMPT_1="$GITHUB_WORKSPACE/e2e/logs/attempt-1"
+          IOS_WDIO_OUTCOME=failure IOS_MAESTRO_OUTCOME=skipped \
+            node e2e/helpers/ios-shards.mjs receipt "$IOS_SHARD" ios-plan/manifest.json "$ATTEMPT_1"
+          xcrun simctl spawn "$IOS_UDID" log show --start "$IOS_TEST_START" --style compact \
+            --predicate "$IOS_LOG_PREDICATE" > "$ATTEMPT_1/ios-evidence/simulator-log.txt" 2>&1 || true
+          if ! node e2e/helpers/host-health.mjs retry ios-plan/manifest.json "$IOS_SHARD" "$ATTEMPT_1"; then
+            exit 1
+          fi
+          # A new boot ends the app, WebDriverAgent and the stalled SpringBoard of attempt 1.
+          # The new WDIO run then starts a new Appium server and session.
+          xcrun simctl shutdown "$IOS_UDID" || true
+          xcrun simctl bootstatus "$IOS_UDID" -b
+          run_attempt 2
 
       - name: Upload simulator video
         if: always() && inputs.ios-video
@@ -544,29 +582,36 @@ jobs:
           export PATH="$PATH:$HOME/.maestro/bin"
           maestro test e2e/maestro/seekbar-regression.yaml
 
+      # These steps record the last attempt. The WDIO step records an attempt before its retry.
       - name: Record shard step outcomes
         if: always()
         env:
           IOS_WDIO_OUTCOME: ${{ steps.wdio.outcome }}
           IOS_MAESTRO_OUTCOME: ${{ steps.maestro.outcome }}
-        run: >-
-          node e2e/helpers/ios-shards.mjs receipt "${{ matrix.id }}"
-          ios-plan/manifest.json e2e/logs/ios-shard-receipt.json
+        run: |
+          ATTEMPT_DIR="e2e/logs/attempt-${IOS_ATTEMPT:-1}"
+          if [ ! -e "$ATTEMPT_DIR/ios-shard-receipt.json" ]; then
+            node e2e/helpers/ios-shards.mjs receipt "${{ matrix.id }}" ios-plan/manifest.json "$ATTEMPT_DIR"
+          fi
 
       - name: Capture simulator logs
         if: always()
         run: |
-          if [ -n "${IOS_TEST_START:-}" ]; then WINDOW=(--start "$IOS_TEST_START"); else WINDOW=(--last 10m); fi
-          mkdir -p e2e/logs/ios-evidence
-          xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show "${WINDOW[@]}" --style compact \
-            --predicate 'subsystem == "com.swipeabledemo.app" OR process == "SwipeableDemo" OR process == "backboardd" OR process == "SpringBoard" OR process == "WebDriverAgentRunner-Runner" OR process == "testmanagerd" OR eventMessage CONTAINS[c] "WebDriverAgent"' \
-            > e2e/logs/ios-evidence/simulator-log.txt 2>&1 || true
+          EVIDENCE="e2e/logs/attempt-${IOS_ATTEMPT:-1}/ios-evidence"
+          mkdir -p "$EVIDENCE"
+          if [ ! -e "$EVIDENCE/simulator-log.txt" ]; then
+            if [ -n "${IOS_TEST_START:-}" ]; then WINDOW=(--start "$IOS_TEST_START"); else WINDOW=(--last 10m); fi
+            xcrun simctl spawn "${{ steps.sim.outputs.udid }}" log show "${WINDOW[@]}" --style compact \
+              --predicate "$IOS_LOG_PREDICATE" > "$EVIDENCE/simulator-log.txt" 2>&1 || true
+          fi
 
-      # Classifies the host for triage. It never changes the shard or gate result.
+      # Classifies the host for triage. Only the WDIO step uses a host class: for its one retry.
       - name: Classify host health
         if: always()
         continue-on-error: true
-        run: node e2e/helpers/host-health.mjs report ios-plan/manifest.json "${{ matrix.id }}" e2e/logs
+        run: >-
+          node e2e/helpers/host-health.mjs report ios-plan/manifest.json "${{ matrix.id }}"
+          "e2e/logs/attempt-${IOS_ATTEMPT:-1}"
 
       - name: Upload Appium logs and required shard evidence
         if: always()

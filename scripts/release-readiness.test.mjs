@@ -5,6 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { readinessTimeoutAttempt } from '../e2e/helpers/fixtures/host-trouble.mjs'
+import { describeHealth } from '../e2e/helpers/host-health.mjs'
 import { buildManifest, EXPECTED_COUNTS } from '../e2e/helpers/ios-shards.mjs'
 import { REQUIRED_JOBS, validateReadiness, validateSource } from './release-readiness.mjs'
 
@@ -42,8 +44,9 @@ function fixture(version = '1.0.0-rc.0', runIds = [101]) {
           records.push({ ...common, ...entry, file, attempt: 0, event: 'test-result', status: 'passed', duration: 1, retries: { attempts: 0, limit: 0 } })
         }
         records.push({ ...common, event: 'worker-end', specs: [file], result: 0 })
-        return [shard.id, { receipt: { version: 1, ...context, id: shard.id, spec: shard.spec,
-          sourceHash: shard.sourceHash, wdioOutcome: 'success', maestroOutcome: shard.maestro ? 'success' : 'skipped' }, workers: [records] }]
+        return [shard.id, { attempts: [{ receipt: { version: 1, ...context, id: shard.id, spec: shard.spec,
+          sourceHash: shard.sourceHash, attempt: 1, retryReason: null, wdioOutcome: 'success',
+          maestroOutcome: shard.maestro ? 'success' : 'skipped' }, workers: [records] }] }]
       }))
       const androidLog = manifest.shards.map((shard, index) =>
         shard.cases.map((entry) => '[app Android #0-' + index + '] \u2713 ' + entry.title).join('\n') +
@@ -109,11 +112,13 @@ const mutations = {
   'Maestro skipped': (v) => { v.runs[0].jobs.find((j) => j.name === 'iOS / swipeable').steps[1].conclusion = 'skipped' },
   'metadata-only evidence': (v) => { v.runs[0].bundles = {} },
   'stale inventory': (v) => { v.runs[0].manifest.shards[0].sourceHash = 'b'.repeat(64) },
-  'missing iOS worker': (v) => { v.runs[0].bundles.rtl.workers = [] },
-  'missing iOS case': (v) => { v.runs[0].bundles.swipeable.workers[0].splice(2, 2) },
-  'failed iOS case': (v) => { v.runs[0].bundles['two-sided'].workers[0][3].status = 'failed' },
-  'retried iOS case': (v) => { v.runs[0].bundles.rtl.workers[0][3].retries.attempts = 1 },
-  'replayed old records': (v) => { v.runs[0].bundles.rtl.workers[0][0].timestamp = '2026-10-15T11:00:00Z' },
+  'missing iOS worker': (v) => { v.runs[0].bundles.rtl.attempts[0].workers = [] },
+  'missing iOS case': (v) => { v.runs[0].bundles.swipeable.attempts[0].workers[0].splice(2, 2) },
+  'failed iOS case': (v) => { v.runs[0].bundles['two-sided'].attempts[0].workers[0][3].status = 'failed' },
+  'retried iOS case': (v) => { v.runs[0].bundles.rtl.attempts[0].workers[0][3].retries.attempts = 1 },
+  'replayed old records': (v) => { v.runs[0].bundles.rtl.attempts[0].workers[0][0].timestamp = '2026-10-15T11:00:00Z' },
+  'missing iOS attempt': (v) => { v.runs[0].bundles.rtl.attempts = [] },
+  'iOS retry reason without a retry': (v) => { v.runs[0].bundles.rtl.attempts[0].receipt.retryReason = 'host trouble' },
   'Android summary only': (v) => { v.runs[0].androidLog = 'Spec Files: 5 passed, 5 total\n' },
   'Android missing case': (v) => { v.runs[0].androidLog = v.runs[0].androidLog.replace('[app Android #0-0] \u2713 case 0', '') },
   'Android duplicate output': (v) => { v.runs[0].androidLog += v.runs[0].androidLog },
@@ -139,10 +144,70 @@ test('accepts exact case multisets despite nested-suite display order, timestamp
 test('accepts the worker-end quarantine field of current iOS evidence', () => {
   const value = fixture()
   for (const run of value.runs) {
-    for (const bundle of Object.values(run.bundles)) bundle.workers[0].at(-1).quarantine = null
+    for (const bundle of Object.values(run.bundles)) bundle.attempts[0].workers[0].at(-1).quarantine = null
   }
   assert.equal(validateReadiness(value).version, '1.0.0-rc.0')
 })
+
+// Synthetic: attempt 1 of the swipeable shard ends at 10:32:07 in a relaunch timeout of the
+// touch readiness gate, at the given load. Attempt 2 is the green fixture attempt at 11:00.
+function retriedFixture(load = 300) {
+  const value = fixture()
+  const [evidence] = value.runs
+  const shard = evidence.manifest.shards.find((entry) => entry.id === 'swipeable')
+  const context = { sha, runId: String(evidence.run.id), runAttempt: '1' }
+  const first = readinessTimeoutAttempt(shard, context, {
+    start: Date.parse('2026-10-16T10:30:00Z'), load, pid: 99, file: '/checkout/e2e/' + shard.spec
+  })
+  const second = evidence.bundles.swipeable.attempts[0]
+  Object.assign(second.receipt, { attempt: 2, retryReason: describeHealth(first.health) })
+  evidence.bundles.swipeable.attempts = [first, second]
+  return value
+}
+test('accepts one retry of a shard after host trouble, and the report records why', () => {
+  const value = retriedFixture()
+  const reason = describeHealth(value.runs[0].bundles.swipeable.attempts[0].health)
+  assert.match(reason, /^host trouble: /)
+  assert.deepEqual(validateReadiness(value).iosRetries, { swipeable: reason })
+  assert.deepEqual(validateReadiness(fixture()).iosRetries, {})
+})
+// Each entry builds a retried run, and the gate rejects it with this message.
+const retryMutations = {
+  'healthy attempt 1 at low load': [() => retriedFixture(20), /^A retry needs host trouble in host-health\.json/],
+  'host trouble only in host-health.json and the receipt': [() => {
+    const value = retriedFixture(20)
+    const [first, second] = value.runs[0].bundles.swipeable.attempts
+    first.health = retriedFixture().runs[0].bundles.swipeable.attempts[0].health
+    second.receipt.retryReason = describeHealth(first.health)
+    return value
+  }, /^A retry needs host trouble: host healthy/],
+  'attempt 2 incomplete': [() => {
+    const value = retriedFixture()
+    value.runs[0].bundles.swipeable.attempts[1].workers[0].splice(2, 2)
+    return value
+  }, /^Missing\/duplicate\/unstarted cases/],
+  'attempt 2 with a retried case': [() => {
+    const value = retriedFixture()
+    value.runs[0].bundles.swipeable.attempts[1].workers[0][3].retries.attempts = 1
+    return value
+  }, /^Retry attempts missing\/nonzero/],
+  'three attempts': [() => {
+    const value = retriedFixture()
+    const { attempts } = value.runs[0].bundles.swipeable
+    attempts.push({ ...structuredClone(attempts[1]), receipt: { ...attempts[1].receipt, attempt: 3 } })
+    return value
+  }, /^More than one retry/],
+  'attempt 1 records outside the run': [() => {
+    const value = retriedFixture()
+    value.runs[0].bundles.swipeable.attempts[0].workers[0][0].timestamp = '2026-10-16T09:59:00Z'
+    return value
+  }, /^Worker evidence is outside this run/]
+}
+for (const [name, [build, message]] of Object.entries(retryMutations)) {
+  test('fails closed on an iOS retry: ' + name, () => {
+    assert.throws(() => validateReadiness(build()), (error) => message.test(error.message.split('\n')[0]))
+  })
+}
 for (const [name, mutate] of Object.entries(mutations)) {
   test('fails closed: ' + name, () => {
     const value = fixture()
