@@ -33,21 +33,20 @@ test the intended current revision again; never rewrite evidence to match it.
 
 ## Dependency advisories
 
-The published package has no runtime dependencies. Advisories in the lockfiles come
-from development and test tooling (React Native, Expo, Appium, WebdriverIO).
+The published package has no runtime dependencies. Advisories in the root lockfile come
+from development tools and from the peer tree (React Native, Expo). Consumer apps install
+their own peer versions. Advisories in `e2e/package-lock.json` reach only the E2E hosts.
 
-Run the audit while you prepare the version (step 2), before the CI run in step 4. A
-lockfile change after step 4 voids that run.
+Audit both lockfiles in the version change of Prepare step 2, before the Prepare step 4
+CI run. A lockfile change after that CI run voids it.
 
 1. Run `npm audit --package-lock-only` in the repository root and in `e2e/`.
-2. Update each critical advisory that has a fix inside its existing semver range.
-3. If a critical advisory needs a tool upgrade (for example a new Appium release),
-   record it in the release notes or an issue with the tool and the advisory. Do not
-   run `npm audit fix --force`.
-
-Known for 1.0.0-rc.0: `e2e/package-lock.json` has critical advisories inside the
-Appium tree (`@appium/support`, `proxy-addr`, `shell-quote`). They affect only the
-E2E test machines. They need an Appium upgrade, which is planned after 1.0.0.
+2. If a critical advisory has a fixed version inside the existing range, update it with
+   `npm update <package> --package-lock-only`. If a nested copy keeps the old version,
+   add an `overrides` entry in that folder's `package.json`.
+3. Read the lockfile diff. Then run the audit again.
+4. If a critical fix needs a major upgrade, open an issue that names the advisory and the
+   tool. Link the issue from the `CHANGELOG.md` entry. Do not run `npm audit fix --force`.
 
 ## Inconclusive host runs
 
