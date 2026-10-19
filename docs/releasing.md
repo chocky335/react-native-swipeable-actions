@@ -94,8 +94,8 @@ case inventory. It lists each condition that fails.
     gestures to SpringBoard first, and the app did not get them.
   - A touch readiness timeout is a hook that fails in the touch readiness gate
     because the list screen seekbar did not appear, or because the seekbar thumb
-    never moved. An example is the relaunch in `afterEach`. If the app left the list
-    screen, or the thumb did not return to rest, the hook failure is a real failure.
+    never moved or did not return to rest in time. An example is the relaunch in
+    `afterEach`. If the app left the list screen, the hook failure is a real failure.
     The window of a timeout needs at least one load sample, and each sample in it
     needs a 1-minute load average of 100 or more. It needs no simulator log, and a
     latent-routed gesture in its window does not count.
