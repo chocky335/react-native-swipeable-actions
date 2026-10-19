@@ -1045,7 +1045,10 @@ test('a touch readiness timeout inside a case body needs a latent-routed gesture
 })
 
 const readinessMessage = (reason) => `${READINESS_FAILURE} after 3 drag(s) in 30128 ms: ${reason}`
-const appStateReasons = ['the app left the list screen before a drag moved the seekbar thumb']
+const appStateReasons = [
+  'the app left the list screen before a drag moved the seekbar thumb',
+  'the app left the list screen before the seekbar thumb returned to rest'
+]
 
 test('only the three timeouts of the touch readiness gate can be host trouble', () => {
   for (const reason of READINESS_TIMEOUTS)
