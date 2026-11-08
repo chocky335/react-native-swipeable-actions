@@ -1,7 +1,7 @@
 {
   "name": "react-native-swipeable-actions",
   "version": "1.0.0",
-  "description": "High-performance native swipeable row component for React Native using Expo Modules",
+  "description": "Native swipeable rows with swipe actions for React Native (iOS/Android). No Reanimated.",
   "main": "src/index.ts",
   "types": "build/index.d.ts",
   "files": [
@@ -49,11 +49,20 @@
   "keywords": [
     "react-native",
     "expo",
+    "expo-module",
+    "ios",
+    "android",
+    "swipe",
     "swipeable",
+    "swipeable-row",
+    "swipeable-list",
+    "swipe-actions",
+    "swipe-to-delete",
+    "list-item",
     "gesture",
     "native",
-    "ios",
-    "android"
+    "new-architecture",
+    "typescript"
   ],
   "repository": {
     "type": "git",
