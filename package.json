@@ -72,7 +72,7 @@
   "bugs": {
     "url": "https://github.com/chocky335/react-native-swipeable-actions/issues"
   },
-  "author": "chocky335",
+  "author": "chocky335 (https://github.com/chocky335)",
   "license": "MIT",
   "peerDependencies": {
     "expo": ">=54.0.0",
