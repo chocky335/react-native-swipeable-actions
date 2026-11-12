@@ -27,7 +27,11 @@ export function validateSource({ sourceSha, workflowSha, ref, version, pkg, lock
   assert.match(sourceSha, shaPattern, 'Full source SHA required')
   assert.equal(sourceSha, workflowSha, 'Publish only the prepared workflow revision')
   assert.equal(ref, 'refs/heads/main', 'Release workflow must run from main')
-  assert.match(version, /^1\.0\.0(?:-rc\.(?:0|[1-9][0-9]*))?$/, 'Exact v1 stable or RC version required')
+  assert.match(
+    version,
+    /^1\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.(?:0|[1-9][0-9]*))?$/,
+    'Exact v1 stable or RC version required'
+  )
   assert.equal(pkg.name, packageName)
   assert.equal(pkg.version, version, 'Prepare and test the exact package version first')
   assert.equal(lock.version, version, 'Lockfile version differs')

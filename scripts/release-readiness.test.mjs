@@ -60,7 +60,7 @@ function fixture(version = '1.0.0-rc.0', runIds = [101]) {
   return value
 }
 
-for (const version of ['1.0.0-rc.0', '1.0.0-rc.12', '1.0.0']) {
+for (const version of ['1.0.0-rc.0', '1.0.0-rc.12', '1.0.0', '1.0.1', '1.1.0-rc.0', '1.1.0', '1.12.30']) {
   test('accepts complete synthetic evidence for exact ' + version, () => {
     const result = validateReadiness(fixture(version))
     assert.equal(result.tag, 'v' + version)
@@ -341,7 +341,9 @@ test('allows matching main through tag and exact RC tarball publication boundari
   }
 })
 
-for (const [version, distTag] of [['1.0.0-rc.0', 'next'], ['1.0.0', 'latest']]) {
+for (const [version, distTag] of [
+  ['1.0.0-rc.0', 'next'], ['1.0.0', 'latest'], ['1.1.0-rc.0', 'next'], ['1.1.0', 'latest']
+]) {
   test('checks checkout main after real artifact-directory cd for ' + version, () => {
     const result = runWorkflowStep(publishStep, { RELEASE_VERSION: version })
     assert.equal(result.error, undefined)
@@ -370,7 +372,10 @@ test('existing immutable tag may be reused only at the tested source', () => {
   assert.notEqual(conflicting.status, 0)
   assert.doesNotMatch(conflicting.stdout, /mutation:/)
 })
-for (const version of ['prerelease', 'major', '0.1.13-rc.0', '1.0.0-canary.0', '1.0.0-rc.01', 'v1.0.0', '1.0.0+build']) {
+for (const version of [
+  'prerelease', 'major', '0.1.13-rc.0', '1.0.0-canary.0', '1.0.0-rc.01', 'v1.0.0', '1.0.0+build',
+  '2.0.0', '1.1', '1.01.0', '1.1.01', '1.1.0-beta.0'
+]) {
   test('rejects unsupported or inferred version ' + version, () => {
     const value = fixture()
     value.version = version
