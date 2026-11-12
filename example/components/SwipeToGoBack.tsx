@@ -1,6 +1,7 @@
 import { useCallback, useId, useRef } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
+  type GestureInsets,
   Swipeable,
   type SwipeableMethods,
   type SwipeableProps
@@ -18,6 +19,11 @@ export interface SwipeToGoBackProps {
    * open before `cancel()` runs.
    */
   canGoBack?: () => boolean
+  /**
+   * Edge bands where a touch does not start the swipe. Use it for a horizontal pager
+   * inside the screen: the pager gets the drags that start in its band.
+   */
+  gestureInsets?: GestureInsets
   /** Test identifier of the swipeable container. */
   testID?: string
 }
@@ -28,7 +34,13 @@ const EMPTY_RAIL = <View />
 const DRAG_OFFSET_FROM_EDGE = 20
 
 /** Slides the whole screen to the right and calls `onBack` after a full swipe. */
-export function SwipeToGoBack({ children, onBack, canGoBack, testID }: SwipeToGoBackProps) {
+export function SwipeToGoBack({
+  children,
+  onBack,
+  canGoBack,
+  gestureInsets,
+  testID
+}: SwipeToGoBackProps) {
   const { width } = useWindowDimensions()
   const swipeableRef = useRef<SwipeableMethods>(null)
   // `cancel()` needs a key. A new key for each mount keeps a later mount of the
@@ -59,6 +71,7 @@ export function SwipeToGoBack({ children, onBack, canGoBack, testID }: SwipeToGo
       leftActions={EMPTY_RAIL}
       leftActionsWidth={width}
       dragOffsetFromEdge={DRAG_OFFSET_FROM_EDGE}
+      {...(gestureInsets ? { gestureInsets } : {})}
       onSwipeStart={handleSwipeStart}
       onSwipeEnd={handleSwipeEnd}
       style={styles.container}
