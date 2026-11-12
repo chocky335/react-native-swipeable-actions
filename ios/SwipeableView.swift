@@ -326,7 +326,9 @@ public class SwipeableView: ExpoView {
         }
     }
     // Read only when a touch begins: no reconciliation, so a change waits for the next touch.
-    var gestureInsets = SwipeGestureInsets()
+    var gestureInsets = SwipeGestureInsets() {
+        didSet { if gestureInsets != oldValue { syncInsetTouchObserver() } }
+    }
     private var insetTouchLatch = SwipeInsetTouchLatch<UITouch>()
 
     /// Explicit cancellation consumes the rest of the pan and any pending reopen,
@@ -689,11 +691,22 @@ public class SwipeableView: ExpoView {
     }()
 
     // UIKit skips a disabled pan's delegate, so this one feeds the inset latch and never takes a touch.
-    private lazy var insetTouchObserver: UIGestureRecognizer = {
-        let gesture = UIGestureRecognizer(target: nil, action: nil)
-        gesture.delegate = self
-        return gesture
-    }()
+    private var insetTouchObserver: UIGestureRecognizer?
+
+    /// Only a row that sets gestureInsets carries the observer.
+    private func syncInsetTouchObserver() {
+        guard gestureInsets != SwipeGestureInsets() else {
+            insetTouchObserver.map(removeGestureRecognizer)
+            return
+        }
+        let observer = insetTouchObserver ?? UIGestureRecognizer(target: nil, action: nil)
+        observer.delegate = self
+        insetTouchObserver = observer
+        if observer.view !== self {
+            observer.view?.removeGestureRecognizer(observer)
+            addGestureRecognizer(observer)
+        }
+    }
 
     // MARK: - Init and attachment
 
@@ -702,7 +715,6 @@ public class SwipeableView: ExpoView {
         clipsToBounds = true
         isUserInteractionEnabled = true
         addGestureRecognizer(panGesture)
-        addGestureRecognizer(insetTouchObserver)
         NotificationCenter.default.addObserver(
             self, selector: #selector(reduceMotionChanged),
             name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil
@@ -780,10 +792,7 @@ public class SwipeableView: ExpoView {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
         }
-        if insetTouchObserver.view !== self {
-            insetTouchObserver.view?.removeGestureRecognizer(insetTouchObserver)
-            addGestureRecognizer(insetTouchObserver)
-        }
+        syncInsetTouchObserver()
         commitProps()
         scheduleVisualRestore()
         // A detached timer/animation must not restart and fabricate an end-open event.
