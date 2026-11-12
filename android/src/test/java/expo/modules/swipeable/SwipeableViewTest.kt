@@ -2804,6 +2804,186 @@ class SwipeableViewTest {
         assertEquals(-240f, content(restored).translationX, .01f)
     }
 
+    @Test fun gestureInsetTouchReachesTheChildAndNeverStartsASwipe() {
+        val row = row()
+        val seen = recordChildTouches(row)
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        events.clear()
+        motion(MotionEvent.ACTION_DOWN, 300f, 40f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+        for (x in listOf(250f, 100f)) {
+            motion(MotionEvent.ACTION_MOVE, x, 40f).useEvent {
+                assertFalse(row.onInterceptTouchEvent(it))
+                assertFalse(row.onTouchEvent(it))
+                assertTrue(row.dispatchTouchEvent(it))
+            }
+        }
+        motion(MotionEvent.ACTION_UP, 100f, 40f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+        settle()
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP),
+            seen
+        )
+        assertEquals(0f, content(row).translationX, 0f)
+        assertTrue(events.isEmpty())
+        assertEquals(0, nativeGestureStarts)
+    }
+
+    @Test fun gestureInsetTouchWithNoChildHandlerIsNotClaimedByTheRow() {
+        val row = row()
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        motion(MotionEvent.ACTION_DOWN, 300f, 40f).useEvent { assertFalse(row.dispatchTouchEvent(it)) }
+        motion(MotionEvent.ACTION_DOWN, 300f, 10f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+    }
+
+    @Test fun touchOutsideTheGestureInsetsStillSwipes() {
+        val row = row()
+        val seen = recordChildTouches(row)
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        events.clear()
+        motion(MotionEvent.ACTION_DOWN, 300f, 10f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 250f, 10f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 150f, 10f).useEvent { row.dispatchTouchEvent(it) }
+        assertEquals(-100f, content(row).translationX, .01f)
+        assertEquals(1, named("onSwipeStart").size)
+        assertEquals(1, nativeGestureStarts)
+        assertEquals(listOf(MotionEvent.ACTION_DOWN), seen)
+    }
+
+    @Test fun eachGestureInsetIsMeasuredInDpFromItsOwnEdge() {
+        // The row is 400 x 64 px at density 2, so 200 x 32 dp.
+        val row = row()
+        val center = 200f to 20f
+        val bands = mapOf(
+            "top" to (200f to 7f),
+            "bottom" to (200f to 57f),
+            "left" to (15f to 20f),
+            "right" to (385f to 20f)
+        )
+        for ((edge, inside) in bands) {
+            row.setGestureInsets(mapOf(edge to 8.0))
+            assertFalse("$edge band", startsSwipe(row, inside.first, inside.second))
+            assertTrue("$edge center", startsSwipe(row, center.first, center.second))
+            for ((other, point) in bands) {
+                if (other != edge) assertTrue("$edge leaves $other", startsSwipe(row, point.first, point.second))
+            }
+        }
+        row.setGestureInsets(mapOf("top" to 8.0, "bottom" to 8.0, "left" to 8.0, "right" to 8.0))
+        for ((edge, inside) in bands) assertFalse("all: $edge", startsSwipe(row, inside.first, inside.second))
+        assertTrue(startsSwipe(row, center.first, center.second))
+    }
+
+    @Test fun missingAndInvalidGestureInsetsLeaveTheWholeRowSwipeable() {
+        val row = row()
+        val corners = listOf(1f to 1f, 399f to 1f, 1f to 63f, 399f to 63f)
+        for (point in corners) assertTrue(startsSwipe(row, point.first, point.second))
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        assertFalse(startsSwipe(row, 200f, 57f))
+        val ignored = listOf(
+            null,
+            emptyMap(),
+            mapOf("bottom" to -16.0, "top" to Double.NaN, "left" to Double.POSITIVE_INFINITY, "right" to 0.0)
+        )
+        for (insets in ignored) {
+            row.setGestureInsets(mapOf("bottom" to 16.0))
+            row.setGestureInsets(insets)
+            for (point in corners) assertTrue("$insets", startsSwipe(row, point.first, point.second))
+        }
+    }
+
+    @Test fun gestureInsetChangeDuringATouchAppliesFromTheNextTouch() {
+        val row = row()
+        val seen = recordChildTouches(row)
+        events.clear()
+        motion(MotionEvent.ACTION_DOWN, 300f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 250f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        row.applyPendingConfiguration()
+        motion(MotionEvent.ACTION_MOVE, 150f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        assertEquals(-100f, content(row).translationX, .01f)
+        assertEquals(1, named("onSwipeStart").size)
+        assertTrue(named("onGestureCancelled").isEmpty())
+        motion(MotionEvent.ACTION_CANCEL, 150f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        events.clear()
+        seen.clear()
+
+        motion(MotionEvent.ACTION_DOWN, 300f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        row.setGestureInsets(null)
+        row.applyPendingConfiguration()
+        motion(MotionEvent.ACTION_MOVE, 250f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 150f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_UP, 150f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertTrue(events.isEmpty())
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP),
+            seen
+        )
+
+        assertTrue(startsSwipe(row, 300f, 40f))
+    }
+
+    @Test fun openRowClosesWithASwipeThatStartsInsideAGestureInset() {
+        val row = row()
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        row.open(SwipeSide.RIGHT)
+        settle()
+        assertEquals(-240f, content(row).translationX, .01f)
+        events.clear()
+        motion(MotionEvent.ACTION_DOWN, 100f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 150f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, 350f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        assertEquals(1, named("onSwipeStart").size)
+        motion(MotionEvent.ACTION_UP, 350f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        assertEquals(listOf("closed:right"), ends())
+        assertFalse(startsSwipe(row, 100f, 40f))
+    }
+
+    @Test fun cancelDuringAGestureInsetTouchKeepsTheChildTouchWhole() {
+        val row = row()
+        val seen = recordChildTouches(row)
+        row.setGestureInsets(mapOf("bottom" to 16.0))
+        motion(MotionEvent.ACTION_DOWN, 300f, 40f).useEvent { row.dispatchTouchEvent(it) }
+        row.cancelGesture()
+        motion(MotionEvent.ACTION_MOVE, 100f, 40f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+        motion(MotionEvent.ACTION_UP, 100f, 40f).useEvent { assertTrue(row.dispatchTouchEvent(it)) }
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP),
+            seen
+        )
+    }
+
+    private fun recordChildTouches(row: SwipeableView): MutableList<Int> {
+        val seen = mutableListOf<Int>()
+        val child = object : View(activity) {
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                seen += event.actionMasked
+                return true
+            }
+        }
+        (content(row) as FrameLayout).addView(child)
+        child.layout(0, 0, 400, 64)
+        return seen
+    }
+
+    /** Drags 120 px to the right from the point, then cancels the touch and restores a closed row. */
+    private fun startsSwipe(row: SwipeableView, x: Float, y: Float): Boolean {
+        events.clear()
+        motion(MotionEvent.ACTION_DOWN, x, y).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, x + 60f, y).useEvent { row.dispatchTouchEvent(it) }
+        motion(MotionEvent.ACTION_MOVE, x + 120f, y).useEvent { row.dispatchTouchEvent(it) }
+        val started = named("onSwipeStart").isNotEmpty()
+        motion(MotionEvent.ACTION_CANCEL, x + 120f, y).useEvent { row.dispatchTouchEvent(it) }
+        settle()
+        assertEquals(0f, content(row).translationX, 0f)
+        events.clear()
+        return started
+    }
+
     /** The size of every static collection the view class keeps. */
     private fun staticStateSizes(): Map<String, Int> = SwipeableView::class.java.declaredFields
         .filter { java.lang.reflect.Modifier.isStatic(it.modifiers) }

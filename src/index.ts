@@ -5,6 +5,7 @@ export { setGlobalErrorHandler } from './nativeModuleUtils'
 export { default as Swipeable } from './Swipeable'
 export type {
   ActionsNeededEvent,
+  GestureInsets,
   NativeSwipeableRef,
   SwipeAppearance,
   SwipeSide,

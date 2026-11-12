@@ -69,6 +69,10 @@ public class SwipeableModule: Module {
                 view.gestureEnabled = enabled
             }
 
+            Prop("gestureInsets") { (view: SwipeableView, insets: [String: Double]?) in
+                view.gestureInsets = SwipeGestureInsets(insets)
+            }
+
             Prop("dragOffsetFromEdge") { (view: SwipeableView, offset: CGFloat) in
                 view.dragOffsetFromEdge = offset
             }

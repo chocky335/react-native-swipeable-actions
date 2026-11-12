@@ -325,6 +325,10 @@ public class SwipeableView: ExpoView {
             scheduleReconciliation()
         }
     }
+    // Read only when a touch begins: no reconciliation, so a change waits for the next touch.
+    var gestureInsets = SwipeGestureInsets()
+    private var insetTouchLatch = SwipeInsetTouchLatch<UITouch>()
+
     /// Explicit cancellation consumes the rest of the pan and any pending reopen,
     /// but leaves the binding identity intact for later commands in the same JS turn.
     func cancelGesture() {
@@ -684,6 +688,13 @@ public class SwipeableView: ExpoView {
         return gesture
     }()
 
+    // UIKit skips a disabled pan's delegate, so this one feeds the inset latch and never takes a touch.
+    private lazy var insetTouchObserver: UIGestureRecognizer = {
+        let gesture = UIGestureRecognizer(target: nil, action: nil)
+        gesture.delegate = self
+        return gesture
+    }()
+
     // MARK: - Init and attachment
 
     public required init(appContext: AppContext? = nil) {
@@ -691,6 +702,7 @@ public class SwipeableView: ExpoView {
         clipsToBounds = true
         isUserInteractionEnabled = true
         addGestureRecognizer(panGesture)
+        addGestureRecognizer(insetTouchObserver)
         NotificationCenter.default.addObserver(
             self, selector: #selector(reduceMotionChanged),
             name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil
@@ -767,6 +779,10 @@ public class SwipeableView: ExpoView {
         if panGesture.view !== self {
             panGesture.view?.removeGestureRecognizer(panGesture)
             addGestureRecognizer(panGesture)
+        }
+        if insetTouchObserver.view !== self {
+            insetTouchObserver.view?.removeGestureRecognizer(insetTouchObserver)
+            addGestureRecognizer(insetTouchObserver)
         }
         commitProps()
         scheduleVisualRestore()
@@ -1463,6 +1479,21 @@ extension SwipeableView: UIGestureRecognizerDelegate {
         }
 
         return shouldBegin
+    }
+
+    public func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldReceive touch: UITouch
+    ) -> Bool {
+        guard gestureRecognizer === panGesture || gestureRecognizer === insetTouchObserver else { return true }
+        let blocked = gestureInsets.blocksTouch(
+            at: touch.location(in: self), in: bounds.size,
+            isClosedAtRest: !isOpen && !isAnimating && !isDragging && currentTranslation == 0
+        )
+        let receives = insetTouchLatch.receives(touch, blockedIfFirst: blocked) {
+            $0.phase != .ended && $0.phase != .cancelled
+        }
+        return gestureRecognizer === panGesture && receives
     }
 
     public func gestureRecognizer(
