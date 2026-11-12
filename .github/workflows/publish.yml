@@ -14,7 +14,7 @@ on:
         required: true
         type: string
       version:
-        description: 'Exact committed version: 1.0.0-rc.N or 1.0.0 (never a bump type)'
+        description: 'Exact committed version: 1.MINOR.PATCH or 1.MINOR.PATCH-rc.N (never a bump type)'
         required: true
         type: string
       ci_runs:

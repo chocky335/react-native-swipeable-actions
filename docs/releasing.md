@@ -9,8 +9,9 @@ checks cannot replace a successful run of the prepared source.
 
 1. Finish the implementation and its independent review. The full CI run must use
    the exact prepared source and version. Release candidates use an explicit
-   `1.0.0-rc.N`, and the stable release uses `1.0.0`. Never use
-   `npm version prerelease` to infer v1.
+   `1.MINOR.PATCH-rc.N`, for example `1.1.0-rc.0`. Stable releases use
+   `1.MINOR.PATCH`, for example `1.1.0`. Never use `npm version prerelease` or a
+   bump type to infer the version.
 2. In a separately reviewed preparation change, use
    `npm version <version> --no-git-tag-version --ignore-scripts` with the approved
    exact version. Skip that command if `package.json` already has that version.
@@ -239,8 +240,8 @@ After review, dispatch the [publish workflow](https://github.com/chocky335/react
 with `operation=publish` and the same inputs. The gate
 fetches and validates the evidence again. It requires that npm does not already
 contain the version, establishes the source tag **before** publication, and uses
-`npm publish package.tgz --ignore-scripts --provenance`. RC versions go to `next`;
-stable `1.0.0` goes to `latest`. No mobile tests are skipped and substituted by
+`npm publish package.tgz --ignore-scripts --provenance`. RC versions go to `next`.
+Stable versions, such as `1.0.0` or `1.1.0`, go to `latest`. No mobile tests are skipped and substituted by
 this workflow: their complete successful CI evidence is a prerequisite.
 
 The job queries remote `refs/heads/main` after environment approval, then again
@@ -289,8 +290,11 @@ version and its `v<version>` tag are permanent records.
    then publish. No
    evidence of the bad version carries over. The publish of the corrective version
    moves its dist-tag to it.
-6. The readiness gate and the publish workflow accept only `1.0.0-rc.N` and
-   `1.0.0`. A patch release such as `1.0.1` needs a reviewed change first: extend
-   the version pattern in `validateSource` in `scripts/release-readiness.mjs`, add
-   its tests, and update the `version` input text in `publish.yml`. Then the patch
-   goes through this same gate.
+6. The readiness gate and the publish workflow accept only exact `1.x` versions:
+   `1.MINOR.PATCH` and `1.MINOR.PATCH-rc.N`. A `2.0.0` release needs a reviewed
+   change first: extend the version pattern in `validateSource` in
+   `scripts/release-readiness.mjs`, add its tests, and update the `version` input
+   text in `publish.yml`. Then the release goes through this same gate.
+7. CAUTION: Every stable version goes to `latest`. Do not publish a patch for an
+   older minor, such as `1.0.1` after `1.1.0`, through this workflow. It moves
+   `latest` back to the older line.
