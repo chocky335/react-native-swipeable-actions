@@ -194,6 +194,35 @@ const key = useId();
 The example app has a small reusable wrapper,
 [`SwipeToGoBack`](https://github.com/chocky335/react-native-swipeable-actions/blob/main/example/components/SwipeToGoBack.tsx).
 
+### A horizontal pager inside the screen
+
+A horizontal pager or carousel inside the screen needs the same drag as the swipe.
+On Android the row can take a drag in the swipe direction before the pager claims it.
+The screen then moves and the page does not turn. Set `gestureInsets` to the area
+that the pager covers. A touch that starts there goes to the pager. A touch anywhere
+else still swipes the screen.
+
+```tsx
+<Swipeable
+  recyclingKey={key}
+  leftActions={<View />}
+  leftActionsWidth={width}
+  gestureInsets={{ bottom: pagerHeight }}
+>
+  {/* A horizontal pager fills the bottom `pagerHeight` of this screen. */}
+  <ChatScreen />
+</Swipeable>
+```
+
+- Each inset is a distance in layout units (dp on Android, pt on iOS) from that edge
+  of the row: `top`, `bottom`, `left`, `right`. An edge that you leave out has no band.
+- The row reads the insets when a touch goes down. That touch keeps its answer until
+  the finger lifts: the row does not track it, intercept it or cancel the touches of
+  its children. If you change the insets during a touch, the next touch uses them.
+- The insets apply while the row is closed and at rest. An open or moving row ignores
+  them, so a swipe from any point can always close it.
+- `open()`, `close()` and `cancel()` do not depend on the insets.
+
 ## Commands
 
 ```tsx
@@ -292,6 +321,7 @@ start/end actions, map them to left/right yourself.
 | `friction` | `number` | `1` | Drag damping (0-1). Lower values add resistance. |
 | `dragOffsetFromEdge` | `number` | `0` | Horizontal distance before the swipe starts. |
 | `gestureEnabled` | `boolean` | `true` | Turns the gesture off. Commands still work. |
+| `gestureInsets` | `{ top?, bottom?, left?, right?: number }` | - | Edge bands where a touch does not start a swipe and goes to the children. See [a horizontal pager inside the screen](#a-horizontal-pager-inside-the-screen). |
 | `autoClose` | `boolean` | `false` | Snap back after a completed swipe. |
 | `autoCloseTimeout` | `number` | `0` | Delay in ms before the auto-close. |
 | `appearance` | `'default' \| 'ios26'` | `'default'` | iOS action motion preset. |
@@ -332,6 +362,7 @@ import type {
   SwipeableStatic, // Static methods
   SwipeSide, // 'left' | 'right'
   SwipeAppearance, // 'default' | 'ios26'
+  GestureInsets, // { top?, bottom?, left?, right? } in layout units
 } from "react-native-swipeable-actions";
 ```
 

@@ -5,6 +5,12 @@ the entry for the matching version.
 
 ## Unreleased
 
+### Added
+
+- `gestureInsets` prop and the `GestureInsets` type. A touch that starts inside an
+  edge band does not start a swipe and goes to the children. Use it for a horizontal
+  pager inside a swipe-to-go-back screen.
+
 ## 1.0.0 - 2026-10-20
 
 First stable v1 release. Install it with
