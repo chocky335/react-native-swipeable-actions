@@ -13,6 +13,9 @@ const REST_TOLERANCE = 8
 // enough that the release velocity cannot project it past the threshold.
 const SHORT_DRAG = 80
 const SHORT_DRAG_DURATION = 800
+// A flick: its first move event already passes the row's dragOffsetFromEdge. A slow
+// drag lets the pager claim the touch first, so it passes without gestureInsets too.
+const FLICK_DURATION = 40
 
 type Rect = { x: number; y: number; width: number; height: number }
 
@@ -123,5 +126,17 @@ describe('Swipe to go back', () => {
 
     await expectStillOnScreen(restOffset)
     await expect($(selectors.swipeBackBlocked)).not.toExist()
+  })
+
+  it('a swipe that starts on the pager turns the page and does not go back', async () => {
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 1 of 3')
+
+    await swipeOnElement(await $(selectors.swipeBackPager).getElement(), 'left')
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 2 of 3')
+
+    // The row opens with a right swipe, so this is the drag that it must leave to the pager.
+    await swipeOnElement(await $(selectors.swipeBackPager).getElement(), 'right', FLICK_DURATION)
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 1 of 3')
+    await expectStillOnScreen(restOffset)
   })
 })

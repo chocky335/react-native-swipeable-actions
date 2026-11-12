@@ -772,7 +772,7 @@ test('summary lists every planned shard with its gate checks and host class', as
         },
         {
           id: 'swipe-back',
-          result: 'passed (3 cases)',
+          result: 'passed (4 cases)',
           host: 'host healthy: 0 of 0 latent-routed gestures in failures'
         },
         {
@@ -927,7 +927,7 @@ test('the summary passes a shard only when the gate accepts its evidence', async
   const shardBundles = Object.fromEntries(
     Object.entries(bundles).map(([id, bundle]) => [id, { attempts: [bundle] }])
   )
-  assert.equal(validateAggregate(manifest, shardBundles, gate).passed, 62)
+  assert.equal(validateAggregate(manifest, shardBundles, gate).passed, 63)
   await temporary(async (directory) => {
     for (const shard of manifest.shards) await writeShard(directory, shard, bundles[shard.id])
     const rows = await summarize(manifest, directory)
@@ -936,7 +936,7 @@ test('the summary passes a shard only when the gate accepts its evidence', async
       [
         'passed (1 cases)',
         'passed (14 cases)',
-        'passed (3 cases)',
+        'passed (4 cases)',
         'passed (25 cases)',
         'passed (19 cases)'
       ]

@@ -111,6 +111,12 @@ export const selectors = {
   get swipeBackBlocked() {
     return byTestId('swipe-back-blocked')
   },
+  get swipeBackPager() {
+    return byTestId('swipe-back-pager')
+  },
+  get swipeBackPage() {
+    return byTestId('swipe-back-page')
+  },
   get selectSwipeable() {
     return byTestId('select-swipeable')
   },

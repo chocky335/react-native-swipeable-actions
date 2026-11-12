@@ -215,10 +215,10 @@ for (const [name, mutate] of Object.entries(mutations)) {
     assert.throws(() => validateReadiness(value))
   })
 }
-test('requires both complete 62-case mobile inventories', () => {
+test('requires both complete 63-case mobile inventories', () => {
   const value = fixture()
   for (const evidence of value.runs) {
-    assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 62)
+    assert.equal(evidence.manifest.shards.reduce((count, shard) => count + shard.cases.length, 0), 63)
   }
   assert.deepEqual(validateReadiness(value).ciRuns, [101])
 })
