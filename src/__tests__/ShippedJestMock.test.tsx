@@ -4,7 +4,11 @@ import Swipeable from '../Swipeable'
 import type { GestureInsets } from '../Swipeable.types'
 
 // This suite uses the shipped jestSetup.js mock, as a consumer's tests do.
-function renderRow(callbacks: Record<string, jest.Mock>, gestureInsets?: GestureInsets) {
+function renderRow(
+  callbacks: Record<string, jest.Mock>,
+  gestureInsets?: GestureInsets,
+  isRTL = false
+) {
   return render(
     <Swipeable
       testID='row'
@@ -14,6 +18,7 @@ function renderRow(callbacks: Record<string, jest.Mock>, gestureInsets?: Gesture
       rightActions={<Text>Delete</Text>}
       rightActionsWidth={80}
       {...(gestureInsets ? { gestureInsets } : {})}
+      isRTL={isRTL}
       {...callbacks}
     >
       <Text>Message</Text>
@@ -68,6 +73,16 @@ describe('shipped Jest mock', () => {
       nativeEvent: { state: 'open', side: 'left', recyclingKey: 'screen' }
     })
     expect(onLeftSwipeEnd).toHaveBeenCalledWith('open')
+  })
+
+  it('reads the side of a native event as mirrored for an isRTL row', () => {
+    const callbacks = { onLeftSwipeEnd: jest.fn(), onRightSwipeEnd: jest.fn() }
+    renderRow(callbacks, undefined, true)
+    fireEvent(screen.getByTestId('row'), 'swipeEnd', {
+      nativeEvent: { state: 'open', side: 'left', recyclingKey: 'row' }
+    })
+    expect(callbacks.onRightSwipeEnd).toHaveBeenCalledWith('open')
+    expect(callbacks.onLeftSwipeEnd).not.toHaveBeenCalled()
   })
 
   it('keeps gestureInsets on the row', () => {

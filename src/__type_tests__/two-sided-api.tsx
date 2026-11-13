@@ -81,6 +81,17 @@ export const widthWithOptionalContent = (
   </Swipeable>
 )
 export const widthOnlyInput: TwoSidedSwipeableProps = { children: row, leftActionsWidth: 320 }
+export const mirrored = (
+  <Swipeable isRTL leftActionsWidth={320}>
+    {row}
+  </Swipeable>
+)
+export const directionName: SwipeableComponentProps = {
+  children: row,
+  leftActionsWidth: 320,
+  // @ts-expect-error isRTL is a boolean, not a layout direction name.
+  isRTL: 'rtl'
+}
 // @ts-expect-error Retain rejection of completely missing action configuration.
 export const missingConfiguration = <Swipeable>{row}</Swipeable>
 // @ts-expect-error Side names refer to physical left/right edges.
