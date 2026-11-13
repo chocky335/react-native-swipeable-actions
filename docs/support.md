@@ -1,6 +1,6 @@
 # Support and tested configurations
 
-This page states what 1.0 was tested on. A configuration that is not listed here
+This page states what 1.x is tested on. A configuration that is not listed here
 can work, but nobody has checked it.
 
 ## Requirements
@@ -42,9 +42,9 @@ The package declares these ranges. They are minimums, not a tested matrix.
 | iOS deployment target | 13.4 |
 | Android `minSdkVersion` | 23 |
 
-## Tested for 1.0
+## Tested for 1.x
 
-Each 1.0 release must pass a full CI run on every configuration below. The E2E suite has 63 cases
+Each 1.x release must pass a full CI run on every configuration below. The E2E suite has 63 cases
 (25 single-sided, 19 two-sided, 14 RTL, 4 swipe to go back, 1 performance) plus the
 Maestro flows.
 
@@ -72,7 +72,7 @@ the UIKit view on the simulator.
 ## Not tested
 
 - iOS versions below the simulator runtime above, and Android API levels other than 34.
-- Physical Android devices for 1.0. Earlier 0.x benchmarks used a Pixel 8 Pro.
+- Physical Android devices for 1.x. Earlier 0.x benchmarks used a Pixel 8 Pro.
 - Automated tests of how haptics feel and how Reduce Motion behaves on a device.
   The maintainer checks them by hand on a physical iPhone. The check runs when no
   earlier check is recorded, and after a change to the iOS code, the haptics,
