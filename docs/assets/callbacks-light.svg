@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="270" viewBox="0 0 800 270" role="img" aria-label="Callback order: onSwipeStart, onProgress, onSwipeStateChange, onSwipeEnd, side callback">
+<title>Callback order: onSwipeStart, onProgress, onSwipeStateChange, onSwipeEnd, side callback</title>
+
+<text x="20" y="24" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#1f2328">Callback order for one swipe that opens the right side</text>
+<line x1="40" y1="52" x2="40" y2="236" stroke="#d0d7de" stroke-width="2"/>
+<circle cx="40" cy="52" r="8" fill="#ffffff" stroke="#0969da" stroke-width="2.5"/>
+<text x="40" y="56" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#0969da">1</text>
+<text x="64" y="57" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1f2328">onSwipeStart()</text>
+<text x="340" y="57" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">A horizontal drag starts.</text>
+<circle cx="40" cy="98" r="8" fill="#ffffff" stroke="#0969da" stroke-width="2.5"/>
+<text x="40" y="102" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#0969da">2</text>
+<text x="64" y="103" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1f2328">onProgress(progress)</text>
+<text x="340" y="103" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">Fires during the drag and the spring: 0 closed, 1 fully open.</text>
+<circle cx="40" cy="144" r="8" fill="#ffffff" stroke="#0969da" stroke-width="2.5"/>
+<text x="40" y="148" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#0969da">3</text>
+<text x="64" y="149" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1f2328">onSwipeStateChange('open')</text>
+<text x="340" y="149" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">The drag crosses the threshold. Release velocity can still change it.</text>
+<circle cx="40" cy="190" r="8" fill="#ffffff" stroke="#0969da" stroke-width="2.5"/>
+<text x="40" y="194" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#0969da">4</text>
+<text x="64" y="195" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1f2328">onSwipeEnd('open')</text>
+<text x="340" y="195" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">The row settles. Fires for both sides.</text>
+<circle cx="40" cy="236" r="8" fill="#ffffff" stroke="#0969da" stroke-width="2.5"/>
+<text x="40" y="240" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="700" fill="#0969da">5</text>
+<text x="64" y="241" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#1f2328">onRightSwipeEnd('open')</text>
+<text x="340" y="241" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">Then the side callback. The left side calls onLeftSwipeEnd.</text>
+
+</svg>
