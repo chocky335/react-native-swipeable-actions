@@ -157,12 +157,17 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     [normalizedKey, cachedSide]
   )
   const [renderedSides, setRenderedSides] = useState(initialSides)
+  // A recycled row adjusts its state during render. React renders it again
+  // before the commit, so the new key costs one commit, not two.
+  if (renderedSides.key !== normalizedKey) setRenderedSides(initialSides)
   const sides = renderedSides.key === normalizedKey ? renderedSides : initialSides
 
+  const startedKeyRef = useRef(normalizedKey)
   useEffect(() => {
-    setRenderedSides((previous) => (previous.key === normalizedKey ? previous : initialSides))
+    if (startedKeyRef.current === normalizedKey) return
+    startedKeyRef.current = normalizedKey
     swipeStartedRef.current = false
-  }, [initialSides, normalizedKey])
+  }, [normalizedKey])
 
   // A layout effect, so a static command from any passive mount effect sees the row.
   useLayoutEffect(() => {

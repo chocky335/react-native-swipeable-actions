@@ -1,4 +1,4 @@
-import { createElement, createRef } from 'react'
+import { Profiler, createElement, createRef } from 'react'
 import { act, create } from 'react-test-renderer'
 import { createControlledNativeMock } from './helpers/createControlledNativeMock'
 import type { SwipeableMethods, SwipeableProps } from '../Swipeable.types'
@@ -248,6 +248,66 @@ describe('Swipeable', () => {
       expect(mock.SwipeableModule.closeByKey).toHaveBeenCalledWith('cached-key', false)
       expect(mock.SwipeableModule.closeAll).toHaveBeenCalledWith(undefined)
       expect(mock.SwipeableModule.closeAll).toHaveBeenCalledTimes(1)
+    })
+
+    it('commits a recycled row once when its recyclingKey changes', () => {
+      const onRender = jest.fn()
+      const row = (key: string) => (
+        <Profiler id='row' onRender={onRender}>
+          <Swipeable {...defaultProps} recyclingKey={key} />
+        </Profiler>
+      )
+      act(() => {
+        tree = create(row('first-key'))
+      })
+      onRender.mockClear()
+
+      act(() => {
+        tree?.update(row('second-key'))
+      })
+
+      expect(onRender).toHaveBeenCalledTimes(1)
+    })
+
+    it('starts a new swipe after a row is recycled during an unfinished swipe', () => {
+      const onSwipeStart = jest.fn()
+      tree = createRow({ recyclingKey: 'old-key', onSwipeStart })
+      const instance = mock.getLastInstance()
+      act(() => {
+        instance?.triggerSwipeStart()
+      })
+      expect(onSwipeStart).toHaveBeenCalledTimes(1)
+
+      act(() => {
+        tree?.update(
+          <Swipeable {...defaultProps} recyclingKey='new-key' onSwipeStart={onSwipeStart} />
+        )
+      })
+      act(() => {
+        instance?.triggerSwipeStart()
+      })
+
+      expect(onSwipeStart).toHaveBeenCalledTimes(2)
+    })
+
+    it('mounts the cached side of the new key when a row is recycled', () => {
+      mock.SwipeableModule.getOpenSideByKey.mockImplementation((key: string) =>
+        key === 'open-key' ? 'right' : null
+      )
+      const findActions = () =>
+        tree?.root.findAll((node) => node.type === 'View' && node.props.testID === 'actions') ?? []
+      tree = createRow({ recyclingKey: 'closed-key' })
+      expect(findActions()).toHaveLength(0)
+
+      act(() => {
+        tree?.update(<Swipeable {...defaultProps} recyclingKey='open-key' />)
+      })
+      expect(findActions()).toHaveLength(1)
+
+      act(() => {
+        tree?.update(<Swipeable {...defaultProps} recyclingKey='closed-key' />)
+      })
+      expect(findActions()).toHaveLength(0)
     })
   })
 
