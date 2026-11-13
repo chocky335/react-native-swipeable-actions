@@ -1,5 +1,5 @@
 import { useCallback, useId, useRef } from 'react'
-import { StyleSheet, useWindowDimensions, View } from 'react-native'
+import { I18nManager, StyleSheet, useWindowDimensions } from 'react-native'
 import {
   type GestureInsets,
   Swipeable,
@@ -8,7 +8,7 @@ import {
 } from 'react-native-swipeable-actions'
 
 export interface SwipeToGoBackProps {
-  /** The screen content. It follows the finger to the right during the swipe. */
+  /** The screen content. It follows the finger during the swipe. */
   children: SwipeableProps['children']
   /** Called once, after a swipe passes the threshold and the content settles off screen. */
   onBack: () => void
@@ -28,12 +28,12 @@ export interface SwipeToGoBackProps {
   testID?: string
 }
 
-// An empty rail: nothing shows behind the content. It must not be `null`, because
-// `null` disables the side in v1.
-const EMPTY_RAIL = <View />
 const DRAG_OFFSET_FROM_EDGE = 20
 
-/** Slides the whole screen to the right and calls `onBack` after a full swipe. */
+/**
+ * Slides the whole screen away with the finger and calls `onBack` after a full swipe.
+ * The screen slides to the right, or to the left in a right-to-left layout.
+ */
 export function SwipeToGoBack({
   children,
   onBack,
@@ -68,8 +68,8 @@ export function SwipeToGoBack({
       ref={swipeableRef}
       testID={testID}
       recyclingKey={recyclingKey}
-      leftActions={EMPTY_RAIL}
       leftActionsWidth={width}
+      isRTL={I18nManager.isRTL}
       dragOffsetFromEdge={DRAG_OFFSET_FROM_EDGE}
       {...(gestureInsets ? { gestureInsets } : {})}
       onSwipeStart={handleSwipeStart}

@@ -56,21 +56,17 @@ export function SwipeableChatMessage({
     [progress]
   )
 
-  // Select the physical action edge based on isReversed and message direction
-  // Default: outgoing=right, incoming=left
-  // Reversed: outgoing=left, incoming=right
-  const defaultPosition = message.isOutgoing ? 'right' : 'left'
-  const side = isReversed ? (defaultPosition === 'right' ? 'left' : 'right') : defaultPosition
-
+  // An outgoing message replies from the right edge, an incoming one from the left edge.
+  // `isRTL` mirrors both, so the reversed demo needs no side mapping here.
   const action = <ReplyAction progress={progress} />
-  const sideProps =
-    side === 'left'
-      ? { leftActions: action, leftActionsWidth: REPLY_WIDTH }
-      : { rightActions: action, rightActionsWidth: REPLY_WIDTH }
+  const sideProps = message.isOutgoing
+    ? { rightActions: action, rightActionsWidth: REPLY_WIDTH }
+    : { leftActions: action, leftActionsWidth: REPLY_WIDTH }
 
   return (
     <Swipeable
       {...sideProps}
+      isRTL={isReversed}
       threshold={threshold}
       friction={friction}
       dragOffsetFromEdge={dragOffsetFromEdge}
