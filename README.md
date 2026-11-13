@@ -572,7 +572,14 @@ it launched on a physical iPhone with iOS 27.0.1. Only the launch was checked.
 
 ## Performance
 
-Android 16, Pixel 8 Pro, list demo with 100 items. Measured with 0.1.x.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fps-dark.svg">
+  <img src="docs/assets/fps-light.svg" width="800" alt="Average JS FPS while FlashList auto-scrolls a 100-row list on a Pixel 8 Pro: gesture-handler Swipeable 60.9, react-native-swipeable-actions 116.8">
+</picture>
+
+<details>
+<summary><b>Watch the benchmark recordings</b></summary>
+<br>
 
 <table>
 <tr><th>react-native-gesture-handler/Swipeable</th><th>react-native-swipeable-actions</th></tr>
@@ -591,6 +598,12 @@ https://github.com/user-attachments/assets/f59ef788-caf4-4985-93bc-8d098122fe1a
 <tr><td align="center">Reanimated</td><td align="center">Native</td></tr>
 <tr><td align="center"><b>Avg 60.9</b> FPS (min 56.7 / max 65.7)</td><td align="center"><b>Avg 116.8</b> FPS (min 109.9 / max 120.3)</td></tr>
 </table>
+
+Android 16, Pixel 8 Pro, list demo with 100 items. Measured with 0.1.x. FlashList's
+`useBenchmark` scrolls the list by itself and reports the JavaScript thread FPS. No
+row is swiped during the measurement.
+
+</details>
 
 ## How it works
 
