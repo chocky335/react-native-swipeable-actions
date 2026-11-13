@@ -124,4 +124,16 @@ describe('Swipe to go back', () => {
     await expectStillOnScreen(restOffset)
     await expect($(selectors.swipeBackBlocked)).not.toExist()
   })
+
+  it('a swipe that starts on the pager turns the page and does not go back', async () => {
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 1 of 3')
+
+    await swipeOnElement(await $(selectors.swipeBackPager).getElement(), 'left')
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 2 of 3')
+
+    // The row opens with a right swipe, so this is the drag that it must leave to the pager.
+    await swipeOnElement(await $(selectors.swipeBackPager).getElement(), 'right')
+    await expect($(selectors.swipeBackPage)).toHaveText('Pager page: 1 of 3')
+    await expectStillOnScreen(restOffset)
+  })
 })

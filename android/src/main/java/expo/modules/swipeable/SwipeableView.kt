@@ -257,6 +257,41 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     var dragOffsetFromEdge: Float = 0f
         set(value) { field = maxOf(0f, value) }
 
+    private var gestureInsetTopPx = 0f
+    private var gestureInsetBottomPx = 0f
+    private var gestureInsetLeftPx = 0f
+    private var gestureInsetRightPx = 0f
+    private var isInsetTouch = false
+
+    // No configurationChanged(): the bands are read at ACTION_DOWN, so a change waits for the next touch.
+    fun setGestureInsets(insets: Map<String, Double>?) {
+        gestureInsetTopPx = gestureInsetPx(insets?.get("top"))
+        gestureInsetBottomPx = gestureInsetPx(insets?.get("bottom"))
+        gestureInsetLeftPx = gestureInsetPx(insets?.get("left"))
+        gestureInsetRightPx = gestureInsetPx(insets?.get("right"))
+    }
+
+    private fun gestureInsetPx(dp: Double?): Float =
+        if (dp != null && dp.isFinite() && dp > 0.0) dp.toFloat() * density else 0f
+
+    /**
+     * True for a whole touch sequence that went down inside an inset band. The row
+     * leaves that sequence to its children. An open or moving row ignores the bands,
+     * so a swipe from any point can close it.
+     */
+    private fun passesInsetTouch(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val closedAtRest = !isOpen && !isAnimating && !isDragging && currentTranslation == 0f
+            isInsetTouch = closedAtRest && (
+                gestureInsetTopPx > 0f && event.y < gestureInsetTopPx ||
+                    gestureInsetBottomPx > 0f && event.y >= height - gestureInsetBottomPx ||
+                    gestureInsetLeftPx > 0f && event.x < gestureInsetLeftPx ||
+                    gestureInsetRightPx > 0f && event.x >= width - gestureInsetRightPx
+                )
+        }
+        return isInsetTouch
+    }
+
     var autoClose: Boolean = false
 
     var autoCloseTimeout: Float = 0f  // milliseconds
@@ -516,7 +551,10 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
      */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Every native touch entry point shares the same cancellation boundary.
-        if (suppressCancelledTouch(event)) return true
+        val cancelled = suppressCancelledTouch(event)
+        // A cancel must not cut the children off from a touch the row never took.
+        if (passesInsetTouch(event)) return super.dispatchTouchEvent(event)
+        if (cancelled) return true
         if (!gestureEnabled || !hasEnabledSide()) {
             return super.dispatchTouchEvent(event)
         }
@@ -604,7 +642,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
-        if (suppressCancelledTouch(event)) return false
+        val cancelled = suppressCancelledTouch(event)
+        if (passesInsetTouch(event) || cancelled) return false
         if (!gestureEnabled || !hasEnabledSide()) return false
 
         when (event.actionMasked) {
@@ -643,7 +682,9 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (suppressCancelledTouch(event)) return true
+        val cancelled = suppressCancelledTouch(event)
+        if (passesInsetTouch(event)) return false
+        if (cancelled) return true
         if (!gestureEnabled || !hasEnabledSide()) return false
 
         velocityTracker?.addMovement(event)

@@ -647,6 +647,112 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
         }
     }
 
+    // MARK: - Gesture Insets
+
+    private let insetRow = CGSize(width: 200, height: 32)
+    private let insetBands: [(edge: String, inside: CGPoint)] = [
+        ("top", CGPoint(x: 100, y: 3)),
+        ("bottom", CGPoint(x: 100, y: 29)),
+        ("left", CGPoint(x: 7, y: 10)),
+        ("right", CGPoint(x: 193, y: 10))
+    ]
+
+    private func blocks(_ insets: SwipeGestureInsets, _ point: CGPoint, closed: Bool = true) -> Bool {
+        insets.blocksTouch(at: point, in: insetRow, isClosedAtRest: closed)
+    }
+
+    func testEachGestureInsetIsMeasuredFromItsOwnEdge() {
+        for (edge, inside) in insetBands {
+            let insets = SwipeGestureInsets([edge: 8])
+            XCTAssertTrue(blocks(insets, inside), "\(edge) band")
+            XCTAssertFalse(blocks(insets, CGPoint(x: 100, y: 10)), "\(edge) center")
+            for (other, point) in insetBands where other != edge {
+                XCTAssertFalse(blocks(insets, point), "\(edge) leaves \(other)")
+            }
+        }
+        let all = SwipeGestureInsets(["top": 8, "bottom": 8, "left": 8, "right": 8])
+        for (edge, inside) in insetBands { XCTAssertTrue(blocks(all, inside), "all: \(edge)") }
+        XCTAssertFalse(blocks(all, CGPoint(x: 100, y: 10)))
+    }
+
+    func testGestureInsetBandEndsAtItsInnerEdge() {
+        let insets = SwipeGestureInsets(["top": 8, "bottom": 8, "left": 8, "right": 8])
+        XCTAssertTrue(blocks(insets, CGPoint(x: 100, y: 7.5)))
+        XCTAssertFalse(blocks(insets, CGPoint(x: 100, y: 8)))
+        XCTAssertTrue(blocks(insets, CGPoint(x: 100, y: 24)))
+        XCTAssertFalse(blocks(insets, CGPoint(x: 100, y: 23.5)))
+        XCTAssertTrue(blocks(insets, CGPoint(x: 7.5, y: 16)))
+        XCTAssertFalse(blocks(insets, CGPoint(x: 8, y: 16)))
+        XCTAssertTrue(blocks(insets, CGPoint(x: 192, y: 16)))
+        XCTAssertFalse(blocks(insets, CGPoint(x: 191.5, y: 16)))
+    }
+
+    func testMissingAndInvalidGestureInsetsBlockNothing() {
+        let corners = [
+            CGPoint(x: 0, y: 0), CGPoint(x: 199.5, y: 0),
+            CGPoint(x: 0, y: 31.5), CGPoint(x: 199.5, y: 31.5)
+        ]
+        let ignored: [[String: Double]?] = [
+            nil, [:],
+            ["bottom": -16, "top": .nan, "left": .infinity, "right": 0],
+            ["start": 16]
+        ]
+        for values in ignored {
+            let insets = SwipeGestureInsets(values)
+            XCTAssertEqual(insets, SwipeGestureInsets())
+            for point in corners { XCTAssertFalse(blocks(insets, point), "\(String(describing: values))") }
+        }
+    }
+
+    func testGestureInsetsApplyOnlyToAClosedRowAtRest() {
+        let insets = SwipeGestureInsets(["bottom": 16])
+        let inside = CGPoint(x: 100, y: 20)
+        XCTAssertTrue(blocks(insets, inside))
+        XCTAssertFalse(blocks(insets, inside, closed: false))
+    }
+
+    private final class FakeTouch {
+        var isActive = true
+    }
+
+    private func receives(
+        _ latch: inout SwipeInsetTouchLatch<FakeTouch>, _ touch: FakeTouch, blocked: Bool
+    ) -> Bool {
+        latch.receives(touch, blockedIfFirst: blocked) { $0.isActive }
+    }
+
+    func testLaterFingersFollowTheFirstFingerInsetDecision() {
+        var latch = SwipeInsetTouchLatch<FakeTouch>()
+        let pager = FakeTouch(), above = FakeTouch()
+        XCTAssertFalse(receives(&latch, pager, blocked: true))
+        XCTAssertFalse(receives(&latch, above, blocked: false), "A second finger above the band must not start a swipe")
+        pager.isActive = false
+        withExtendedLifetime(above) {
+            XCTAssertFalse(receives(&latch, FakeTouch(), blocked: false), "The sequence lasts until every finger lifts")
+        }
+
+        var open = SwipeInsetTouchLatch<FakeTouch>()
+        let first = FakeTouch()
+        XCTAssertTrue(receives(&open, first, blocked: false))
+        withExtendedLifetime(first) {
+            XCTAssertTrue(receives(&open, FakeTouch(), blocked: true))
+        }
+    }
+
+    func testInsetDecisionRestartsAfterEveryFingerLifts() {
+        var latch = SwipeInsetTouchLatch<FakeTouch>()
+        let pager = FakeTouch()
+        var released: FakeTouch? = FakeTouch()
+        XCTAssertFalse(receives(&latch, pager, blocked: true))
+        XCTAssertFalse(receives(&latch, released!, blocked: false))
+        pager.isActive = false
+        released = nil
+        let next = FakeTouch()
+        XCTAssertTrue(receives(&latch, next, blocked: false))
+        next.isActive = false
+        XCTAssertFalse(receives(&latch, FakeTouch(), blocked: true))
+    }
+
     func testReduceMotionSuppressesBothEntryAndActivePop() {
         XCTAssertEqual(SwipeAnimationConfig.actionRailScale(progress: 0, popElapsed: nil, hasPopped: false, reduceMotion: true), 1)
         XCTAssertEqual(SwipeAnimationConfig.actionRailScale(progress: 0.5, popElapsed: 0.12, hasPopped: true, reduceMotion: true), 1)

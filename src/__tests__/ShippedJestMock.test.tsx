@@ -1,9 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
 import { Text } from 'react-native'
 import Swipeable from '../Swipeable'
+import type { GestureInsets } from '../Swipeable.types'
 
 // This suite uses the shipped jestSetup.js mock, as a consumer's tests do.
-function renderRow(callbacks: Record<string, jest.Mock>) {
+function renderRow(callbacks: Record<string, jest.Mock>, gestureInsets?: GestureInsets) {
   return render(
     <Swipeable
       testID='row'
@@ -12,6 +13,7 @@ function renderRow(callbacks: Record<string, jest.Mock>) {
       leftActionsWidth={60}
       rightActions={<Text>Delete</Text>}
       rightActionsWidth={80}
+      {...(gestureInsets ? { gestureInsets } : {})}
       {...callbacks}
     >
       <Text>Message</Text>
@@ -47,5 +49,11 @@ describe('shipped Jest mock', () => {
     expect(callbacks.onSwipeStart).toHaveBeenCalledTimes(1)
     expect(callbacks.onSwipeEnd).toHaveBeenCalledWith('open')
     expect(callbacks.onRightSwipeEnd).toHaveBeenCalledWith('open')
+  })
+
+  it('keeps gestureInsets on the row', () => {
+    const gestureInsets = { bottom: 320 }
+    renderRow({}, gestureInsets)
+    expect(screen.getByTestId('row').props.gestureInsets).toBe(gestureInsets)
   })
 })

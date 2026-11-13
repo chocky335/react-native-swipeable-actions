@@ -47,6 +47,9 @@ class SwipeableModule : Module() {
             Prop("gestureEnabled") { view: SwipeableView, enabled: Boolean ->
                 view.gestureEnabled = enabled
             }
+            Prop("gestureInsets") { view: SwipeableView, insets: Map<String, Double>? ->
+                view.setGestureInsets(insets)
+            }
             Prop("dragOffsetFromEdge") { view: SwipeableView, offset: Float ->
                 view.dragOffsetFromEdge = offset
             }

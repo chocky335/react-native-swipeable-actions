@@ -4,6 +4,17 @@ import type { StyleProp, ViewProps, ViewStyle } from 'react-native'
 export type SwipeSide = 'left' | 'right'
 export type SwipeAppearance = 'default' | 'ios26'
 
+/**
+ * Bands along the edges of the row, in layout units (dp on Android, pt on iOS).
+ * A touch that starts inside a band does not start a swipe.
+ */
+export interface GestureInsets {
+  top?: number
+  bottom?: number
+  left?: number
+  right?: number
+}
+
 /** Internal native identity; the consumer's onSwipeStart remains zero-argument. */
 export interface SwipeStartEvent {
   nativeEvent: { recyclingKey?: string; side?: SwipeSide }
@@ -46,6 +57,7 @@ export interface SwipeableViewProps extends ViewProps {
   friction?: number
   threshold?: number
   gestureEnabled?: boolean
+  gestureInsets?: GestureInsets
   dragOffsetFromEdge?: number
   recyclingKey?: string
   onSwipeProgress?: (event: SwipeProgressEvent) => void
@@ -70,6 +82,11 @@ export interface SwipeableCommonProps {
   friction?: number
   threshold?: number
   gestureEnabled?: boolean
+  /**
+   * Edge bands where a touch does not start a swipe. The children handle that touch,
+   * for example a horizontal pager. Applies while the row is closed and at rest.
+   */
+  gestureInsets?: GestureInsets
   dragOffsetFromEdge?: number
   style?: StyleProp<ViewStyle>
   testID?: string

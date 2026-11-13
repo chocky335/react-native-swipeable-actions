@@ -343,4 +343,19 @@ describe('Swipeable', () => {
       expect(onSwipeEnd).not.toHaveBeenCalled()
     })
   })
+
+  describe('gestureInsets', () => {
+    const nativeProps = () => tree?.root.findByType(mock.SwipeableView).props
+
+    it('forwards the insets to the native view unchanged', () => {
+      const gestureInsets = { bottom: 320, left: 16 }
+      tree = createRow({ gestureInsets })
+      expect(nativeProps()?.gestureInsets).toBe(gestureInsets)
+    })
+
+    it('sends no insets by default', () => {
+      tree = createRow()
+      expect(nativeProps()).not.toHaveProperty('gestureInsets')
+    })
+  })
 })

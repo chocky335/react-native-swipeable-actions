@@ -183,7 +183,7 @@ iOS uses the existing `ios-plan-<sha>-<run>-1` and
 and `attempt-2/` after a retry. The gate rediscovers the maintained
 inventory from the prepared checkout, compares source hashes and case identities,
 then validates raw NDJSON, worker completion, receipts, zero Mocha retries and
-skips, all 62 cases and Maestro. A shard passes with one green attempt, or with a
+skips, all 63 cases and Maestro. A shard passes with one green attempt, or with a
 green attempt 2 after a [retry](#inconclusive-host-runs). For a retry, the gate
 classifies attempt 1 again from its raw NDJSON, host load and simulator log. Both
 that verdict and the stored `host-health.json` must say `host trouble`, and the
@@ -195,7 +195,7 @@ Android uses the actual `e2e-android` job log: five completed spec workers, the
 complete WDIO summary and every passing case title (including duplicate counts) are required.
 A success badge, hand-entered count or summary without case output cannot pass.
 Missing/expired artifacts or logs and changed reporter formats fail closed.
-Recycling, detach and RTL remain mandatory in this same-source 62-case E2E
+Recycling, detach and RTL remain mandatory in this same-source 63-case E2E
 inventory on both platforms. They are automated evidence requirements.
 
 ## Physical iPhone check

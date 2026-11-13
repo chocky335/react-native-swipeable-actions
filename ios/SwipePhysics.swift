@@ -72,6 +72,52 @@ enum SwipeSide: String, CaseIterable {
     var sign: CGFloat { self == .left ? 1 : -1 }
 }
 
+/// Bands along the row edges, in points, where a touch does not start a swipe.
+struct SwipeGestureInsets: Equatable {
+    var top: CGFloat = 0
+    var bottom: CGFloat = 0
+    var left: CGFloat = 0
+    var right: CGFloat = 0
+
+    init(_ values: [String: Double]? = nil) {
+        top = Self.band(values?["top"])
+        bottom = Self.band(values?["bottom"])
+        left = Self.band(values?["left"])
+        right = Self.band(values?["right"])
+    }
+
+    private static func band(_ value: Double?) -> CGFloat {
+        guard let value = value, value.isFinite, value > 0 else { return 0 }
+        return CGFloat(value)
+    }
+
+    /// An open or moving row ignores the bands, so a swipe from any point can close it.
+    func blocksTouch(at point: CGPoint, in size: CGSize, isClosedAtRest: Bool) -> Bool {
+        guard isClosedAtRest else { return false }
+        return top > 0 && point.y < top
+            || bottom > 0 && point.y >= size.height - bottom
+            || left > 0 && point.x < left
+            || right > 0 && point.x >= size.width - right
+    }
+}
+
+/// The first finger of a touch sequence decides for every later finger, as Android does at ACTION_DOWN.
+struct SwipeInsetTouchLatch<Touch: AnyObject> {
+    private struct WeakTouch {
+        weak var value: Touch?
+    }
+
+    private var touches: [WeakTouch] = []
+    private var blocksSequence = false
+
+    mutating func receives(_ touch: Touch, blockedIfFirst: Bool, isActive: (Touch) -> Bool) -> Bool {
+        touches.removeAll { $0.value.map(isActive) != true }
+        if touches.isEmpty { blocksSequence = blockedIfFirst }
+        touches.append(WeakTouch(value: touch))
+        return !blocksSequence
+    }
+}
+
 /// Gesture-owned completion survives width reconciliation, but not commands or rebinding.
 enum SwipeAutoCloseState: Equatable {
     case waiting(side: SwipeSide, deadline: TimeInterval)
