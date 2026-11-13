@@ -83,6 +83,13 @@ export interface SwipeableCommonProps {
   threshold?: number
   gestureEnabled?: boolean
   /**
+   * Mirrors the row for a right-to-left layout. The `left` props, `open('left')` and
+   * `onLeftSwipeEnd` then act on the right edge, and the `right` ones on the left edge.
+   * The `left` and `right` values of `gestureInsets` swap too.
+   * Defaults to `false`: the sides are physical edges in every layout direction.
+   */
+  isRTL?: boolean
+  /**
    * Edge bands where a touch does not start a swipe. The children handle that touch,
    * for example a horizontal pager. Applies while the row is closed and at rest.
    */
@@ -102,7 +109,7 @@ export interface SwipeableCommonProps {
 
 export interface SwipeableMethods {
   close: (animated?: boolean) => void
-  /** Open the requested physical edge; without a side, prefer enabled right, then left. */
+  /** Open the requested side; without a side, prefer enabled right, then left. */
   open: (side?: SwipeSide) => void
   cancel: () => void
 }
@@ -114,19 +121,25 @@ export interface SwipeableStatic {
   closeAll: (animated?: boolean) => void
 }
 
+// A width enables its side. Content is optional: without it the rail is empty.
 type LeftActionsConfiguration =
-  | { leftActions: ReactNode; leftActionsWidth: number }
+  | { leftActions?: ReactNode; leftActionsWidth: number }
   | { leftActions?: null | false | undefined; leftActionsWidth?: never }
 
 type RightActionsConfiguration =
-  | { rightActions: ReactNode; rightActionsWidth: number }
+  | { rightActions?: ReactNode; rightActionsWidth: number }
   | { rightActions?: null | false | undefined; rightActionsWidth?: never }
 
-/** The sole action API: explicit physical-edge pairs, including single-sided rows. */
+/** The sole action API: explicit side pairs, physical edges unless `isRTL` mirrors them. */
 export type SwipeableProps = SwipeableCommonProps &
   LeftActionsConfiguration &
   RightActionsConfiguration &
-  ({ leftActions: ReactNode } | { rightActions: ReactNode })
+  (
+    | { leftActions: ReactNode }
+    | { rightActions: ReactNode }
+    | { leftActionsWidth: number }
+    | { rightActionsWidth: number }
+  )
 
 /** Descriptive alias for the same explicit-side API, not a separate implementation. */
 export type TwoSidedSwipeableProps = SwipeableProps

@@ -62,8 +62,26 @@ describe('explicit-side action configuration', () => {
     expect(result.warnings).toHaveLength(1)
   })
 
-  it('does not enable a side with width alone', () => {
-    const result = resolveSwipeableActions({ rightActionsWidth: 120 })
+  it.each(['left', 'right'] as const)('enables the %s side with a width and no content', (side) => {
+    const result = resolveSwipeableActions({ [`${side}ActionsWidth`]: 120 })
+    expect(result[side]).toEqual({ node: null, width: 120 })
+    expect(result[side === 'left' ? 'right' : 'left']).toEqual({ node: null, width: 0 })
+    expect(result.warnings).toEqual([])
+  })
+
+  it('treats undefined content with a width like a missing content prop', () => {
+    const result = resolveSwipeableActions({ leftActions: undefined, leftActionsWidth: 120 })
+    expect(result.left).toEqual({ node: null, width: 120 })
+    expect(result.warnings).toEqual([])
+  })
+
+  it.each([
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY
+  ])('keeps a side off with only the invalid width %s', (rightActionsWidth) => {
+    const result = resolveSwipeableActions({ rightActionsWidth })
     expect(result.right).toEqual({ node: null, width: 0 })
     expect(result.warnings).toHaveLength(1)
   })
@@ -87,10 +105,12 @@ describe('explicit-side action configuration', () => {
     expect(result.right).toEqual({ node: null, width: 0 })
   })
 
-  it('disables a previously configured side even when its old width remains', () => {
-    expect(resolveSwipeableActions({ rightActions: null, rightActionsWidth: 120 }).right).toEqual({
-      node: null,
-      width: 0
-    })
+  it.each([
+    null,
+    false
+  ])('keeps a side off with %s content even when a width remains', (rightActions) => {
+    const result = resolveSwipeableActions({ rightActions, rightActionsWidth: 120 })
+    expect(result.right).toEqual({ node: null, width: 0 })
+    expect(result.warnings).toEqual([])
   })
 })

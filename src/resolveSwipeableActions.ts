@@ -20,14 +20,13 @@ const isWidth = (width: number | undefined): width is number =>
 export function resolveSwipeableActions(input: ActionsInput) {
   const warnings: string[] = []
   const resolve = (side: SwipeSide, node: ReactNode, width?: number): ResolvedActions => {
+    // null and false turn a side off. undefined leaves the width in charge: an empty rail.
+    if (node !== undefined && !isContent(node)) return { node: null, width: 0 }
+    if (isWidth(width)) return { node: node ?? null, width }
     if (node !== undefined) {
-      if (!isContent(node)) return { node: null, width: 0 }
-      if (isWidth(width)) return { node, width }
       warnings.push(side + 'Actions requires a finite, positive ' + side + 'ActionsWidth.')
-      return { node: null, width: 0 }
-    }
-    if (width !== undefined) {
-      warnings.push(side + 'ActionsWidth is ignored without explicit ' + side + 'Actions.')
+    } else if (width !== undefined) {
+      warnings.push(`${side}ActionsWidth must be finite and positive.`)
     }
     return { node: null, width: 0 }
   }

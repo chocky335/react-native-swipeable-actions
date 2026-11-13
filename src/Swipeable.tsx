@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
@@ -46,6 +47,32 @@ function normalizeRecyclingKey(key: string | number | undefined): string | undef
   return undefined
 }
 
+const mirror = (side: SwipeSide): SwipeSide => (side === 'left' ? 'right' : 'left')
+
+// A static command has only the key, so each mounted isRTL row lists its default side here.
+const mirroredRows = new Map<string, () => SwipeSide | null>()
+
+/** The native side for a command, `undefined` for the native default, `null` for no side. */
+function nativeOpenSide(
+  side: SwipeSide | undefined,
+  defaultSide: (() => SwipeSide | null) | undefined
+): SwipeSide | null | undefined {
+  if (!defaultSide) return side
+  const named = side ?? defaultSide()
+  return named ? mirror(named) : null
+}
+
+/** Like the native default: the right side if it is enabled, else the left side. */
+function defaultOpenSide(leftWidth: number, rightWidth: number): SwipeSide | null {
+  if (rightWidth > 0) return 'right'
+  return leftWidth > 0 ? 'left' : null
+}
+
+function openNative(key: string, side: SwipeSide | null | undefined) {
+  if (side === undefined) openByKey(key)
+  else if (side) openByKeyOnSide(key, side)
+}
+
 const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function Swipeable(
   {
     children,
@@ -53,6 +80,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     leftActionsWidth,
     rightActions,
     rightActionsWidth,
+    isRTL = false,
     onLeftSwipeEnd,
     onRightSwipeEnd,
     appearance = 'default',
@@ -75,7 +103,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   ref
 ) {
   const nativeRef = useRef<NativeSwipeableRef>(null)
-  const resolved = useMemo(
+  const named = useMemo(
     () =>
       resolveSwipeableActions({
         leftActions,
@@ -85,6 +113,29 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       }),
     [leftActions, leftActionsWidth, rightActions, rightActionsWidth]
   )
+  // From here on `resolved` holds the native, physical sides.
+  const resolved = useMemo(
+    () => (isRTL ? { ...named, left: named.right, right: named.left } : named),
+    [isRTL, named]
+  )
+  const insetProps = useMemo(() => {
+    if (!gestureInsets) return null
+    if (!isRTL) return { gestureInsets }
+    const { left, right, ...vertical } = gestureInsets
+    return {
+      gestureInsets: {
+        ...vertical,
+        ...(right !== undefined ? { left: right } : {}),
+        ...(left !== undefined ? { right: left } : {})
+      }
+    }
+  }, [gestureInsets, isRTL])
+  // The ref handle and the static registry outlive a render, so they read through refs.
+  const isRTLRef = useRef(isRTL)
+  isRTLRef.current = isRTL
+  const defaultSideRef = useRef<SwipeSide | null>(null)
+  defaultSideRef.current = defaultOpenSide(named.left.width, named.right.width)
+  const readDefaultSide = useCallback(() => defaultSideRef.current, [])
 
   // Normalize recyclingKey before hooks that depend on it
   const normalizedKey = normalizeRecyclingKey(recyclingKey)
@@ -112,6 +163,15 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     setRenderedSides((previous) => (previous.key === normalizedKey ? previous : initialSides))
     swipeStartedRef.current = false
   }, [initialSides, normalizedKey])
+
+  // A layout effect, so a static command from any passive mount effect sees the row.
+  useLayoutEffect(() => {
+    if (!isRTL || !normalizedKey) return
+    mirroredRows.set(normalizedKey, readDefaultSide)
+    return () => {
+      if (mirroredRows.get(normalizedKey) === readDefaultSide) mirroredRows.delete(normalizedKey)
+    }
+  }, [isRTL, normalizedKey, readDefaultSide])
 
   const warningText = resolved.warnings.join('\n')
   useEffect(() => {
@@ -142,8 +202,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       open: (side?: SwipeSide) => {
         const key = recyclingKeyRef.current
         if (key) {
-          if (side === undefined) openByKey(key)
-          else openByKeyOnSide(key, side)
+          openNative(key, nativeOpenSide(side, isRTLRef.current ? readDefaultSide : undefined))
         } else if (__DEV__) {
           console.warn('[Swipeable] open() called without recyclingKey - method has no effect')
         }
@@ -161,7 +220,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
         }
       }
     }),
-    []
+    [readDefaultSide]
   )
 
   const handleSwipeStart = useCallback(
@@ -221,11 +280,12 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
       swipeStartedRef.current = false
       onSwipeEnd?.(event.nativeEvent.state)
-      const side = event.nativeEvent.side
+      const nativeSide = event.nativeEvent.side
+      const side = isRTL && nativeSide ? mirror(nativeSide) : nativeSide
       if (side === 'left') onLeftSwipeEnd?.(event.nativeEvent.state)
       if (side === 'right') onRightSwipeEnd?.(event.nativeEvent.state)
     },
-    [normalizedKey, onLeftSwipeEnd, onRightSwipeEnd, onSwipeEnd]
+    [isRTL, normalizedKey, onLeftSwipeEnd, onRightSwipeEnd, onSwipeEnd]
   )
 
   return (
@@ -241,7 +301,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       friction={friction}
       threshold={threshold}
       gestureEnabled={gestureEnabled}
-      {...(gestureInsets ? { gestureInsets } : {})}
+      {...insetProps}
       dragOffsetFromEdge={dragOffsetFromEdge}
       autoClose={autoClose}
       autoCloseTimeout={autoCloseTimeout}
@@ -304,8 +364,7 @@ SwipeableExport.open = (recyclingKey: string, side?: SwipeSide) => {
     console.warn('[Swipeable.open] recyclingKey must be a non-empty string')
     return
   }
-  if (side === undefined) openByKey(recyclingKey)
-  else openByKeyOnSide(recyclingKey, side)
+  openNative(recyclingKey, nativeOpenSide(side, mirroredRows.get(recyclingKey)))
 }
 
 SwipeableExport.close = (recyclingKey: string, animated?: boolean) => {

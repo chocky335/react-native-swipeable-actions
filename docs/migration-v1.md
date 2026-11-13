@@ -92,13 +92,14 @@ the whole screen, for example to swipe back. Before:
 After:
 
 ```tsx
-<Swipeable leftActions={<View />} leftActionsWidth={width}>
+<Swipeable leftActionsWidth={width}>
   <Screen />
 </Swipeable>
 ```
 
-In v1, `null` disables the side, so the swipe does not start. An empty `<View />`
-keeps the side enabled and shows nothing behind the content. See
+In v1, `null` disables the side, so the swipe does not start. A width with no content
+keeps the side enabled and shows nothing behind the content. This form needs 1.2.0
+or later. On 1.0 and 1.1, pass an empty view: `leftActions={<View />}`. See
 [Swipe to go back](../README.md#swipe-to-go-back) for the full recipe.
 
 ## Types: removed inputs versus retained aliases
@@ -178,7 +179,8 @@ one or both explicit sides; they do not restore removed API inputs or behaviors.
 
 ## RTL and app migration checklist
 
-1. Map logical start/end actions to physical left/right in your app. RTL does not
+1. Map logical start/end actions to physical left/right in your app, or pass `isRTL`
+   (1.2.0 or later) and let the library mirror the row. Without `isRTL`, RTL does not
    exchange the library's sides, widths, command arguments or side callbacks.
 2. Update examples, wrappers, mocks and type fixtures to complete explicit pairs.
 3. Keep action padding/gaps inside the declared width and preserve usable targets.

@@ -2,6 +2,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useCallback, useMemo, useState } from 'react'
 import {
   FlatList,
+  I18nManager,
   type ListRenderItem,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -26,6 +27,7 @@ const PAGES = [
 type Page = (typeof PAGES)[number]
 
 const pageKey = (page: Page) => page.id
+const BACK_DIRECTION = I18nManager.isRTL ? 'left' : 'right'
 
 export function SwipeBackScreen() {
   const navigation = useNavigation()
@@ -90,7 +92,7 @@ export function SwipeBackScreen() {
         <Text testID='swipe-back-title' style={styles.title}>
           Swipe to go back
         </Text>
-        <Text style={styles.body}>Swipe right anywhere above the pager to go back.</Text>
+        <Text style={styles.body}>Swipe {BACK_DIRECTION} anywhere above the pager to go back.</Text>
         <Text style={styles.body}>A short drag snaps back, and you stay here.</Text>
         <Text style={styles.body}>Turn on the unsaved draft to block the swipe.</Text>
         <Pressable

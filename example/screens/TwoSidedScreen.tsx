@@ -169,6 +169,7 @@ function DemoRow({
     leftWidth: number
     rightWidth: number
     gestureEnabled: boolean
+    isRTL: boolean
     autoClose: boolean
     alternateContent: boolean
     rounded: boolean
@@ -276,6 +277,7 @@ function DemoRow({
     testID: `two-sided-row-${id}`,
     recyclingKey: recyclingKey(id),
     gestureEnabled: options.gestureEnabled,
+    isRTL: options.isRTL,
     autoClose: options.autoClose,
     autoCloseTimeout: 250,
     onSwipeStart: recordStart,
@@ -339,6 +341,7 @@ export function TwoSidedScreen() {
     leftWidth: 80,
     rightWidth: 120,
     gestureEnabled: true,
+    isRTL: false,
     autoClose: false,
     alternateContent: false,
     rounded: false,
@@ -393,6 +396,7 @@ export function TwoSidedScreen() {
   const toggleRight = () => setOptions((value) => ({ ...value, rightEnabled: !value.rightEnabled }))
   const toggleGesture = () =>
     setOptions((value) => ({ ...value, gestureEnabled: !value.gestureEnabled }))
+  const toggleMirror = () => setOptions((value) => ({ ...value, isRTL: !value.isRTL }))
   const toggleAutoClose = () => setOptions((value) => ({ ...value, autoClose: !value.autoClose }))
   const toggleAlternateContent = () =>
     setOptions((value) => ({ ...value, alternateContent: !value.alternateContent }))
@@ -560,6 +564,11 @@ export function TwoSidedScreen() {
                   name='gesture'
                   label={`Gesture: ${options.gestureEnabled ? 'on' : 'off'}`}
                   onPress={toggleGesture}
+                />
+                <Control
+                  name='mirror'
+                  label={`isRTL: ${options.isRTL ? 'on' : 'off'}`}
+                  onPress={toggleMirror}
                 />
                 <Control
                   name='auto-close'

@@ -56,6 +56,27 @@ it('mounts stable empty shells, then only the requested action subtree', () => {
   expect(mountedSides()).toEqual(['left', 'right'])
 })
 
+it('enables a side that has a width and no content, with an empty rail', () => {
+  const onLeftSwipeEnd = jest.fn()
+  const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+  act(() => {
+    tree = create(
+      <Swipeable leftActionsWidth={320} recyclingKey='screen' onLeftSwipeEnd={onLeftSwipeEnd}>
+        <Text>Screen</Text>
+      </Swipeable>
+    )
+  })
+  const native = tree?.root.findByType(mock.SwipeableView).props
+  expect(native.leftActionsWidth).toBe(320)
+  expect(native.rightActionsWidth).toBe(0)
+  act(() => mock.getLastInstance()?.requestActions('left'))
+  const [leftSlot] = tree?.root.findAllByType(SwipeableActions) ?? []
+  expect(leftSlot?.findAllByType(Text)).toHaveLength(0)
+  act(() => mock.getLastInstance()?.triggerSwipeEnd('open', 'left'))
+  expect(onLeftSwipeEnd).toHaveBeenCalledWith('open')
+  expect(warn).not.toHaveBeenCalled()
+})
+
 it('keeps a gesture start separate from native action-render requests', () => {
   const onSwipeStart = jest.fn()
   const ref = createRef<SwipeableMethods>()

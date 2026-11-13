@@ -81,7 +81,9 @@ Each side is a pair: content plus its width in layout units.
 - The width is the full reveal distance, including padding and gaps. The library
   does not measure action content.
 - The action rail spans the row. Give the action content its own width and height.
-- Omit a side, or pass `null` or `false`, to disable it. Omit its width too.
+- A width alone enables its side with an empty rail. Nothing shows behind the content.
+- To turn a side off, omit its width. `null` or `false` content also turns the side
+  off, with or without a width.
 - A disabled side never falls back to the other side.
 
 ## Two-sided rows
@@ -155,8 +157,8 @@ stays open and does not report `onSwipeEnd`.
 ## Swipe to go back
 
 Wrap a whole screen to slide it right with the finger. A full swipe goes back, and
-nothing shows behind the screen. Give the left side empty content as wide as the
-window. Do not pass `null`, because `null` disables the side.
+nothing shows behind the screen. Give the left side a width as wide as the window and
+no content.
 
 ```tsx
 const { width } = useWindowDimensions();
@@ -166,8 +168,8 @@ const key = useId();
 <Swipeable
   ref={screen}
   recyclingKey={key}
-  leftActions={<View />}
   leftActionsWidth={width}
+  isRTL={I18nManager.isRTL}
   dragOffsetFromEdge={20}
   onSwipeStart={() => hasUnsavedDraft() && screen.current?.cancel()}
   onSwipeEnd={(state) => {
@@ -190,6 +192,8 @@ const key = useId();
   Then a later mount does not restore the open state of a screen that you swiped away.
 - If the navigator has its own back gesture on that screen, turn it off. For a
   native stack, set `gestureEnabled: false`.
+- `isRTL={I18nManager.isRTL}` makes the screen slide left in a right-to-left layout.
+  Leave it out if the swipe must go right in every layout.
 
 The example app has a small reusable wrapper,
 [`SwipeToGoBack`](https://github.com/chocky335/react-native-swipeable-actions/blob/main/example/components/SwipeToGoBack.tsx).
@@ -205,7 +209,6 @@ else still swipes the screen.
 ```tsx
 <Swipeable
   recyclingKey={key}
-  leftActions={<View />}
   leftActionsWidth={width}
   gestureInsets={{ bottom: pagerHeight }}
 >
@@ -280,10 +283,45 @@ The example list row uses the same pattern.
 
 ## RTL
 
-`left` and `right` are physical edges in every layout direction. RTL does not swap
-action content, widths, commands or side callbacks. If your app thinks in logical
-start/end actions, map them to left/right yourself.
+By default `left` and `right` are physical edges in every layout direction. React
+Native's global RTL setting does not swap action content, widths, commands or side
+callbacks.
 
+To mirror a row, pass `isRTL`. Write the row once for a left-to-right layout:
+
+```tsx
+<Swipeable
+  isRTL={I18nManager.isRTL}
+  leftActions={<ReplyAction />}
+  leftActionsWidth={72}
+  rightActions={<DeleteAction />}
+  rightActionsWidth={88}
+  onRightSwipeEnd={(state) => state === "open" && remove(item.id)}
+>
+  <Message item={item} />
+</Swipeable>
+```
+
+With `isRTL` on, every side name refers to the opposite physical edge:
+
+- `rightActions` and `rightActionsWidth` sit on the left edge, and a drag to the
+  right reveals them. The `left` pair sits on the right edge.
+- `open("right")` and `Swipeable.open(key, "right")` open the `rightActions`.
+  `open()` with no side still prefers `rightActions`, then `leftActions`.
+- `onRightSwipeEnd` runs for the `rightActions`, and `onLeftSwipeEnd` for the
+  `leftActions`.
+
+`isRTL` is a plain boolean. The library does not read `I18nManager` for it, so an app
+that already maps its sides for RTL is not mirrored twice. Any other flag works too,
+for example a chat that mirrors only incoming messages.
+
+- `isRTL` moves whole sides. It does not reorder the buttons inside your action
+  content. React Native lays that content out in the app's layout direction.
+- Each rail keeps its content against its own physical edge in both layout
+  directions (fixed in 1.0.0), so mirrored actions still start at the outer edge.
+- `isRTL` also swaps the `left` and `right` values of `gestureInsets`.
+- The raw `SwipeableView` props stay physical.
+- A static command mirrors its side only while the `isRTL` row is mounted.
 - Close open rows before you swap which actions sit on which physical side.
 - A translated label can need a new width. Update the width with the label.
 - A change to React Native's global RTL setting (`I18nManager.forceRTL`) needs an
@@ -314,8 +352,9 @@ start/end actions, map them to left/right yourself.
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `children` | `ReactNode` | required | Row content. |
-| `leftActions` / `rightActions` | `ReactNode` | - | Action content for that physical side. `null`/`false` disables the side. At least one side is required. |
-| `leftActionsWidth` / `rightActionsWidth` | `number` | - | Required with its content. Finite and positive. |
+| `leftActions` / `rightActions` | `ReactNode` | - | Action content for that side. Optional when the side has a width. `null`/`false` disables the side. |
+| `leftActionsWidth` / `rightActionsWidth` | `number` | - | Enables its side. Finite and positive. At least one side is required. |
+| `isRTL` | `boolean` | `false` | Mirrors the sides, the commands and the side callbacks. See [RTL](#rtl). |
 | `recyclingKey` | `string \| number` | - | Stable item key. Required for ref commands, static commands and list state restoration. |
 | `threshold` | `number` | `0.4` | Fraction (0-1) of the active side's width a release must pass to open. |
 | `friction` | `number` | `1` | Drag damping (0-1). Lower values add resistance. |
@@ -347,7 +386,7 @@ not swipes.
 
 | Ref method | Static method | Description |
 | --- | --- | --- |
-| `open(side?)` | `Swipeable.open(key, side?)` | Open a side. Without a side: right if enabled, else left. |
+| `open(side?)` | `Swipeable.open(key, side?)` | Open a side by its prop name. Without a side: right if enabled, else left. |
 | `close(animated = true)` | `Swipeable.close(key, animated = true)` | Close the row. |
 | `cancel()` | `Swipeable.cancel(key)` | Close at once. A gesture in progress or a pending open does not complete. |
 | - | `Swipeable.closeAll(animated = true)` | Close all rows, including rows that are not mounted (scrolled off or on a covered screen). Those rows come back closed. |
@@ -411,6 +450,9 @@ fireEvent(row, "swipeEnd", {
 
 The other native events are `swipeStateChange` (`{ state, side }`) and
 `swipeProgress` (`{ progress, translationX, side }`).
+
+The `side` in a native event is the physical side. For a row with `isRTL`, a native
+`side: "left"` runs `onRightSwipeEnd`.
 
 ## Compatibility
 

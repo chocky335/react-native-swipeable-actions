@@ -5,6 +5,23 @@ the entry for the matching version.
 
 ## Unreleased
 
+### Added
+
+- `isRTL` prop. It mirrors a row for a right-to-left layout: the `left` and `right`
+  props, `open(side)`, `Swipeable.open(key, side)`, `onLeftSwipeEnd` and
+  `onRightSwipeEnd` then refer to the opposite physical edge, and the `left` and
+  `right` values of `gestureInsets` swap. The default is `false`, so rows that map
+  their sides in the app do not change.
+- A side with a width and no content. `<Swipeable leftActionsWidth={width}>` enables
+  the left side with an empty rail, so a swipe-to-go-back screen needs no empty
+  `<View />` as content.
+
+### Changed
+
+- A side that has a width and `undefined` content is now enabled. Before, it was off
+  and a development warning said that the width was ignored. Pass `null` or `false`
+  as the content to keep a side off.
+
 ## 1.1.0 - 2026-11-13
 
 Install it with `npx expo install react-native-swipeable-actions@^1`. The release
