@@ -5,6 +5,12 @@ the entry for the matching version.
 
 ## Unreleased
 
+## 1.2.0 - 2026-11-13
+
+Install it with `npx expo install react-native-swipeable-actions@^1`. The release
+changes no native code. It has no breaking changes for typed callers. Read the entry
+under Changed if a row passes a width with `undefined` content.
+
 ### Added
 
 - `isRTL` prop. It mirrors a row for a right-to-left layout: the `left` and `right`
