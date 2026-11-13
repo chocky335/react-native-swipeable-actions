@@ -1,25 +1,107 @@
+<div align="center">
+
 # react-native-swipeable-actions
 
-[![npm](https://img.shields.io/npm/v/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
-[![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](LICENSE)
+**Native swipeable rows for React Native.**<br>
+Swipe actions on both sides, gestures on the native UI thread, no Reanimated.
+
+[![npm](https://img.shields.io/npm/v/react-native-swipeable-actions?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-swipeable-actions) [![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml) ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-0969da) ![Expo module](https://img.shields.io/badge/Expo-module-000020?logo=expo) ![no Reanimated](https://img.shields.io/badge/Reanimated-not%20required-2ea043) [![license](https://img.shields.io/npm/l/react-native-swipeable-actions?color=8250df)](LICENSE)
+
+<table>
+<tr>
+<td align="center"><img src="docs/assets/demo-list.gif" width="240" alt="Swipe a list row left to reveal Mute and Leave actions"></td>
+<td align="center"><img src="docs/assets/demo-chat.gif" width="240" alt="Swipe a chat message to reply, the bubble springs back"></td>
+</tr>
+<tr>
+<td align="center"><b>List actions</b><br><sub>FlashList, 100+ rows</sub></td>
+<td align="center"><b>Swipe to reply</b><br><sub><code>autoClose</code></sub></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="docs/assets/ios26-row.gif" width="480" alt="One row swiped left shows rounded Del and More buttons on the right, then swiped right shows a Pin button on the left, with the iOS 26 appearance"></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>Both sides</b><br><sub><code>appearance="ios26"</code></sub></td>
+</tr>
+</table>
+
+</div>
 
 Native swipeable rows for React Native. Gestures, springs and progress run in
 Swift and Kotlin, so a busy JavaScript thread does not drop swipe frames. It is a
 native alternative to `react-native-gesture-handler/Swipeable` and needs no
 `react-native-reanimated`.
 
-- Independent left and right actions on the same row, each with its own width
-- Action content mounts on demand, on the first swipe or programmatic open
-- Open state survives FlatList and FlashList recycling through `recyclingKey`
-- Ref and static commands: open a chosen side, close, cancel, close all
-- Auto-close for chat-style swipe-to-reply
-- Opt-in iOS-style action motion and native iOS haptics
-- Physical left/right sides that behave the same in RTL layouts
+<table>
+<tr>
+<td width="33%" valign="top">
 
-> Upgrading from 0.x? Version 1.0 replaces `actions`, `actionsWidth` and
-> `actionsPosition` with explicit left/right props. Read the
-> [migration guide](docs/migration-v1.md).
+### ⚡ Native gestures
+
+Gestures, springs and progress run in Swift and Kotlin. A busy JS thread does not drop swipe frames.
+
+</td>
+<td width="33%" valign="top">
+
+### ↔️ Two independent sides
+
+`leftActions` and `rightActions` on one row, each with its own width and callback.
+
+</td>
+<td width="33%" valign="top">
+
+### 📜 Built for long lists
+
+`recyclingKey` keeps the open state through FlatList and FlashList recycling.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 💤 Lazy actions
+
+Action content mounts on demand, on the first swipe or programmatic open.
+
+</td>
+<td width="33%" valign="top">
+
+### 💬 Swipe to reply
+
+`autoClose` reports a completed swipe and snaps the row back.
+
+</td>
+<td width="33%" valign="top">
+
+### ⬅️ Swipe to go back
+
+Wrap a screen, give the left side the window width, and go back on a full swipe.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🎛️ Commands
+
+Ref and static commands: open a chosen side, close, cancel, close all.
+
+</td>
+<td width="33%" valign="top">
+
+### 🌐 RTL ready
+
+Physical sides by default. `isRTL` mirrors sides, commands and callbacks.
+
+</td>
+<td width="33%" valign="top">
+
+### 🍎 iOS appearance
+
+Opt-in iOS-style action motion and native haptics. No iOS 26 SDK needed.
+
+</td>
+</tr>
+</table>
 
 ## Installation
 
@@ -328,6 +410,10 @@ for example a chat that mirrors only incoming messages.
   app restart.
 
 ## iOS appearance and haptics
+
+<p align="center">
+  <img src="docs/assets/ios26-row.gif" width="600" alt="appearance='ios26': rounded Del and More buttons pop in on the right, a Pin button on the left">
+</p>
 
 ```tsx
 <Swipeable appearance="ios26" rightActions={actions} rightActionsWidth={144}>
