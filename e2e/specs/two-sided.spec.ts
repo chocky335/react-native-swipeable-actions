@@ -319,6 +319,47 @@ describe('Two-sided native demo', () => {
     await waitOffset(0, 80)
   })
 
+  it('isRTL: commands open the named side on the opposite edge, and open() still prefers right', async () => {
+    await option('mirror', 'isRTL: on')
+    await command('open-left')
+    await waitEnd(0, 'left', 'open')
+    await waitOffset(0, -80)
+    await $(selectors.twoSidedAction(0, 'left')).click()
+    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 0; more 0; alternate 0')
+
+    await command('static-right')
+    await waitEnd(0, 'right', 'open')
+    await waitOffset(0, 120)
+    await $(selectors.twoSidedAction(0, 'right')).click()
+    await expect($(selectors.twoSidedPresses(0))).toHaveText('Left 1; right 1; more 0; alternate 0')
+
+    await command('close')
+    await waitEnd(0, 'right', 'closed')
+    await waitOffset(0, 0)
+    await command('open-preferred')
+    await waitEnd(0, 'right', 'open')
+    await waitOffset(0, 120)
+  })
+
+  it('isRTL: a drag reveals the named side on the opposite edge and fires its side callback', async () => {
+    await option('mirror', 'isRTL: on')
+    await swipeRow(0, 'right')
+    await waitEnd(0, 'right', 'open')
+    await waitOffset(0, 120)
+    await expect($(selectors.twoSidedAction(0, 'right'))).toBeDisplayed()
+    expect(await events()).toEqual({ starts: 1, ends: 1, left: 0, right: 1 })
+
+    await swipeRow(0, 'left')
+    await waitEnd(0, 'right', 'closed')
+    await waitOffset(0, 0)
+
+    await swipeRow(0, 'left')
+    await waitEnd(0, 'left', 'open')
+    await waitOffset(0, -80)
+    await expect($(selectors.twoSidedAction(0, 'left'))).toBeDisplayed()
+    expect(await events()).toEqual({ starts: 3, ends: 3, left: 1, right: 2 })
+  })
+
   it('explicit false disables alternate right content and explicit disabled opens never choose left', async () => {
     // The retained technical control ID now selects explicit content, never fallback props.
     await option('mixed', 'Alternate explicit content: on')
