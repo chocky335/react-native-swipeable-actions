@@ -5,6 +5,12 @@ the entry for the matching version.
 
 ## Unreleased
 
+## 1.1.0 - 2026-11-13
+
+Install it with `npx expo install react-native-swipeable-actions@^1`. The release
+changes native code, so rebuild the iOS and Android apps after you upgrade. It has
+no breaking changes.
+
 ### Added
 
 - `gestureInsets` prop and the `GestureInsets` type. A touch that starts inside an
