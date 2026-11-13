@@ -74,8 +74,13 @@ Swipeable.cancel('row')
 
 // @ts-expect-error Explicit action content needs its matching width.
 export const missingWidth = <Swipeable leftActions={action}>{row}</Swipeable>
-// @ts-expect-error A width cannot enable an otherwise unspecified edge.
 export const widthWithoutContent = <Swipeable rightActionsWidth={120}>{row}</Swipeable>
+export const widthWithOptionalContent = (
+  <Swipeable leftActionsWidth={80} leftActions={undefined} rightActions={null}>
+    {row}
+  </Swipeable>
+)
+export const widthOnlyInput: TwoSidedSwipeableProps = { children: row, leftActionsWidth: 320 }
 // @ts-expect-error Retain rejection of completely missing action configuration.
 export const missingConfiguration = <Swipeable>{row}</Swipeable>
 // @ts-expect-error Side names refer to physical left/right edges.

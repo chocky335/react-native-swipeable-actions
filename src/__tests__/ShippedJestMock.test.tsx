@@ -51,6 +51,25 @@ describe('shipped Jest mock', () => {
     expect(callbacks.onRightSwipeEnd).toHaveBeenCalledWith('open')
   })
 
+  it('renders a side that has only a width', () => {
+    const onLeftSwipeEnd = jest.fn()
+    render(
+      <Swipeable
+        testID='screen'
+        recyclingKey='screen'
+        leftActionsWidth={320}
+        onLeftSwipeEnd={onLeftSwipeEnd}
+      >
+        <Text>Screen</Text>
+      </Swipeable>
+    )
+    expect(screen.getByText('Screen')).toBeTruthy()
+    fireEvent(screen.getByTestId('screen'), 'swipeEnd', {
+      nativeEvent: { state: 'open', side: 'left', recyclingKey: 'screen' }
+    })
+    expect(onLeftSwipeEnd).toHaveBeenCalledWith('open')
+  })
+
   it('keeps gestureInsets on the row', () => {
     const gestureInsets = { bottom: 320 }
     renderRow({}, gestureInsets)

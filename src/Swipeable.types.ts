@@ -114,19 +114,25 @@ export interface SwipeableStatic {
   closeAll: (animated?: boolean) => void
 }
 
+// A width enables its side. Content is optional: without it the rail is empty.
 type LeftActionsConfiguration =
-  | { leftActions: ReactNode; leftActionsWidth: number }
+  | { leftActions?: ReactNode; leftActionsWidth: number }
   | { leftActions?: null | false | undefined; leftActionsWidth?: never }
 
 type RightActionsConfiguration =
-  | { rightActions: ReactNode; rightActionsWidth: number }
+  | { rightActions?: ReactNode; rightActionsWidth: number }
   | { rightActions?: null | false | undefined; rightActionsWidth?: never }
 
 /** The sole action API: explicit physical-edge pairs, including single-sided rows. */
 export type SwipeableProps = SwipeableCommonProps &
   LeftActionsConfiguration &
   RightActionsConfiguration &
-  ({ leftActions: ReactNode } | { rightActions: ReactNode })
+  (
+    | { leftActions: ReactNode }
+    | { rightActions: ReactNode }
+    | { leftActionsWidth: number }
+    | { rightActionsWidth: number }
+  )
 
 /** Descriptive alias for the same explicit-side API, not a separate implementation. */
 export type TwoSidedSwipeableProps = SwipeableProps
