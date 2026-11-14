@@ -350,6 +350,98 @@ final class SwipeMainIntegrationTests: XCTestCase {
         XCTAssertEqual(children.views.count, 2)
     }
 
+    private typealias Roles = SwipeChildAssignment<Child>
+
+    private func assign(_ children: SwipeReactChildren<Child>, _ current: Roles, settled: Bool = true) -> Roles {
+        SwipePhysics.assignChildRoles(children: children.views, current: current, settled: settled)
+    }
+
+    func testLoneChildBecomesContentOnlyAtASettlePoint() {
+        let content = Child()
+        var children = SwipeReactChildren<Child>()
+        children.mount(content, at: 0)
+        let unsettled = assign(children, Roles(), settled: false)
+        XCTAssertNil(unsettled.content)
+        let settled = assign(children, unsettled)
+        XCTAssertTrue(settled.content === content)
+        XCTAssertNil(settled.left)
+        XCTAssertNil(settled.right)
+    }
+
+    func testInitialThreeChildMountNeverMakesTheLeftRailContent() {
+        let left = Child()
+        let right = Child()
+        let content = Child()
+        var children = SwipeReactChildren<Child>()
+        var roles = Roles()
+        children.mount(left, at: 0)
+        roles = assign(children, roles, settled: false)
+        XCTAssertNil(roles.content)
+        children.mount(right, at: 1)
+        roles = assign(children, roles, settled: false)
+        XCTAssertNil(roles.content)
+        children.mount(content, at: 2)
+        roles = assign(children, roles, settled: false)
+        XCTAssertTrue(roles.left === left)
+        XCTAssertTrue(roles.right === right)
+        XCTAssertTrue(roles.content === content)
+    }
+
+    func testRailPairMountKeepsTheContentIdentity() {
+        let left = Child()
+        let right = Child()
+        let content = Child()
+        var children = SwipeReactChildren<Child>()
+        children.mount(content, at: 0)
+        var roles = assign(children, Roles())
+        children.mount(left, at: 0)
+        roles = assign(children, roles, settled: false)
+        XCTAssertTrue(roles.content === content)
+        XCTAssertNil(roles.left)
+        children.mount(right, at: 1)
+        roles = assign(children, roles, settled: false)
+        XCTAssertTrue(roles.content === content)
+        XCTAssertTrue(roles.left === left)
+        XCTAssertTrue(roles.right === right)
+    }
+
+    func testRailPairUnmountKeepsTheContentIdentity() {
+        let left = Child()
+        let right = Child()
+        let content = Child()
+        var children = SwipeReactChildren<Child>()
+        children.mount(left, at: 0)
+        children.mount(right, at: 1)
+        children.mount(content, at: 2)
+        var roles = assign(children, Roles())
+        children.unmount(left, at: 0)
+        roles = assign(children, roles, settled: false)
+        XCTAssertTrue(roles.content === content)
+        XCTAssertNil(roles.left)
+        XCTAssertTrue(roles.right === right)
+        children.unmount(right, at: 0)
+        roles = assign(children, roles, settled: false)
+        XCTAssertTrue(roles.content === content)
+        XCTAssertNil(roles.right)
+    }
+
+    func testLoneKnownRailNeverBecomesContent() {
+        let left = Child()
+        let right = Child()
+        let content = Child()
+        var children = SwipeReactChildren<Child>()
+        children.mount(left, at: 0)
+        children.mount(right, at: 1)
+        children.mount(content, at: 2)
+        var roles = assign(children, Roles())
+        children.unmount(content, at: 2)
+        children.unmount(right, at: 1)
+        roles = assign(children, roles)
+        XCTAssertNil(roles.content)
+        XCTAssertTrue(roles.left === left)
+        XCTAssertNil(roles.right)
+    }
+
     func testRemountDoesNotDuplicateChildAndClampsFabricIndex() {
         let left = Child()
         let right = Child()
