@@ -575,6 +575,24 @@ it launched on a physical iPhone with iOS 27.0.1. Only the launch was checked.
 The list demo in `example/` with 100 rows, measured with 1.2.1 in a Release build.
 FlashList's `useBenchmark` scrolls the list and counts JavaScript frames per second.
 No row is swiped. Each value is the average of 3 runs on one install, with the screen on.
+The 82.3 to 84.3 FPS figures in the 1.2.1 changelog entry come from a separate
+before/after run that averaged two warm runs for each build.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fps-dark.svg">
+  <img src="docs/assets/fps-light.svg" width="800" alt="Average JS FPS while FlashList auto-scrolls a 100-row list, measured with 1.2.1. Pixel 8 Pro: gesture-handler Swipeable 107.0, react-native-swipeable-actions 113.0. Xiaomi Mi 11 Lite: gesture-handler Swipeable 50.9, react-native-swipeable-actions 83.9.">
+</picture>
+
+| Device | react-native-gesture-handler/Swipeable (Reanimated) | react-native-swipeable-actions (native) |
+| --- | --- | --- |
+| Pixel 8 Pro, Android 17, 120 Hz | **Avg 107.0** FPS (min 79.9 / max 113.4) | **Avg 113.0** FPS (min 107.6 / max 117.0) |
+| Xiaomi Mi 11 Lite, Android 13, 90 Hz | **Avg 50.9** FPS (min 27.3 / max 61.6) | **Avg 83.9** FPS (min 65.2 / max 88.3) |
+
+<details>
+<summary><b>Watch the benchmark recordings</b></summary>
+<br>
+
+These recordings come from the first benchmark, run with 0.1.x on a Pixel 8 Pro.
 
 <table>
 <tr><th>react-native-gesture-handler/Swipeable</th><th>react-native-swipeable-actions</th></tr>
@@ -590,12 +608,9 @@ https://github.com/user-attachments/assets/f59ef788-caf4-4985-93bc-8d098122fe1a
 
 </td>
 </tr>
-<tr><td align="center">Reanimated</td><td align="center">Native</td></tr>
-<tr><td colspan="2" align="center">Pixel 8 Pro, Android 17, 120 Hz</td></tr>
-<tr><td align="center"><b>Avg 107.0</b> FPS (min 79.9 / max 113.4)</td><td align="center"><b>Avg 113.0</b> FPS (min 107.6 / max 117.0)</td></tr>
-<tr><td colspan="2" align="center">Xiaomi Mi 11 Lite, Android 13, 90 Hz</td></tr>
-<tr><td align="center"><b>Avg 50.9</b> FPS (min 27.3 / max 61.6)</td><td align="center"><b>Avg 83.9</b> FPS (min 65.2 / max 88.3)</td></tr>
 </table>
+
+</details>
 
 ## How it works
 
