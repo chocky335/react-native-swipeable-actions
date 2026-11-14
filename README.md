@@ -170,6 +170,11 @@ Each side is a pair: content plus its width in layout units.
 
 ## Two-sided rows
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sides-dark.svg">
+  <img src="docs/assets/sides-light.svg" width="800" alt="Drag right reveals leftActions with leftActionsWidth. Drag left reveals rightActions with rightActionsWidth.">
+</picture>
+
 ```tsx
 <Swipeable
   recyclingKey={item.id}
@@ -455,6 +460,11 @@ for example a chat that mirrors only incoming messages.
 | `testID` | `string` | - | Test identifier. |
 
 ### Callbacks
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/callbacks-dark.svg">
+  <img src="docs/assets/callbacks-light.svg" width="800" alt="Callback order: onSwipeStart, onProgress, onSwipeStateChange, onSwipeEnd, then onLeftSwipeEnd or onRightSwipeEnd">
+</picture>
 
 | Callback | Type | When |
 | --- | --- | --- |
