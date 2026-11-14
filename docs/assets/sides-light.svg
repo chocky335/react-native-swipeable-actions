@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="214" viewBox="0 0 800 214" role="img" aria-label="Drag right reveals leftActions, drag left reveals rightActions">
+<title>Drag right reveals leftActions, drag left reveals rightActions</title>
+
+<defs>
+  <clipPath id="vp1-light"><rect x="20" y="70" width="340" height="72" rx="12"/></clipPath>
+  <clipPath id="vp2-light"><rect x="440" y="70" width="340" height="72" rx="12"/></clipPath>
+</defs>
+
+<!-- Panel 1: drag right reveals leftActions -->
+<text x="20" y="28" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#1f2328">Drag right</text>
+<text x="20" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">reveals <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#1a7f37">leftActions</tspan></text>
+<g stroke="#1a7f37" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <path d="M118 23 H154"/>
+  <path d="M146 17 L154 23 L146 29"/>
+</g>
+<g clip-path="url(#vp1-light)">
+  <rect x="20" y="70" width="72" height="72" fill="#1a7f37"/>
+  <text x="56" y="111" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#ffffff">Reply</text>
+</g>
+<g clip-path="url(#vp1-light)">
+  <rect x="92" y="70" width="340" height="72" fill="#ffffff"/>
+  <circle cx="122" cy="106" r="16" fill="#0969da" opacity="0.85"/>
+  <rect x="150" y="94" width="142.79999999999998" height="9" rx="4.5" fill="#1f2328" opacity="0.8"/>
+  <rect x="150" y="110" width="210.8" height="8" rx="4" fill="#59636e" opacity="0.55"/>
+</g>
+<rect x="20" y="70" width="340" height="72" rx="12" fill="none" stroke="#d0d7de" stroke-width="1.5"/>
+<g stroke="#59636e" stroke-width="1.2" fill="none">
+  <path d="M20 151 V156 H92 V151"/>
+</g>
+<text x="20" y="172" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#59636e">leftActionsWidth={72}</text>
+
+<!-- Panel 2: drag left reveals rightActions -->
+<text x="780" y="28" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#1f2328">Drag left</text>
+<text x="780" y="48" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#59636e">reveals <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#cf222e">rightActions</tspan></text>
+<g stroke="#cf222e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <path d="M696 23 H660"/>
+  <path d="M668 17 L660 23 L668 29"/>
+</g>
+<g clip-path="url(#vp2-light)">
+  <rect x="620" y="70" width="80" height="72" fill="#8c959f"/>
+  <rect x="700" y="70" width="80" height="72" fill="#cf222e"/>
+  <text x="660" y="111" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#ffffff">More</text>
+  <text x="740" y="111" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#ffffff">Delete</text>
+</g>
+<g clip-path="url(#vp2-light)">
+  <rect x="280" y="70" width="340" height="72" fill="#ffffff"/>
+  <circle cx="310" cy="106" r="16" fill="#0969da" opacity="0.85"/>
+  <rect x="338" y="94" width="142.79999999999998" height="9" rx="4.5" fill="#1f2328" opacity="0.8"/>
+  <rect x="338" y="110" width="210.8" height="8" rx="4" fill="#59636e" opacity="0.55"/>
+</g>
+<rect x="440" y="70" width="340" height="72" rx="12" fill="none" stroke="#d0d7de" stroke-width="1.5"/>
+<g stroke="#59636e" stroke-width="1.2" fill="none">
+  <path d="M620 151 V156 H780 V151"/>
+</g>
+<text x="780" y="172" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#59636e">rightActionsWidth={160}</text>
+
+<text x="400" y="206" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#59636e">By default the sides are physical edges. isRTL mirrors them. One gesture stays on one side.</text>
+
+</svg>
