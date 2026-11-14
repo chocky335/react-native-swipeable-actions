@@ -386,6 +386,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var contentView: View? = null
     private var leftActionsView: View? = null
     private var rightActionsView: View? = null
+    // Visibility and accessibility of each rail before refreshRailVisibility() first changed them.
+    private val railOriginalFlags = HashMap<View, Pair<Int, Int>>()
     private val actionsView: View?
         get() = railFor(activeSide)
 
@@ -492,6 +494,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         if (child === leftActionsView || child === rightActionsView) {
             (child as? ReactViewGroup)?.pointerEvents = PointerEvents.AUTO
         }
+        if (child != null) restoreRailFlags(child)
         if (child === contentView) {
             contentView = null
             isCurrentTouchCancelled = true
@@ -1520,6 +1523,14 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         post(settleChildrenRunnable)
     }
 
+    /** Returns the visibility and accessibility a rail had before this view hid it. */
+    private fun restoreRailFlags(view: View) {
+        railOriginalFlags.remove(view)?.let { (savedVisibility, savedAccessibility) ->
+            view.visibility = savedVisibility
+            view.importantForAccessibility = savedAccessibility
+        }
+    }
+
     /** One child is the content only. Three children are the left rail, the right rail and the content. */
     private fun reconcileSideChildren() {
         val previousContent = contentView
@@ -1551,6 +1562,8 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 clipToPadding = false
             }
         }
+        // A view that lost its rail role, by removal or by a new role, gets its own flags back.
+        railOriginalFlags.keys.filter { it !== leftActionsView && it !== rightActionsView }.forEach(::restoreRailFlags)
         if (contentView !== previousContent) contentView?.translationX = currentTranslation
         if (isOpen || isDragging || isAnimating) activeSide?.let(::requestActions)
         updateActionsTransform()
@@ -1561,6 +1574,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             val visible = childCount == 3 && isSideEnabled(side) && side == activeSide &&
                 (isOpen || isDragging || isAnimating) && (currentTranslation != 0f || isOpen)
             railFor(side)?.apply {
+                railOriginalFlags.getOrPut(this) { visibility to importantForAccessibility }
                 visibility = if (visible) View.VISIBLE else View.INVISIBLE
                 // RN's TouchTargetHelper ignores Android visibility. An empty
                 // zero-width rail still spans the row and otherwise steals taps

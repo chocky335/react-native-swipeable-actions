@@ -930,6 +930,31 @@ class SwipeableViewTest {
         assertEquals(right.getChildAt(0).id, TouchTargetHelper.findTargetTagForTouch(280f, 32f, row))
     }
 
+    @Test fun removedHiddenRailRestoresVisibilityAndAccessibilityBeforeReuse() {
+        val row = row()
+        val right = row.getChildAt(1)
+        assertHidden(right)
+        row.removeView(right)
+        assertEquals(View.VISIBLE, right.visibility)
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO, right.importantForAccessibility)
+        row.addView(right, 1)
+        assertHidden(right)
+    }
+
+    @Test fun hiddenRailThatBecomesContentIsShownAgain() {
+        val row = row()
+        val right = row.getChildAt(1)
+        assertHidden(right)
+        row.removeViewAt(2)
+        row.removeViewAt(0)
+        row.addView(FrameLayout(activity), 0)
+        row.addView(FrameLayout(activity), 1)
+        row.layout(0, 0, 400, 64)
+        assertSame(right, row.getChildAt(2))
+        assertEquals(View.VISIBLE, right.visibility)
+        assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO, right.importantForAccessibility)
+    }
+
     @Test fun cancelPendingDirectGestureCannotActivateUntilAnotherStart() {
         val row = row()
         row.handleGestureStart()
