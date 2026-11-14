@@ -290,6 +290,33 @@ describe('Swipeable', () => {
       expect(onSwipeStart).toHaveBeenCalledTimes(2)
     })
 
+    it('clears the swipe of an old key when its cancel arrives after a recycle', () => {
+      const onSwipeStart = jest.fn()
+      const row = (key: string) => (
+        <Swipeable {...defaultProps} recyclingKey={key} onSwipeStart={onSwipeStart} />
+      )
+      tree = createRow({ recyclingKey: 'first-key', onSwipeStart })
+      const instance = mock.getLastInstance()
+      act(() => {
+        instance?.triggerSwipeStart()
+      })
+
+      act(() => {
+        tree?.update(row('second-key'))
+      })
+      act(() => {
+        instance?.triggerGestureCancelled({ recyclingKey: 'first-key' })
+      })
+      act(() => {
+        tree?.update(row('first-key'))
+      })
+      act(() => {
+        instance?.triggerSwipeStart()
+      })
+
+      expect(onSwipeStart).toHaveBeenCalledTimes(2)
+    })
+
     it('mounts the cached side of the new key when a row is recycled', () => {
       mock.SwipeableModule.getOpenSideByKey.mockImplementation((key: string) =>
         key === 'open-key' ? 'right' : null

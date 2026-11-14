@@ -142,8 +142,11 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   const recyclingKeyRef = useRef<string | undefined>(undefined)
   recyclingKeyRef.current = normalizedKey
 
+  // The binding whose swipe fired onSwipeStart, or null when idle. A recycled row needs
+  // no reset: its new key never matches.
+  const startedSwipeRef = useRef<{ key: string | undefined } | null>(null)
+
   // Hydrate the cached physical edge, including after a keyed list remount.
-  const swipeStartedRef = useRef(false)
   const cachedSide = useMemo(
     () => (normalizedKey != null ? getOpenSideByKey(normalizedKey) : null),
     [normalizedKey]
@@ -162,13 +165,6 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   const ownSides = renderedSides.key === normalizedKey ? renderedSides : null
   const showLeft = initialSides.left || ownSides?.left === true
   const showRight = initialSides.right || ownSides?.right === true
-
-  const startedKeyRef = useRef(normalizedKey)
-  useEffect(() => {
-    if (startedKeyRef.current === normalizedKey) return
-    startedKeyRef.current = normalizedKey
-    swipeStartedRef.current = false
-  }, [normalizedKey])
 
   // A layout effect, so a static command from any passive mount effect sees the row.
   useLayoutEffect(() => {
@@ -220,7 +216,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
           // Native cancelGesture() short-circuits handlePanEnded so onSwipeEnd
           // is never emitted. Reset the JS-side gate so the next gesture fires
           // onSwipeStart to our consumer again.
-          swipeStartedRef.current = false
+          startedSwipeRef.current = null
         } else if (__DEV__) {
           console.warn('[Swipeable] cancel() called without recyclingKey - method has no effect')
         }
@@ -233,21 +229,24 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     (event: SwipeStartEvent) => {
       // Missing metadata identifies the unkeyed native binding. It must not
       // bypass identity checks after recycling into a keyed row.
-      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
-      if (!swipeStartedRef.current) {
-        swipeStartedRef.current = true
-        onSwipeStart?.()
-      }
+      const key = event.nativeEvent.recyclingKey
+      if (key !== (normalizedKey || undefined)) return
+      const started = startedSwipeRef.current
+      if (started && started.key === key) return
+      startedSwipeRef.current = { key }
+      onSwipeStart?.()
     },
     [normalizedKey, onSwipeStart]
   )
 
   const handleGestureCancelled = useCallback(
     (event: { nativeEvent: { recyclingKey?: string } }) => {
-      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
-      swipeStartedRef.current = false
+      // A cancel for an old binding can arrive after a recycle. It clears only that binding.
+      if (startedSwipeRef.current?.key === event.nativeEvent.recyclingKey) {
+        startedSwipeRef.current = null
+      }
     },
-    [normalizedKey]
+    []
   )
 
   const handleActionsNeeded = useCallback(
@@ -284,7 +283,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   const handleSwipeEnd = useCallback(
     (event: SwipeStateEvent) => {
       if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
-      swipeStartedRef.current = false
+      startedSwipeRef.current = null
       onSwipeEnd?.(event.nativeEvent.state)
       const nativeSide = event.nativeEvent.side
       const side = isRTL && nativeSide ? mirror(nativeSide) : nativeSide

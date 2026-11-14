@@ -16,12 +16,17 @@ import type {
 
 type SwipeState = 'open' | 'closed'
 
+type MockViewProps = SwipeableViewProps & {
+  onGestureCancelled?: (event: { nativeEvent: { recyclingKey?: string } }) => void
+}
+
 interface ControlledSwipeableInstance {
   triggerSwipeStart: (metadata?: SwipeStartEvent['nativeEvent']) => void
   requestActions: (side: SwipeSide) => void
   triggerSwipeProgress: (progress: number, translationX?: number) => void
   triggerSwipeStateChange: (state: SwipeState) => void
   triggerSwipeEnd: (state: SwipeState, side?: SwipeSide) => void
+  triggerGestureCancelled: (metadata?: { recyclingKey?: string }) => void
 }
 
 interface SwipeableViewMock {
@@ -34,7 +39,7 @@ interface SwipeableViewMock {
     openByKeyOnSide: jest.Mock
     getOpenSideByKey: jest.Mock<SwipeSide | null, [string]>
   }
-  SwipeableView: ForwardRefExoticComponent<SwipeableViewProps & RefAttributes<NativeSwipeableRef>>
+  SwipeableView: ForwardRefExoticComponent<MockViewProps & RefAttributes<NativeSwipeableRef>>
   instances: ControlledSwipeableInstance[]
   getLastInstance: () => ControlledSwipeableInstance | undefined
   getInstances: () => ControlledSwipeableInstance[]
@@ -54,7 +59,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
     getOpenSideByKey: jest.fn((_key: string): SwipeSide | null => null)
   }
 
-  const SwipeableView = forwardRef<NativeSwipeableRef, SwipeableViewProps>(
+  const SwipeableView = forwardRef<NativeSwipeableRef, MockViewProps>(
     function SwipeableView(props, ref) {
       const callbacks = useRef({
         recyclingKey: props.recyclingKey,
@@ -62,7 +67,8 @@ export function createControlledNativeMock(): SwipeableViewMock {
         onSwipeStart: props.onSwipeStart,
         onSwipeProgress: props.onSwipeProgress,
         onSwipeStateChange: props.onSwipeStateChange,
-        onSwipeEnd: props.onSwipeEnd
+        onSwipeEnd: props.onSwipeEnd,
+        onGestureCancelled: props.onGestureCancelled
       })
 
       callbacks.current = {
@@ -71,7 +77,8 @@ export function createControlledNativeMock(): SwipeableViewMock {
         onSwipeStart: props.onSwipeStart,
         onSwipeProgress: props.onSwipeProgress,
         onSwipeStateChange: props.onSwipeStateChange,
-        onSwipeEnd: props.onSwipeEnd
+        onSwipeEnd: props.onSwipeEnd,
+        onGestureCancelled: props.onGestureCancelled
       }
 
       const instanceRef = useRef<ControlledSwipeableInstance | null>(null)
@@ -114,6 +121,11 @@ export function createControlledNativeMock(): SwipeableViewMock {
                 state,
                 ...(side ? { side } : {})
               }
+            })
+          },
+          triggerGestureCancelled: (metadata) => {
+            callbacks.current.onGestureCancelled?.({
+              nativeEvent: metadata ?? bindingMetadata()
             })
           }
         }
