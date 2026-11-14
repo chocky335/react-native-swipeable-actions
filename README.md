@@ -1,25 +1,107 @@
+<div align="center">
+
 # react-native-swipeable-actions
 
-[![npm](https://img.shields.io/npm/v/react-native-swipeable-actions)](https://www.npmjs.com/package/react-native-swipeable-actions)
-[![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/react-native-swipeable-actions)](LICENSE)
+**Native swipeable rows for React Native.**<br>
+Swipe actions on both sides, gestures on the native UI thread, no Reanimated.
+
+[![npm](https://img.shields.io/npm/v/react-native-swipeable-actions?color=cb3837&logo=npm)](https://www.npmjs.com/package/react-native-swipeable-actions) [![CI](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml/badge.svg)](https://github.com/chocky335/react-native-swipeable-actions/actions/workflows/ci.yml) ![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-0969da) ![Expo module](https://img.shields.io/badge/Expo-module-000020?logo=expo) ![no Reanimated](https://img.shields.io/badge/Reanimated-not%20required-2ea043) [![license](https://img.shields.io/npm/l/react-native-swipeable-actions?color=8250df)](LICENSE)
+
+<table>
+<tr>
+<td align="center"><img src="docs/assets/demo-list.gif" width="240" alt="Swipe a list row left to reveal Mute and Leave actions"></td>
+<td align="center"><img src="docs/assets/demo-chat.gif" width="240" alt="Swipe a chat message to reply, the bubble springs back"></td>
+</tr>
+<tr>
+<td align="center"><b>List actions</b><br><sub>FlashList, 100+ rows</sub></td>
+<td align="center"><b>Swipe to reply</b><br><sub><code>autoClose</code></sub></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="docs/assets/ios26-row.gif" width="480" alt="One row swiped left shows rounded Del and More buttons on the right, then swiped right shows a Pin button on the left, with the iOS 26 appearance"></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>Both sides</b><br><sub><code>appearance="ios26"</code></sub></td>
+</tr>
+</table>
+
+</div>
 
 Native swipeable rows for React Native. Gestures, springs and progress run in
 Swift and Kotlin, so a busy JavaScript thread does not drop swipe frames. It is a
 native alternative to `react-native-gesture-handler/Swipeable` and needs no
 `react-native-reanimated`.
 
-- Independent left and right actions on the same row, each with its own width
-- Action content mounts on demand, on the first swipe or programmatic open
-- Open state survives FlatList and FlashList recycling through `recyclingKey`
-- Ref and static commands: open a chosen side, close, cancel, close all
-- Auto-close for chat-style swipe-to-reply
-- Opt-in iOS-style action motion and native iOS haptics
-- Physical left/right sides that behave the same in RTL layouts
+<table>
+<tr>
+<td width="33%" valign="top">
 
-> Upgrading from 0.x? Version 1.0 replaces `actions`, `actionsWidth` and
-> `actionsPosition` with explicit left/right props. Read the
-> [migration guide](docs/migration-v1.md).
+### ⚡ Native gestures
+
+Gestures, springs and progress run in Swift and Kotlin. A busy JS thread does not drop swipe frames.
+
+</td>
+<td width="33%" valign="top">
+
+### ↔️ Two independent sides
+
+`leftActions` and `rightActions` on one row, each with its own width and callback.
+
+</td>
+<td width="33%" valign="top">
+
+### 📜 Built for long lists
+
+`recyclingKey` keeps the open state through FlatList and FlashList recycling.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 💤 Lazy actions
+
+A closed row mounts only its content. The action rails mount on the first swipe or programmatic open.
+
+</td>
+<td width="33%" valign="top">
+
+### 💬 Swipe to reply
+
+`autoClose` reports a completed swipe and snaps the row back.
+
+</td>
+<td width="33%" valign="top">
+
+### ⬅️ Swipe to go back
+
+Wrap a screen, give the left side the window width, and go back on a full swipe.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🎛️ Commands
+
+Ref and static commands: open a chosen side, close, cancel, close all.
+
+</td>
+<td width="33%" valign="top">
+
+### 🌐 RTL ready
+
+Physical sides by default. `isRTL` mirrors sides, commands and callbacks.
+
+</td>
+<td width="33%" valign="top">
+
+### 🍎 iOS appearance
+
+Opt-in iOS-style action motion and native haptics. No iOS 26 SDK needed.
+
+</td>
+</tr>
+</table>
 
 ## Installation
 
@@ -87,6 +169,11 @@ Each side is a pair: content plus its width in layout units.
 - A disabled side never falls back to the other side.
 
 ## Two-sided rows
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sides-dark.svg">
+  <img src="docs/assets/sides-light.svg" width="800" alt="Drag right reveals leftActions with leftActionsWidth. Drag left reveals rightActions with rightActionsWidth.">
+</picture>
 
 ```tsx
 <Swipeable
@@ -329,6 +416,10 @@ for example a chat that mirrors only incoming messages.
 
 ## iOS appearance and haptics
 
+<p align="center">
+  <img src="docs/assets/ios26-row.gif" width="600" alt="appearance='ios26': rounded Del and More buttons pop in on the right, a Pin button on the left">
+</p>
+
 ```tsx
 <Swipeable appearance="ios26" rightActions={actions} rightActionsWidth={144}>
   {content}
@@ -369,6 +460,11 @@ for example a chat that mirrors only incoming messages.
 | `testID` | `string` | - | Test identifier. |
 
 ### Callbacks
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/callbacks-dark.svg">
+  <img src="docs/assets/callbacks-light.svg" width="800" alt="Callback order: onSwipeStart, onProgress, onSwipeStateChange, onSwipeEnd, then onLeftSwipeEnd or onRightSwipeEnd">
+</picture>
 
 | Callback | Type | When |
 | --- | --- | --- |
@@ -456,7 +552,7 @@ The `side` in a native event is the physical side. For a row with `isRTL`, a nat
 
 ## Compatibility
 
-| | Tested for 1.0 |
+| | Tested for 1.x |
 | --- | --- |
 | Expo / React Native / React | Expo SDK 54, React Native 0.81, React 19.1 |
 | Architecture | New Architecture (Fabric) |
@@ -480,6 +576,22 @@ The list demo in `example/` with 100 rows, measured with 1.2.1 in a Release buil
 FlashList's `useBenchmark` scrolls the list and counts JavaScript frames per second.
 No row is swiped. Each value is the average of 3 runs on one install, with the screen on.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fps-dark.svg">
+  <img src="docs/assets/fps-light.svg" width="800" alt="Average JS FPS while FlashList auto-scrolls a 100-row list, measured with 1.2.1. Pixel 8 Pro: gesture-handler Swipeable 107.0, react-native-swipeable-actions 113.0. Xiaomi Mi 11 Lite: gesture-handler Swipeable 50.9, react-native-swipeable-actions 83.9.">
+</picture>
+
+| Device | react-native-gesture-handler/Swipeable (Reanimated) | react-native-swipeable-actions (native) |
+| --- | --- | --- |
+| Pixel 8 Pro, Android 17, 120 Hz | **Avg 107.0** FPS (min 79.9 / max 113.4) | **Avg 113.0** FPS (min 107.6 / max 117.0) |
+| Xiaomi Mi 11 Lite, Android 13, 90 Hz | **Avg 50.9** FPS (min 27.3 / max 61.6) | **Avg 83.9** FPS (min 65.2 / max 88.3) |
+
+<details>
+<summary><b>Watch the benchmark recordings</b></summary>
+<br>
+
+These recordings come from the first benchmark, run with 0.1.x on a Pixel 8 Pro.
+
 <table>
 <tr><th>react-native-gesture-handler/Swipeable</th><th>react-native-swipeable-actions</th></tr>
 <tr>
@@ -494,20 +606,17 @@ https://github.com/user-attachments/assets/f59ef788-caf4-4985-93bc-8d098122fe1a
 
 </td>
 </tr>
-<tr><td align="center">Reanimated</td><td align="center">Native</td></tr>
-<tr><td colspan="2" align="center">Pixel 8 Pro, Android 17, 120 Hz</td></tr>
-<tr><td align="center"><b>Avg 107.0</b> FPS (min 79.9 / max 113.4)</td><td align="center"><b>Avg 113.0</b> FPS (min 107.6 / max 117.0)</td></tr>
-<tr><td colspan="2" align="center">Xiaomi Mi 11 Lite, Android 13, 90 Hz</td></tr>
-<tr><td align="center"><b>Avg 50.9</b> FPS (min 27.3 / max 61.6)</td><td align="center"><b>Avg 83.9</b> FPS (min 65.2 / max 88.3)</td></tr>
 </table>
+
+</details>
 
 ## How it works
 
-`<Swipeable>` renders one native view with three children: the left action rail,
-the right action rail and your content. A pan recognizer on iOS and a touch
-handler on Android move the content with spring animations and send progress
-events to JavaScript. The native side keeps a per-key cache of the open side for
-recycled list cells. Action rails mount in React only when a side is about to show.
+`<Swipeable>` renders one native view. A closed row holds only your content. When
+a side is about to show, the left and right action rails mount next to the content
+as a pair. A pan recognizer on iOS and a touch handler on Android move the content
+with spring animations and send progress events to JavaScript. The native side keeps
+a per-key cache of the open side for recycled list cells.
 
 ## Contributing
 

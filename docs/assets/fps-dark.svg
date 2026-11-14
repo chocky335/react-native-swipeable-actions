@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="296" viewBox="0 0 800 296" role="img" aria-label="Average JS FPS while FlashList auto-scrolls a 100-row list. Pixel 8 Pro: gesture-handler Swipeable 107.0, react-native-swipeable-actions 113.0. Xiaomi Mi 11 Lite: gesture-handler Swipeable 50.9, react-native-swipeable-actions 83.9">
+<title>Average JS FPS while FlashList auto-scrolls a 100-row list. Pixel 8 Pro: gesture-handler Swipeable 107.0, react-native-swipeable-actions 113.0. Xiaomi Mi 11 Lite: gesture-handler Swipeable 50.9, react-native-swipeable-actions 83.9</title>
+
+<text x="20" y="26" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">Average JS FPS while FlashList auto-scrolls a 100-row list</text>
+<text x="780" y="26" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#9198a1">1.2.1, Release build, 3 runs each</text>
+<line x1="250" y1="50" x2="250" y2="244" stroke="#262c36" stroke-width="1"/>
+<text x="250" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">0</text>
+<line x1="358.46153846153845" y1="50" x2="358.46153846153845" y2="244" stroke="#262c36" stroke-width="1"/>
+<text x="358.46153846153845" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">30</text>
+<line x1="466.9230769230769" y1="50" x2="466.9230769230769" y2="244" stroke="#262c36" stroke-width="1"/>
+<text x="466.9230769230769" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">60</text>
+<line x1="575.3846153846154" y1="50" x2="575.3846153846154" y2="244" stroke="#262c36" stroke-width="1"/>
+<text x="575.3846153846154" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">90</text>
+<line x1="683.8461538461538" y1="50" x2="683.8461538461538" y2="244" stroke="#262c36" stroke-width="1"/>
+<text x="683.8461538461538" y="262" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">120</text>
+<text x="20" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#e6edf3">Pixel 8 Pro</text>
+<text x="116" y="66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#9198a1">Android 17, 120 Hz</text>
+<text x="236" y="93.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#e6edf3">gesture-handler Swipeable</text>
+<rect x="250" y="76" width="386.8461538461538" height="26" rx="6" fill="#6e7681"/>
+<g stroke="#e6edf3" stroke-width="1.5" opacity="0.6">
+  <line x1="538.8692307692309" y1="89" x2="659.9846153846154" y2="89"/>
+  <line x1="538.8692307692309" y1="83" x2="538.8692307692309" y2="95"/>
+  <line x1="659.9846153846154" y1="83" x2="659.9846153846154" y2="95"/>
+</g>
+<text x="669.9846153846154" y="94" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#e6edf3">107.0</text>
+<text x="236" y="129.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#e6edf3">react-native-swipeable-actions</text>
+<rect x="250" y="112" width="408.53846153846155" height="26" rx="6" fill="#4493f8"/>
+<g stroke="#e6edf3" stroke-width="1.5" opacity="0.6">
+  <line x1="639.0153846153846" y1="125" x2="673" y2="125"/>
+  <line x1="639.0153846153846" y1="119" x2="639.0153846153846" y2="131"/>
+  <line x1="673" y1="119" x2="673" y2="131"/>
+</g>
+<text x="683" y="130" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#e6edf3">113.0</text>
+<text x="20" y="172" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#e6edf3">Xiaomi Mi 11 Lite</text>
+<text x="164" y="172" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#9198a1">Android 13, 90 Hz</text>
+<text x="236" y="199.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#e6edf3">gesture-handler Swipeable</text>
+<rect x="250" y="182" width="184.02307692307693" height="26" rx="6" fill="#6e7681"/>
+<g stroke="#e6edf3" stroke-width="1.5" opacity="0.6">
+  <line x1="348.7" y1="195" x2="472.7076923076923" y2="195"/>
+  <line x1="348.7" y1="189" x2="348.7" y2="201"/>
+  <line x1="472.7076923076923" y1="189" x2="472.7076923076923" y2="201"/>
+</g>
+<text x="482.7076923076923" y="200" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#e6edf3">50.9</text>
+<text x="236" y="235.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#e6edf3">react-native-swipeable-actions</text>
+<rect x="250" y="218" width="303.3307692307692" height="26" rx="6" fill="#4493f8"/>
+<g stroke="#e6edf3" stroke-width="1.5" opacity="0.6">
+  <line x1="485.7230769230769" y1="231" x2="569.2384615384615" y2="231"/>
+  <line x1="485.7230769230769" y1="225" x2="485.7230769230769" y2="237"/>
+  <line x1="569.2384615384615" y1="225" x2="569.2384615384615" y2="237"/>
+</g>
+<text x="579.2384615384615" y="236" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#e6edf3">83.9</text>
+<text x="485" y="286" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#9198a1">JS thread FPS from FlashList useBenchmark, higher is better. No row is swiped. Whiskers show min and max.</text>
+
+</svg>
