@@ -39,16 +39,16 @@ afterEach(() => {
   jest.restoreAllMocks()
 })
 
-it('mounts stable empty shells, then only the requested action subtree', () => {
+it('mounts no shells while closed, then both shells and only the requested action subtree', () => {
   render()
+  expect(tree?.root.findAllByType(SwipeableActions)).toHaveLength(0)
+  expect(mountedSides()).toEqual([])
+  act(() => mock.getLastInstance()?.requestActions('left'))
   const shells = tree?.root.findAllByType(SwipeableActions)
-  expect(shells).toHaveLength(2)
   expect(shells?.map((node) => node.props.testID)).toEqual([
     'two-sided-row-left-actions',
     'two-sided-row-right-actions'
   ])
-  expect(mountedSides()).toEqual([])
-  act(() => mock.getLastInstance()?.requestActions('left'))
   expect(mountedSides()).toEqual(['left'])
   act(() => mock.getLastInstance()?.requestActions('left'))
   expect(mountedSides()).toEqual(['left'])

@@ -5,6 +5,19 @@ the entry for the matching version.
 
 ## Unreleased
 
+## 1.2.1 - 2026-11-14
+
+Install it with `npx expo install react-native-swipeable-actions@^1`. The release
+changes no native code and no API.
+
+### Changed
+
+- A row that a FlashList or FlatList recycles to a new `recyclingKey` now renders
+  and commits once and sets no React state. Before, an effect reset the row after
+  the first commit, so every recycled row rendered and committed twice. On a Xiaomi
+  Mi 11 Lite (90 Hz), the README list benchmark rose from 82.3 to 84.3 JavaScript
+  frames per second.
+
 ## 1.2.0 - 2026-11-13
 
 Install it with `npx expo install react-native-swipeable-actions@^1`. The release

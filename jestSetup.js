@@ -54,6 +54,8 @@ jest.mock('./src/SwipeableView.tsx', () => {
 
   return {
     SwipeableModule,
-    SwipeableView
+    SwipeableView,
+    // Swipeable renders the raw native view directly.
+    NativeSwipeableView: SwipeableView
   }
 })

@@ -498,7 +498,7 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
     }
 
     func testIncompleteTwoSidedSlotsNeverHaveContentRole() {
-        for count in [0, 1, 2, 4] { XCTAssertNil(SwipePhysics.childRoles(count: count)) }
+        for count in [0, 2, 4] { XCTAssertNil(SwipePhysics.childRoles(count: count)) }
         let roles = SwipePhysics.childRoles(count: 3)
         XCTAssertEqual(roles?.left, 0)
         XCTAssertEqual(roles?.right, 1)
@@ -508,13 +508,16 @@ final class TwoSidedSwipePhysicsTests: XCTestCase {
 
     func testSingleSideRowsRequireTheSameCompleteChildProtocol() {
         XCTAssertNil(SwipePhysics.childRoles(count: 0))
-        XCTAssertNil(SwipePhysics.childRoles(count: 1))
         XCTAssertNil(SwipePhysics.childRoles(count: 2))
         XCTAssertNil(SwipePhysics.childRoles(count: 4))
         let roles = SwipePhysics.childRoles(count: 3)
         XCTAssertEqual(roles?.left, 0)
         XCTAssertEqual(roles?.right, 1)
         XCTAssertEqual(roles?.content, 2)
+    }
+
+    func testOneChildIsContentOnly() {
+        XCTAssertEqual(SwipePhysics.childRoles(count: 1), SwipeChildRoles(left: nil, right: nil, content: 0))
     }
 
     func testCacheRestoresExactSideAndEvictsOldestOpenKey() {
