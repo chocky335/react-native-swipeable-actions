@@ -552,7 +552,7 @@ The `side` in a native event is the physical side. For a row with `isRTL`, a nat
 
 ## Compatibility
 
-| | Tested for 1.0 |
+| | Tested for 1.x |
 | --- | --- |
 | Expo / React Native / React | Expo SDK 54, React Native 0.81, React 19.1 |
 | Architecture | New Architecture (Fabric) |
@@ -614,11 +614,11 @@ https://github.com/user-attachments/assets/f59ef788-caf4-4985-93bc-8d098122fe1a
 
 ## How it works
 
-`<Swipeable>` renders one native view with three children: the left action rail,
-the right action rail and your content. A pan recognizer on iOS and a touch
-handler on Android move the content with spring animations and send progress
+`<Swipeable>` renders one native view. When a side is about to show, the left and
+right action rails mount next to the content as a pair. A pan recognizer on iOS and
+a touch handler on Android move the content with spring animations and send progress
 events to JavaScript. The native side keeps a per-key cache of the open side for
-recycled list cells. Action rails mount in React only when a side is about to show.
+recycled list cells.
 
 ## Contributing
 
