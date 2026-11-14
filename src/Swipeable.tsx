@@ -156,11 +156,12 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
     }),
     [normalizedKey, cachedSide]
   )
+  // The state holds the sides a key asked for, tagged with that key. A recycle sets no
+  // state: a side mounts if the native cache has it open or the current key asked for it.
   const [renderedSides, setRenderedSides] = useState(initialSides)
-  // A recycled row adjusts its state during render. React renders it again
-  // before the commit, so the new key costs one commit, not two.
-  if (renderedSides.key !== normalizedKey) setRenderedSides(initialSides)
-  const sides = renderedSides.key === normalizedKey ? renderedSides : initialSides
+  const ownSides = renderedSides.key === normalizedKey ? renderedSides : null
+  const showLeft = initialSides.left || ownSides?.left === true
+  const showRight = initialSides.right || ownSides?.right === true
 
   const startedKeyRef = useRef(normalizedKey)
   useEffect(() => {
@@ -324,7 +325,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
         {...(testID ? { testID: `${testID}-left-actions` } : {})}
       >
         <Fragment key={normalizedKey ?? ''}>
-          {sides.left && resolved.left.width > 0 ? resolved.left.node : null}
+          {showLeft && resolved.left.width > 0 ? resolved.left.node : null}
         </Fragment>
       </SwipeableActions>
       <SwipeableActions
@@ -333,7 +334,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
         {...(testID ? { testID: `${testID}-right-actions` } : {})}
       >
         <Fragment key={normalizedKey ?? ''}>
-          {sides.right && resolved.right.width > 0 ? resolved.right.node : null}
+          {showRight && resolved.right.width > 0 ? resolved.right.node : null}
         </Fragment>
       </SwipeableActions>
       <View key='content' style={styles.content} collapsable={false}>

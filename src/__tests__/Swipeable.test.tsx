@@ -309,6 +309,36 @@ describe('Swipeable', () => {
       })
       expect(findActions()).toHaveLength(0)
     })
+
+    it('mounts a side opened elsewhere when a row is recycled back to its key', () => {
+      const openSides = new Map<string, 'left' | 'right'>()
+      mock.SwipeableModule.getOpenSideByKey.mockImplementation(
+        (key: string) => openSides.get(key) ?? null
+      )
+      const onRender = jest.fn()
+      const row = (key: string) => (
+        <Profiler id='row' onRender={onRender}>
+          <Swipeable {...defaultProps} recyclingKey={key} />
+        </Profiler>
+      )
+      const findActions = () =>
+        tree?.root.findAll((node) => node.type === 'View' && node.props.testID === 'actions') ?? []
+      act(() => {
+        tree = create(row('first-key'))
+      })
+      act(() => {
+        tree?.update(row('second-key'))
+      })
+      openSides.set('first-key', 'right')
+      onRender.mockClear()
+
+      act(() => {
+        tree?.update(row('first-key'))
+      })
+
+      expect(onRender).toHaveBeenCalledTimes(1)
+      expect(findActions()).toHaveLength(1)
+    })
   })
 
   it('forwards auto-close completion state through end callback', () => {
