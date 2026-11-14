@@ -5,6 +5,25 @@ the entry for the matching version.
 
 ## Unreleased
 
+## 1.2.2 - 2026-11-14
+
+Install it with `npx expo install react-native-swipeable-actions@^1`. The release
+changes native code, so rebuild the iOS and Android apps after you upgrade. It has
+no API changes.
+
+### Changed
+
+- A row that has not shown a side yet mounts only its content. The left and right
+  action rails mount as a pair when a side is first needed: on a swipe, a
+  programmatic open, or an open state restored from the recycling cache. Before,
+  every row mounted two empty rails next to its content, so each recycled list cell
+  cost three native views. The iOS and Android views now accept a row that has only
+  content. In one A/B session on a Xiaomi Mi 11 Lite (90 Hz), the list demo averaged
+  86.1 JavaScript frames per second before this change and 86.9 after, against 86.5
+  for plain rows without `Swipeable`.
+- The README has demo recordings, a feature overview, diagrams for the sides and
+  the callback order, and a chart of the 1.2.1 benchmark.
+
 ## 1.2.1 - 2026-11-14
 
 Install it with `npx expo install react-native-swipeable-actions@^1`. The release
