@@ -362,6 +362,13 @@ struct SwipeChildRoles: Equatable {
     let content: Int
 }
 
+/// The child views that hold each role. A role is nil when no child holds it.
+struct SwipeChildAssignment<Child: AnyObject> {
+    var left: Child?
+    var right: Child?
+    var content: Child?
+}
+
 protocol SwipeChildVisibility: AnyObject {
     var isHidden: Bool { get set }
     var isUserInteractionEnabled: Bool { get set }
@@ -488,9 +495,37 @@ extension SwipePhysics {
         width.isFinite && width > 0 ? width : 0
     }
 
+    /// One child is the content only. Three children are the left rail, the right rail and the content.
     static func childRoles(count: Int) -> SwipeChildRoles? {
-        guard count == 3 else { return nil }
-        return SwipeChildRoles(left: 0, right: 1, content: 2)
+        switch count {
+        case 1: return SwipeChildRoles(left: nil, right: nil, content: 0)
+        case 3: return SwipeChildRoles(left: 0, right: 1, content: 2)
+        default: return nil
+        }
+    }
+
+    /// Any other child count is a Fabric transaction in progress: only the surviving roles stay.
+    /// A known rail never becomes content. Fabric mounts a three-child row one child at a time,
+    /// so a lone child with no role becomes content only when the transaction is `settled`.
+    static func assignChildRoles<Child: AnyObject>(
+        children: [Child], current: SwipeChildAssignment<Child>, settled: Bool
+    ) -> SwipeChildAssignment<Child> {
+        func surviving(_ view: Child?) -> Child? {
+            guard let view = view, children.contains(where: { $0 === view }) else { return nil }
+            return view
+        }
+        let kept = SwipeChildAssignment(
+            left: surviving(current.left), right: surviving(current.right), content: surviving(current.content)
+        )
+        guard let roles = childRoles(count: children.count) else { return kept }
+        let content = children[roles.content]
+        if roles.left == nil {
+            if content === kept.left || content === kept.right { return kept }
+            if content !== kept.content && !settled { return kept }
+        }
+        return SwipeChildAssignment(
+            left: roles.left.map { children[$0] }, right: roles.right.map { children[$0] }, content: content
+        )
     }
 
     static func latchedSide(

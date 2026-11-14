@@ -948,24 +948,31 @@ public class SwipeableView: ExpoView {
         slotChildren.removeAll()
     }
 
-    private func reconcileChildRoles() {
+    /// `settled` is false inside Fabric's child mount callbacks, where a transaction can be in progress.
+    private func reconcileChildRoles(settled: Bool = true) {
         guard !isDetached else { return }
         let children = reactChildren.views
-        // On removal, preserve surviving identities instead of promoting a rail to content.
-        if let view = contentView, !children.contains(where: { $0 === view }) { releaseChild(view); contentView = nil }
-        if let view = leftActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); leftActionsView = nil }
-        if let view = rightActionsView, !children.contains(where: { $0 === view }) { releaseChild(view); rightActionsView = nil }
-        guard let roles = SwipePhysics.childRoles(count: children.count) else { return }
         let previousLeft = leftActionsView
         let previousRight = rightActionsView
-        contentView = children[roles.content]
+        let roles = SwipePhysics.assignChildRoles(
+            children: children,
+            current: SwipeChildAssignment(left: leftActionsView, right: rightActionsView, content: contentView),
+            settled: settled
+        )
+        // On removal, preserve surviving identities instead of promoting a rail to content.
+        for view in [contentView, leftActionsView, rightActionsView].compactMap({ $0 })
+            where !children.contains(where: { $0 === view }) {
+            releaseChild(view)
+        }
+        contentView = roles.content
+        leftActionsView = roles.left
+        rightActionsView = roles.right
+        if previousLeft !== leftActionsView { requestedSides.remove(.left) }
+        if previousRight !== rightActionsView { requestedSides.remove(.right) }
+        guard contentView != nil, SwipePhysics.childRoles(count: children.count) != nil else { return }
         // A complete Fabric transaction can give a previously hidden rail the content role.
         // Restore only flags that this view owned, for all side configurations.
         if let contentView = contentView { railVisibility.release(contentView) }
-        leftActionsView = roles.left.map { children[$0] }
-        rightActionsView = roles.right.map { children[$0] }
-        if previousLeft !== leftActionsView { requestedSides.remove(.left) }
-        if previousRight !== rightActionsView { requestedSides.remove(.right) }
         contentView?.layer.zPosition = 1
         for side in SwipeSide.allCases {
             guard let rail = actionsView(for: side) else { continue }
@@ -989,7 +996,7 @@ public class SwipeableView: ExpoView {
         releaseChild(childComponentView)
         reactChildren.mount(childComponentView, at: index)
         // Fabric mounts slots individually; commit only a complete child protocol.
-        reconcileChildRoles()
+        reconcileChildRoles(settled: false)
         scheduleReconciliation()
     }
 
@@ -1028,7 +1035,7 @@ public class SwipeableView: ExpoView {
         let generation = workGeneration
         if let cancelled = cancelled { onGestureCancelled(cancelled) }
         guard generation == workGeneration else { return }
-        reconcileChildRoles()
+        reconcileChildRoles(settled: false)
         scheduleReconciliation()
     }
 

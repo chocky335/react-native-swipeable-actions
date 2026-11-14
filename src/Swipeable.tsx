@@ -24,7 +24,6 @@ import {
 import { resolveSwipeableActions } from './resolveSwipeableActions'
 import type {
   ActionsNeededEvent,
-  NativeSwipeableRef,
   SwipeSide,
   SwipeableComponentProps,
   SwipeableMethods,
@@ -34,7 +33,10 @@ import type {
   SwipeStateEvent
 } from './Swipeable.types'
 import { SwipeableActions } from './SwipeableActions'
-import { SwipeableView } from './SwipeableView'
+import { NativeSwipeableView, SwipeableView } from './SwipeableView'
+
+// A consumer's own Jest mock of this module can predate the raw export.
+const NativeHost = NativeSwipeableView ?? SwipeableView
 
 function normalizeRecyclingKey(key: string | number | undefined): string | undefined {
   if (key == null) return undefined
@@ -102,7 +104,6 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   },
   ref
 ) {
-  const nativeRef = useRef<NativeSwipeableRef>(null)
   const named = useMemo(
     () =>
       resolveSwipeableActions({
@@ -163,8 +164,10 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   // state: a side mounts if the native cache has it open or the current key asked for it.
   const [renderedSides, setRenderedSides] = useState(initialSides)
   const ownSides = renderedSides.key === normalizedKey ? renderedSides : null
-  const showLeft = initialSides.left || ownSides?.left === true
-  const showRight = initialSides.right || ownSides?.right === true
+  const showLeft = (initialSides.left || ownSides?.left === true) && resolved.left.width > 0
+  const showRight = (initialSides.right || ownSides?.right === true) && resolved.right.width > 0
+  // A closed row mounts only the content. Both rails mount as a pair once a side is needed.
+  const showRails = showLeft || showRight
 
   // A layout effect, so a static command from any passive mount effect sees the row.
   useLayoutEffect(() => {
@@ -299,8 +302,7 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
   )
 
   return (
-    <SwipeableView
-      ref={nativeRef}
+    <NativeHost
       style={[styles.container, style]}
       leftActionsWidth={resolved.left.width}
       rightActionsWidth={resolved.right.width}
@@ -323,28 +325,28 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
       onSwipeStateChange={handleSwipeStateChange}
       onSwipeEnd={handleSwipeEnd}
     >
-      <SwipeableActions
-        key='left-slot'
-        actionsPosition='left'
-        {...(testID ? { testID: `${testID}-left-actions` } : {})}
-      >
-        <Fragment key={normalizedKey ?? ''}>
-          {showLeft && resolved.left.width > 0 ? resolved.left.node : null}
-        </Fragment>
-      </SwipeableActions>
-      <SwipeableActions
-        key='right-slot'
-        actionsPosition='right'
-        {...(testID ? { testID: `${testID}-right-actions` } : {})}
-      >
-        <Fragment key={normalizedKey ?? ''}>
-          {showRight && resolved.right.width > 0 ? resolved.right.node : null}
-        </Fragment>
-      </SwipeableActions>
+      {showRails ? (
+        <SwipeableActions
+          key='left-slot'
+          actionsPosition='left'
+          {...(testID ? { testID: `${testID}-left-actions` } : {})}
+        >
+          <Fragment key={normalizedKey ?? ''}>{showLeft ? resolved.left.node : null}</Fragment>
+        </SwipeableActions>
+      ) : null}
+      {showRails ? (
+        <SwipeableActions
+          key='right-slot'
+          actionsPosition='right'
+          {...(testID ? { testID: `${testID}-right-actions` } : {})}
+        >
+          <Fragment key={normalizedKey ?? ''}>{showRight ? resolved.right.node : null}</Fragment>
+        </SwipeableActions>
+      ) : null}
       <View key='content' style={styles.content} collapsable={false}>
         {children}
       </View>
-    </SwipeableView>
+    </NativeHost>
   )
 })
 

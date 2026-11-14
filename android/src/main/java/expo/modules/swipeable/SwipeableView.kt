@@ -372,6 +372,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private val requestedActions = mutableSetOf<SwipeSide>()
     private val observedSlotCounts = mutableMapOf<SwipeSide, Int>()
     private val configurationRunnable = Runnable { applyPendingConfiguration() }
+    // Fabric adds a three-child row one child at a time. Until the next main-thread turn,
+    // a lone child can be the first rail of that batch, so it gets no role yet.
+    private var childrenSettled = true
+    private val settleChildrenRunnable = Runnable {
+        childrenSettled = true
+        reconcileSideChildren()
+    }
 
     private val activeSide: SwipeSide?
         get() = gestureSide ?: animationSide ?: openSide ?: defaultOpenSide()
@@ -379,6 +386,19 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private var contentView: View? = null
     private var leftActionsView: View? = null
     private var rightActionsView: View? = null
+    // The flags of each rail before refreshRailVisibility() first changed them.
+    private class RailFlags(view: View) {
+        private val visibility = view.visibility
+        private val importantForAccessibility = view.importantForAccessibility
+        private val pointerEvents = (view as? ReactViewGroup)?.pointerEvents
+
+        fun restoreTo(view: View) {
+            view.visibility = visibility
+            view.importantForAccessibility = importantForAccessibility
+            pointerEvents?.let { (view as? ReactViewGroup)?.pointerEvents = it }
+        }
+    }
+    private val railOriginalFlags = HashMap<View, RailFlags>()
     private val actionsView: View?
         get() = railFor(activeSide)
 
@@ -475,14 +495,14 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     override fun onViewAdded(child: View?) {
         super.onViewAdded(child)
         child ?: return
+        markChildrenChanging()
         reconcileSideChildren()
     }
 
     override fun onViewRemoved(child: View?) {
         super.onViewRemoved(child)
-        if (child === leftActionsView || child === rightActionsView) {
-            (child as? ReactViewGroup)?.pointerEvents = PointerEvents.AUTO
-        }
+        markChildrenChanging()
+        if (child != null) restoreRailFlags(child)
         if (child === contentView) {
             contentView = null
             isCurrentTouchCancelled = true
@@ -1505,6 +1525,18 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
     }
 
+    private fun markChildrenChanging() {
+        childrenSettled = false
+        removeCallbacks(settleChildrenRunnable)
+        post(settleChildrenRunnable)
+    }
+
+    /** Returns the visibility, accessibility and pointer events a rail had before this view hid it. */
+    private fun restoreRailFlags(view: View) {
+        railOriginalFlags.remove(view)?.restoreTo(view)
+    }
+
+    /** One child is the content only. Three children are the left rail, the right rail and the content. */
     private fun reconcileSideChildren() {
         val previousContent = contentView
         val previousLeft = leftActionsView
@@ -1518,6 +1550,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (contentView?.parent !== this) contentView = null
             if (leftActionsView?.parent !== this) leftActionsView = null
             if (rightActionsView?.parent !== this) rightActionsView = null
+            val only = if (childCount == 1) getChildAt(0) else null
+            if (only != null && contentView == null && childrenSettled &&
+                only !== leftActionsView && only !== rightActionsView) {
+                contentView = only
+            }
         }
         for (side in SwipeSide.values()) {
             val rail = railFor(side)
@@ -1530,6 +1567,14 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
                 clipToPadding = false
             }
         }
+        // A view that lost its rail role, by removal or by a new role, gets its own flags back.
+        val savedRails = railOriginalFlags.entries.iterator()
+        while (savedRails.hasNext()) {
+            val (view, flags) = savedRails.next()
+            if (view === leftActionsView || view === rightActionsView) continue
+            savedRails.remove()
+            flags.restoreTo(view)
+        }
         if (contentView !== previousContent) contentView?.translationX = currentTranslation
         if (isOpen || isDragging || isAnimating) activeSide?.let(::requestActions)
         updateActionsTransform()
@@ -1540,6 +1585,7 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             val visible = childCount == 3 && isSideEnabled(side) && side == activeSide &&
                 (isOpen || isDragging || isAnimating) && (currentTranslation != 0f || isOpen)
             railFor(side)?.apply {
+                railOriginalFlags.getOrPut(this) { RailFlags(this) }
                 visibility = if (visible) View.VISIBLE else View.INVISIBLE
                 // RN's TouchTargetHelper ignores Android visibility. An empty
                 // zero-width rail still spans the row and otherwise steals taps
