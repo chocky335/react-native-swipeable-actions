@@ -1,6 +1,6 @@
 {
   "name": "react-native-swipeable-actions",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Native swipeable rows with swipe actions for React Native (iOS/Android). No Reanimated.",
   "main": "src/index.ts",
   "types": "build/index.d.ts",
