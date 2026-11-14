@@ -76,6 +76,23 @@ export function parseControlObservation(response: unknown, buttonName: string): 
   return { viewport, button: byName.get(buttonName) }
 }
 
+const controlMargin = 4
+
+// A control is ready only when its whole rectangle lies strictly inside the
+// viewport margin. UiAutomator2 reports clipped bounds, so a partly visible
+// Android control touches the viewport edge and fails this rule too.
+export function isControlReady(viewport: Rect, control: Rect): boolean {
+  return (
+    control.y > viewport.y + controlMargin &&
+    control.y + control.height < viewport.y + viewport.height - controlMargin
+  )
+}
+
+// Scroll toward the edge a control that is not ready is cut by.
+export function controlScrollDirection(viewport: Rect, control: Rect): 'up' | 'down' {
+  return control.y <= viewport.y + controlMargin ? 'up' : 'down'
+}
+
 export function controlScrollActions(
   origin: Rect,
   direction: 'up' | 'down',
@@ -148,12 +165,11 @@ export function createControlsNavigator(driver: NavigationDriver, options: Optio
           if (recovered) {
             position = nativeRect(await owned(() => driver.getElementRect(button.elementId)))
           }
-          const center = position.y + position.height / 2
-          if (center > origin.y + 4 && center < origin.y + origin.height - 4) {
+          if (isControlReady(origin, position)) {
             await owned(() => button.click())
             return
           }
-          direction = center < origin.y ? 'up' : 'down'
+          direction = controlScrollDirection(origin, position)
         }
       }
       await owned(() =>

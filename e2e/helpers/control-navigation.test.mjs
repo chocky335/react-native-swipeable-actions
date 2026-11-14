@@ -4,7 +4,13 @@ import { createRequire } from 'node:module'
 import navigationModule from './control-navigation.ts'
 import geometryModule from './fast-geometry.ts'
 
-const { parseControlObservation, controlScrollActions, createControlsNavigator } = navigationModule
+const {
+  parseControlObservation,
+  controlScrollActions,
+  createControlsNavigator,
+  isControlReady,
+  controlScrollDirection
+} = navigationModule
 const { createFastGeometryReader, createExpandedReader } = geometryModule
 const require = createRequire(import.meta.url)
 const key = 'element-6066-11e4-a52e-4f735466cecf'
@@ -467,35 +473,80 @@ for (const initial of [
     assert.deepEqual(f.settings, initial)
   })
 }
-for (const [center, click, direction] of [
-  [239, false, 'up'],
-  [240, false, 'down'],
-  [244, false, 'down'],
-  [245, true],
-  [420, true],
-  [421, false, 'down'],
-  [425, false, 'down'],
-  [426, false, 'down']
-]) {
-  test(`strict center bound ${center}: ${click ? 'click' : direction + ' scroll'}`, async () => {
+// The viewport spans y 240..425, so the margin bounds are 244 and 421.
+const placements = [
+  ['fully inside', { y: 300, height: 45 }, true, 'down'],
+  ['inside both margins by one pixel', { y: 245, height: 175 }, true, 'down'],
+  ['touching the bottom margin', { y: 376, height: 45 }, false, 'down'],
+  ['crossing the bottom margin', { y: 400, height: 45 }, false, 'down'],
+  ['clipped at the bottom edge', { y: 400, height: 25 }, false, 'down'],
+  ['below the viewport', { y: 500, height: 45 }, false, 'down'],
+  ['touching the top margin', { y: 244, height: 45 }, false, 'up'],
+  ['crossing the top margin', { y: 220, height: 45 }, false, 'up'],
+  ['clipped at the top edge', { y: 240, height: 30 }, false, 'up'],
+  ['above the viewport', { y: 100, height: 20 }, false, 'up'],
+  ['taller than the viewport margins', { y: 230, height: 200 }, false, 'up']
+]
+for (const [label, place, ready, direction] of placements)
+  test(`control readiness predicate: ${label}`, () => {
+    const control = { ...buttonRect, ...place }
+    assert.equal(isControlReady(viewport, control), ready)
+    if (!ready) assert.equal(controlScrollDirection(viewport, control), direction)
+  })
+// The tall control never becomes ready; its own test below covers the failure.
+for (const [label, place, ready, direction] of placements.slice(0, -1))
+  test(`whole control bound ${label}: ${ready ? 'click' : direction + ' scroll'}`, async () => {
     const f = fixture({
       response: (i) =>
         rows({
           generation: i,
-          button: i === 1 ? { ...buttonRect, y: center - 1, height: 2 } : buttonRect
+          button: i === 1 ? { ...buttonRect, ...place } : buttonRect
         })
     })
     await f.nav('right-width')
-    assert.equal(f.iterations, click ? 1 : 2)
+    assert.equal(f.iterations, ready ? 1 : 2)
     assert.equal(typed(f, 'click').length, 1)
-    if (click) assert.equal(typed(f, 'performActions').length, 0)
+    if (ready) assert.equal(typed(f, 'performActions').length, 0)
     else {
       assert.deepEqual(typed(f, 'performActions')[0].argument, expectedGesture(viewport, direction))
       assert.equal(typed(f, 'releaseActions').length, 1)
       assert.equal(typed(f, 'click')[0].argument.id, 'button-2')
     }
   })
-}
+test('REGRESSION: a 14 px Android sliver at the panel bottom scrolls down instead of clicking', async () => {
+  // Numbers from the Android CI failure: the clipped button center sat inside the panel.
+  const panel = { x: 0, y: 596, width: 1080, height: 520 }
+  const sliver = { x: 21, y: 1102, width: 1038, height: 14 }
+  assert.equal(isControlReady(panel, sliver), false)
+  assert.equal(controlScrollDirection(panel, sliver), 'down')
+  const f = fixture({
+    response: (i) =>
+      rows({
+        generation: i,
+        panel,
+        button: i === 1 ? sliver : { ...sliver, y: 900, height: 120 }
+      })
+  })
+  await f.nav('right-width')
+  assert.equal(f.iterations, 2)
+  assert.deepEqual(typed(f, 'performActions')[0].argument, expectedGesture(panel, 'down'))
+  assert.equal(typed(f, 'releaseActions').length, 1)
+  assert.equal(typed(f, 'click').length, 1)
+  assert.equal(typed(f, 'click')[0].argument.id, 'button-2')
+})
+test('a control taller than the panel margins ends with the normal ten-attempt failure', async () => {
+  const f = fixture({
+    response: (i) => rows({ generation: i, button: { ...buttonRect, y: 230, height: 200 } })
+  })
+  await assert.rejects(f.nav('right-width'), /^Error: Control right-width did not become visible$/)
+  assert.equal(f.iterations, 10)
+  assert.equal(typed(f, 'performActions').length, 10)
+  assert.equal(typed(f, 'releaseActions').length, 10)
+  assert.equal(typed(f, 'click').length, 0)
+  for (const event of typed(f, 'performActions'))
+    assert.deepEqual(event.argument, expectedGesture(viewport, 'up'))
+  assert.deepEqual(f.settings, original)
+})
 test('hidden target above panel still preserves default down direction', async () => {
   const f = fixture({
     response: (i) =>
