@@ -282,7 +282,12 @@ const Swipeable = forwardRef<SwipeableMethods, SwipeableComponentProps>(function
 
   const handleSwipeEnd = useCallback(
     (event: SwipeStateEvent) => {
-      if (event.nativeEvent.recyclingKey !== (normalizedKey || undefined)) return
+      const key = event.nativeEvent.recyclingKey
+      if (key !== (normalizedKey || undefined)) {
+        // An end for an old binding can arrive after a recycle. It clears only that binding.
+        if (startedSwipeRef.current?.key === key) startedSwipeRef.current = null
+        return
+      }
       startedSwipeRef.current = null
       onSwipeEnd?.(event.nativeEvent.state)
       const nativeSide = event.nativeEvent.side

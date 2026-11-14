@@ -25,7 +25,11 @@ interface ControlledSwipeableInstance {
   requestActions: (side: SwipeSide) => void
   triggerSwipeProgress: (progress: number, translationX?: number) => void
   triggerSwipeStateChange: (state: SwipeState) => void
-  triggerSwipeEnd: (state: SwipeState, side?: SwipeSide) => void
+  triggerSwipeEnd: (
+    state: SwipeState,
+    side?: SwipeSide,
+    metadata?: { recyclingKey?: string }
+  ) => void
   triggerGestureCancelled: (metadata?: { recyclingKey?: string }) => void
 }
 
@@ -114,10 +118,10 @@ export function createControlledNativeMock(): SwipeableViewMock {
               }
             })
           },
-          triggerSwipeEnd: (state: SwipeState, side?: SwipeSide) => {
+          triggerSwipeEnd: (state: SwipeState, side?: SwipeSide, metadata) => {
             callbacks.current.onSwipeEnd?.({
               nativeEvent: {
-                ...bindingMetadata(),
+                ...(metadata ?? bindingMetadata()),
                 state,
                 ...(side ? { side } : {})
               }
