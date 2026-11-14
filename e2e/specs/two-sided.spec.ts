@@ -4,7 +4,11 @@ import { selectors } from '../helpers/selectors'
 import { configPanel } from '../pages/configPanel'
 import { guardRequest } from '../helpers/command-scope'
 import { createFastGeometryReader } from '../helpers/fast-geometry'
-import { createControlsNavigator } from '../helpers/control-navigation'
+import {
+  controlScrollDirection,
+  createControlsNavigator,
+  isControlReady
+} from '../helpers/control-navigation'
 import { relaunchApp } from '../helpers/touch-readiness'
 
 type Side = 'left' | 'right'
@@ -154,17 +158,14 @@ async function tapControl(name: string): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const viewport = await $(selectors.twoSidedControls)
     const origin = await driver.getElementRect(await viewport.elementId)
-    const size = origin
     const button = await $(selectors.twoSidedControl(name))
     if (await button.isDisplayed()) {
       const position = await driver.getElementRect(await button.elementId)
-      const buttonSize = position
-      const center = position.y + buttonSize.height / 2
-      if (center > origin.y + 4 && center < origin.y + size.height - 4) {
+      if (isControlReady(origin, position)) {
         await button.click()
         return
       }
-      await scrollWithin(selectors.twoSidedControls, center < origin.y ? 'up' : 'down')
+      await scrollWithin(selectors.twoSidedControls, controlScrollDirection(origin, position))
     } else {
       await scrollWithin(selectors.twoSidedControls, 'down')
     }
