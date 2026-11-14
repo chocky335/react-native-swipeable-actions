@@ -62,3 +62,16 @@ it('forwards explicit-side raw-view props, refs and native events through the re
   expect(onSwipeProgress).toHaveBeenCalledWith({ nativeEvent: { progress: 0.2, translationX: 18 } })
   expect(onSwipeEnd).toHaveBeenCalledWith({ nativeEvent: { state: 'closed' } })
 })
+
+it('lets Swipeable render the native manager without the public wrapper', () => {
+  const Swipeable = (require('../Swipeable') as typeof import('../Swipeable')).default
+  act(() => {
+    tree = create(
+      <Swipeable rightActions={createElement(View)} rightActionsWidth={80}>
+        {createElement(View)}
+      </Swipeable>
+    )
+  })
+  expect(tree?.root.findAllByType(SwipeableView)).toHaveLength(0)
+  expect(tree?.root.findAllByType(mock.SwipeableView)).toHaveLength(1)
+})

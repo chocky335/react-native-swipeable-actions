@@ -44,6 +44,7 @@ interface SwipeableViewMock {
     getOpenSideByKey: jest.Mock<SwipeSide | null, [string]>
   }
   SwipeableView: ForwardRefExoticComponent<MockViewProps & RefAttributes<NativeSwipeableRef>>
+  NativeSwipeableView: ForwardRefExoticComponent<MockViewProps & RefAttributes<NativeSwipeableRef>>
   instances: ControlledSwipeableInstance[]
   getLastInstance: () => ControlledSwipeableInstance | undefined
   getInstances: () => ControlledSwipeableInstance[]
@@ -155,6 +156,7 @@ export function createControlledNativeMock(): SwipeableViewMock {
   return {
     SwipeableModule,
     SwipeableView,
+    NativeSwipeableView: SwipeableView,
     instances,
     getLastInstance: () => instances[instances.length - 1],
     getInstances: () => instances,

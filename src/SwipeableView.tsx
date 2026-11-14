@@ -9,6 +9,9 @@ type NativeViewProps = SwipeableViewProps & {
 
 const NativeView = requireNativeViewManager<NativeViewProps>('Swipeable')
 
+/** @internal The raw native view. `Swipeable` renders it without the `forwardRef` wrapper. */
+export const NativeSwipeableView = NativeView
+
 // Module-level functions interface
 interface SwipeableNativeModule {
   openByKey: (key: string) => void
