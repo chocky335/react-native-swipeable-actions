@@ -371,6 +371,82 @@ class SwipeableViewTest {
         assertEquals(0f, left.translationX, .01f)
     }
 
+    @Test fun contentOnlyRowOpensAndClosesWithoutRails() {
+        val (row, content) = contentRow()
+        row.open(SwipeSide.LEFT)
+        settle()
+        assertEquals(160f, content.translationX, .01f)
+        assertEquals(listOf("left"), named("onActionsNeeded").map { it["side"] })
+        row.close()
+        settle()
+        assertEquals(0f, content.translationX, 0f)
+    }
+
+    @Test fun loneChildBecomesContentOnlyAfterTheMountTurn() {
+        val row = row(children = false)
+        val content = FrameLayout(activity)
+        row.addView(content)
+        row.open(SwipeSide.LEFT)
+        row.layout(0, 0, 400, 64)
+        assertEquals(0f, content.translationX, 0f)
+        settle()
+        assertEquals(160f, content.translationX, .01f)
+    }
+
+    @Test fun railPairMountKeepsContentIdentityAndTranslation() {
+        val (row, content) = contentRow()
+        row.open(SwipeSide.LEFT)
+        settle()
+        events.clear()
+        val left = FrameLayout(activity).apply { addView(View(activity)) }
+        val right = FrameLayout(activity)
+        row.addView(left, 0)
+        row.addView(right, 1)
+        row.layout(0, 0, 400, 64)
+        assertSame(content, row.getChildAt(2))
+        assertEquals(160f, content.translationX, .01f)
+        assertEquals(0f, left.translationX, .01f)
+        assertEquals(View.VISIBLE, left.visibility)
+        assertHidden(right)
+    }
+
+    @Test fun railPairUnmountKeepsContentIdentityAndTranslation() {
+        val row = row()
+        val content = content(row)
+        row.open(SwipeSide.LEFT)
+        settle()
+        row.removeViewAt(0)
+        row.removeViewAt(0)
+        row.layout(0, 0, 400, 64)
+        settle()
+        assertSame(content, row.getChildAt(0))
+        assertEquals(160f, content.translationX, .01f)
+        row.close()
+        settle()
+        assertEquals(0f, content.translationX, 0f)
+    }
+
+    @Test fun railPairMountedMidDragShowsTheDraggedSide() {
+        val (row, content) = contentRow()
+        row.handleGestureStart()
+        row.handleGestureUpdate(100f, 0f)
+        assertEquals(100f, content.translationX, .01f)
+        val left = FrameLayout(activity).apply { addView(View(activity)) }
+        val right = FrameLayout(activity)
+        row.addView(left, 0)
+        row.addView(right, 1)
+        row.layout(0, 0, 400, 64)
+        assertSame(content, row.getChildAt(2))
+        assertEquals(100f, content.translationX, .01f)
+        assertEquals(View.VISIBLE, left.visibility)
+        assertHidden(right)
+        row.handleGestureEnd(100f, 0f)
+        settle()
+        assertEquals(160f, content.translationX, .01f)
+        assertEquals(listOf("open:left"), ends())
+        assertEquals(setOf("left"), named("onActionsNeeded").map { it["side"] }.toSet())
+    }
+
     @Test fun remountingAUsedSlotRequestsActionsAgain() {
         val row = row()
         row.open(SwipeSide.LEFT)
@@ -3068,6 +3144,17 @@ class SwipeableViewTest {
         root.addView(row, FrameLayout.LayoutParams(400, 64))
         row.layout(0, 0, 400, 64)
         return row
+    }
+
+    /** A closed row as JS mounts it: the content view only, after the mount turn. */
+    private fun contentRow(): Pair<SwipeableView, View> {
+        val row = row(children = false)
+        val content = FrameLayout(activity)
+        row.addView(content)
+        row.layout(0, 0, 400, 64)
+        // A detached view runs its posted settle at the next attach traversal.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        return row to content
     }
 
     private fun content(row: SwipeableView): View = row.getChildAt(2)

@@ -372,6 +372,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     private val requestedActions = mutableSetOf<SwipeSide>()
     private val observedSlotCounts = mutableMapOf<SwipeSide, Int>()
     private val configurationRunnable = Runnable { applyPendingConfiguration() }
+    // Fabric adds a three-child row one child at a time. Until the next main-thread turn,
+    // a lone child can be the first rail of that batch, so it gets no role yet.
+    private var childrenSettled = true
+    private val settleChildrenRunnable = Runnable {
+        childrenSettled = true
+        reconcileSideChildren()
+    }
 
     private val activeSide: SwipeSide?
         get() = gestureSide ?: animationSide ?: openSide ?: defaultOpenSide()
@@ -475,11 +482,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
     override fun onViewAdded(child: View?) {
         super.onViewAdded(child)
         child ?: return
+        markChildrenChanging()
         reconcileSideChildren()
     }
 
     override fun onViewRemoved(child: View?) {
         super.onViewRemoved(child)
+        markChildrenChanging()
         if (child === leftActionsView || child === rightActionsView) {
             (child as? ReactViewGroup)?.pointerEvents = PointerEvents.AUTO
         }
@@ -1505,6 +1514,13 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
         }
     }
 
+    private fun markChildrenChanging() {
+        childrenSettled = false
+        removeCallbacks(settleChildrenRunnable)
+        post(settleChildrenRunnable)
+    }
+
+    /** One child is the content only. Three children are the left rail, the right rail and the content. */
     private fun reconcileSideChildren() {
         val previousContent = contentView
         val previousLeft = leftActionsView
@@ -1518,6 +1534,11 @@ class SwipeableView(context: Context, appContext: AppContext) : ExpoView(context
             if (contentView?.parent !== this) contentView = null
             if (leftActionsView?.parent !== this) leftActionsView = null
             if (rightActionsView?.parent !== this) rightActionsView = null
+            val only = if (childCount == 1) getChildAt(0) else null
+            if (only != null && contentView == null && childrenSettled &&
+                only !== leftActionsView && only !== rightActionsView) {
+                contentView = only
+            }
         }
         for (side in SwipeSide.values()) {
             val rail = railFor(side)
