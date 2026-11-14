@@ -955,6 +955,19 @@ class SwipeableViewTest {
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO, right.importantForAccessibility)
     }
 
+    @Test fun hiddenReactRailThatBecomesContentTakesTouchesAgain() {
+        val row = reactRow()
+        val right = row.getChildAt(1) as ReactViewGroup
+        assertEquals(PointerEvents.NONE, right.pointerEvents)
+        row.removeViewAt(2)
+        row.removeViewAt(0)
+        row.addView(ReactViewGroup(activity), 0)
+        row.addView(ReactViewGroup(activity), 1)
+        row.layout(0, 0, 400, 64)
+        assertSame(right, row.getChildAt(2))
+        assertEquals(PointerEvents.AUTO, right.pointerEvents)
+    }
+
     @Test fun cancelPendingDirectGestureCannotActivateUntilAnotherStart() {
         val row = row()
         row.handleGestureStart()
