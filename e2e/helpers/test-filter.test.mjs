@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createRequire } from 'node:module'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import Mocha from 'mocha'
 import { literalGrep } from './test-filter.mjs'
-
-const Mocha = createRequire(import.meta.url)('mocha')
 
 /** The RegExp that Mocha builds from a `--mochaOpts.grep` string. */
 function mochaGrep(pattern) {

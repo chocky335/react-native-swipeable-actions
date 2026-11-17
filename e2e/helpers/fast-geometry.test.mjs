@@ -699,7 +699,7 @@ for (const mode of ['update failure', 'confirmation failure', 'confirmation mism
 // Adapted from the known expanded-response fixture without importing/executing it.
 // Real installed WebDriver + real command guard + owned Mocha runnables.
 async function guardedFixture(holdQuery, body) {
-  const Mocha = require('mocha')
+  const { default: Mocha } = await import('mocha')
   const { MockAgent, Dispatcher, getGlobalDispatcher, setGlobalDispatcher } = require('undici')
   const { default: WebDriver } = await import('webdriver')
   const imported = await import('./command-scope.ts')
@@ -786,12 +786,22 @@ async function guardedFixture(holdQuery, body) {
         const isQuery = options.path === `${prefix}/elements`
         const observedHandler = new Proxy(handler, {
           get(target, event) {
-            if (event === 'onComplete' && isQuery)
+            if (event === 'onResponseEnd' && isQuery)
               return (...args) => {
                 try {
-                  return target.onComplete?.(...args)
+                  return target.onResponseEnd?.(...args)
                 } finally {
                   trace.push('expanded-complete')
+                  completed.resolve()
+                }
+              }
+            // Undici 8 ends an aborted request here; it never delivers its late reply.
+            if (event === 'onResponseError' && isQuery)
+              return (...args) => {
+                try {
+                  return target.onResponseError?.(...args)
+                } finally {
+                  trace.push('expanded-aborted')
                   completed.resolve()
                 }
               }
@@ -804,7 +814,7 @@ async function guardedFixture(holdQuery, body) {
         mock.dispatch({ ...options, origin, body: requestBody }, observedHandler)
       })().catch((error) => {
         violations.push(error)
-        handler.onError(error)
+        handler.onResponseError(null, error)
       })
       return true
     }
@@ -953,13 +963,19 @@ test('REAL WebDriver + owned Mocha guard: synchronous retirement quarantines bef
         // Assert before awaiting retirement: close/quarantine/abort are synchronous.
         assert.equal(signal.aborted, true)
         assert.match(abortQuarantine?.message ?? '', /quarantined/)
-        assert.deepEqual(f.trace, ['expanded-accepted', 'owner-aborted', 'retire-callback'])
+        assert.deepEqual(f.trace, [
+          'expanded-accepted',
+          'owner-aborted',
+          'expanded-aborted',
+          'retire-callback'
+        ])
         await retiring
         await assert.rejects(f.driver.getSettings(), /quarantined/)
         await assert.rejects(read(100), /quarantined/)
         assert.equal(f.requests.length, 4, 'no cleanup or subsequent request reaches dispatcher')
         f.release()
-        await f.completed // Actual MockAgent onComplete reaches the guard after retirement.
+        // Undici 8 ended the query at abort. Its late reply after release is dropped.
+        await f.completed
         outcome = await running
         assert.equal(outcome.ok, false)
         assert.strictEqual(
@@ -994,8 +1010,8 @@ test('REAL WebDriver + owned Mocha guard: synchronous retirement quarantines bef
     assert.deepEqual(f.trace, [
       'expanded-accepted',
       'owner-aborted',
-      'retire-callback',
-      'expanded-complete'
+      'expanded-aborted',
+      'retire-callback'
     ])
     await assert.rejects(read(100), /quarantined/)
     assert.equal(f.requests.length, 4)

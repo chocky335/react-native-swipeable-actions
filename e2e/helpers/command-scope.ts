@@ -139,39 +139,40 @@ export function createCommandGuard() {
           const value = Reflect.get(target, key, target)
           return typeof value === 'function' ? value.bind(target) : value
         }
-        return (options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers) => {
+        return (options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler) => {
           // Runs for every actual dispatch, including WDIO transport retries.
           active(owner)
           const flight: Flight = { owner, started: false }
           pending.add(flight)
           const trackedHandler = new Proxy(handler, {
             get(original, event) {
-              if (event === 'onComplete') {
+              if (event === 'onResponseEnd') {
                 return (
-                  ...args: Parameters<NonNullable<Dispatcher.DispatchHandlers['onComplete']>>
+                  ...args: Parameters<NonNullable<Dispatcher.DispatchHandler['onResponseEnd']>>
                 ) => {
                   pending.delete(flight)
-                  return original.onComplete?.apply(original, args)
+                  return original.onResponseEnd?.apply(original, args)
                 }
               }
-              if (event === 'onError') {
-                return (error: Error) => {
+              if (event === 'onResponseError') {
+                return (controller: Dispatcher.DispatchController, error: Error) => {
                   transportFailed(
                     flight,
                     error,
                     'transport ended without a complete server response'
                   )
-                  return original.onError?.call(original, error)
+                  return original.onResponseError?.call(original, controller, error)
                 }
               }
               const value = Reflect.get(original, event, original)
               if (
-                event === 'onConnect' ||
+                event === 'onRequestStart' ||
                 event === 'onBodySent' ||
                 event === 'onRequestSent' ||
-                event === 'onHeaders' ||
-                event === 'onData' ||
-                event === 'onUpgrade'
+                event === 'onResponseStarted' ||
+                event === 'onResponseStart' ||
+                event === 'onResponseData' ||
+                event === 'onRequestUpgrade'
               ) {
                 return (...args: unknown[]) => {
                   flight.started = true
@@ -364,10 +365,13 @@ export function createCommandGuard() {
       // Capture the exact timeout object at completion, before the next case runs.
       // No timer is rescheduled and the original callback is always forwarded.
       type Completion = (this: unknown, ...args: unknown[]) => unknown
-      const target = currentRunnable as unknown as { callback: Completion }
+      type TimeoutFactory = (this: unknown, ...args: unknown[]) => unknown
+      const target = currentRunnable as unknown as {
+        callback: Completion
+        _timeoutError: TimeoutFactory
+      }
       const completion = target.callback
-      const captureTimeout: Completion = function (...args) {
-        const error = args[0]
+      const retireOnTimeout = (error: unknown): void => {
         if (error instanceof Error && 'code' in error && error.code === 'ERR_MOCHA_TIMEOUT') {
           scope.timeoutFailure ??= error
           // Framework completion can beat our absolute-deadline timer. Revoke
@@ -377,12 +381,29 @@ export function createCommandGuard() {
             if (evidence.deadlineOwner === scope) expire(evidence)
           }
         }
+      }
+      const captureTimeout: Completion = function (...args) {
+        retireOnTimeout(args[0])
         return Reflect.apply(completion, this, args)
       }
       target.callback = captureTimeout
+      // WDIO 10 rejects with this runnable's timeout error a few ms before Mocha's
+      // own timer, and restarts that timer. Both paths create the error here.
+      const ownsTimeoutFactory = Object.prototype.hasOwnProperty.call(target, '_timeoutError')
+      const timeoutFactory = target._timeoutError
+      const captureTimeoutError: TimeoutFactory = function (...args) {
+        const error = Reflect.apply(timeoutFactory, this, args)
+        retireOnTimeout(error)
+        return error
+      }
+      target._timeoutError = captureTimeoutError
       return runOwned(scope, () => (original as Mocha.AsyncFunc).call(this)).finally(() => {
         // A later invocation may already have installed its own callback.
         if (target.callback === captureTimeout) target.callback = completion
+        if (target._timeoutError === captureTimeoutError) {
+          if (ownsTimeoutFactory) target._timeoutError = timeoutFactory
+          else delete (target as Partial<typeof target>)._timeoutError
+        }
       })
     }
   }

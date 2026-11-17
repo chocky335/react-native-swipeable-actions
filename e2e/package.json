@@ -14,20 +14,23 @@
     "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
     "@types/pngjs": "^6.0.5",
-    "@wdio/appium-service": "^9.0.0",
-    "@wdio/cli": "^9.0.0",
-    "@wdio/local-runner": "^9.0.0",
-    "@wdio/mocha-framework": "^9.0.0",
-    "@wdio/spec-reporter": "^9.0.0",
-    "appium": "^3.5.0",
-    "appium-uiautomator2-driver": "^7.1.2",
-    "appium-xcuitest-driver": "^11.7.7",
+    "@wdio/appium-service": "^10.2.0",
+    "@wdio/cli": "^10.2.0",
+    "@wdio/local-runner": "^10.2.0",
+    "@wdio/mocha-framework": "^10.2.0",
+    "@wdio/spec-reporter": "^10.2.0",
+    "appium": "^4.0.0",
+    "appium-uiautomator2-driver": "^9.2.1",
+    "appium-xcuitest-driver": "^13.1.1",
     "pngjs": "^7.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0",
-    "undici": "6.29.1"
+    "undici": "8.12.4"
   },
   "overrides": {
+    "glob": "^14.0.6",
+    "minimatch": "^11.0.9",
+    "readdir-glob": "^4.0.0",
     "shell-quote": "^1.12.0"
   }
 }

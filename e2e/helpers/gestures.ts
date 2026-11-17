@@ -164,7 +164,7 @@ export async function swipeOnElementInLayoutUnits(
   duration: number,
   distance: number
 ): Promise<void> {
-  const scale = driver.isAndroid ? (await driver.getDisplayDensity()) / 160 : 1
+  const scale = driver.isAndroid ? Number(await driver.getDisplayDensity()) / 160 : 1
   if (!Number.isFinite(scale) || scale <= 0 || distance * scale <= 1) {
     throw new Error(`Invalid layout-unit swipe: distance=${distance}, scale=${scale}`)
   }
