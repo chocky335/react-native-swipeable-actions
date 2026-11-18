@@ -913,24 +913,7 @@ test('REAL installed WDIO: protocol-object wrapping retains selector recovery an
       body: { using: '-ios predicate string', value: 'name == "two-sided-right-width"' },
       value: { [key]: 'button-recovered' }
     },
-    // The nested protocol-command middleware first retries its captured old-ID
-    // argument. A second stale reply lets the outer isDisplayed wrapper recover.
-    {
-      method: 'GET',
-      path: `${prefix}/element/button-old/displayed`,
-      status: 404,
-      value: {
-        error: 'stale element reference',
-        message: 'old button remains stale',
-        stacktrace: ''
-      }
-    },
-    {
-      method: 'POST',
-      path: `${prefix}/element`,
-      body: { using: '-ios predicate string', value: 'name == "two-sided-right-width"' },
-      value: { [key]: 'button-recovered' }
-    },
+    // WDIO 10 retries the command with the recovered ID, not the stale one.
     { method: 'GET', path: `${prefix}/element/button-recovered/displayed`, value: true },
     {
       method: 'POST',
@@ -983,7 +966,7 @@ test('REAL installed WDIO: protocol-object wrapping retains selector recovery an
         mock.dispatch({ ...options, origin, body }, handler)
       })().catch((error) => {
         violations.push(error)
-        handler.onError(error)
+        handler.onResponseError(null, error)
       })
       return true
     }
@@ -1001,7 +984,9 @@ test('REAL installed WDIO: protocol-object wrapping retains selector recovery an
       connectionRetryCount: 0,
       connectionRetryTimeout: 1000,
       capabilities: { platformName: 'iOS', 'appium:automationName': 'XCUITest' },
-      isW3C: true
+      isW3C: true,
+      // Same first-match lookup as wdio.conf.ts and wdio.ios.conf.ts.
+      strictSelectors: false
     })
     let wrapped
     const nav = createControlsNavigator(browser, {
@@ -1027,7 +1012,7 @@ test('REAL installed WDIO: protocol-object wrapping retains selector recovery an
     await nav('right-width')
     assert.equal(wrapped.selector, selector('right-width'))
     assert.equal(wrapped.elementId, 'button-recovered')
-    assert.equal(requests.length, 15)
+    assert.equal(requests.length, 13)
     assert.deepEqual(violations, [])
     mock.assertNoPendingInterceptors()
   } finally {

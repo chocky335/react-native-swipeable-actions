@@ -84,6 +84,8 @@ export const config: WebdriverIO.Config = {
   ],
 
   logLevel: 'info',
+  // WDIO 10 makes $() fail on more than one match. Keep the first-match lookup the specs use.
+  strictSelectors: false,
   bail: 0,
   waitforTimeout: 10000,
   connectionRetryTimeout: 600000,

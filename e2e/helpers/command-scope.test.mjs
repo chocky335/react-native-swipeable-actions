@@ -361,9 +361,12 @@ test('command ownership with the installed Mocha and WDIO transport', async (t) 
                 calls.push('old-action-completed')
                 completed.resolve()
               }, 120)
-              return { statusCode: 200, data: JSON.stringify({ value: null }) }
+              // Undici 8 ignores .delay() for a callback reply, so the callback delays.
+              return delay(120).then(() => ({
+                statusCode: 200,
+                data: JSON.stringify({ value: null })
+              }))
             })
-            .delay(120)
           for (const method of ['GET', 'DELETE', 'POST']) {
             isolatedPool
               .intercept({ path: /.*/, method })
@@ -606,8 +609,8 @@ test('only proven preaccept refusal retires a failed dispatch', () => {
     request.dispatcher = {
       dispatch(_options, handler) {
         if (mode === 'sync-refusal') throw error
-        if (mode === 'started-refusal') handler.onConnect(() => {})
-        handler.onError(error)
+        if (mode === 'started-refusal') handler.onRequestStart(null, null)
+        handler.onResponseError(null, error)
         return true
       }
     }
@@ -615,7 +618,7 @@ test('only proven preaccept refusal retires a failed dispatch', () => {
       request.dispatcher.dispatch(
         {},
         {
-          onError(failure) {
+          onResponseError(_controller, failure) {
             reported = failure
           }
         }
@@ -930,7 +933,7 @@ test('real Undici accepted requests keep deadline attribution and quarantine', a
                 new Proxy(handler, {
                   get(target, event) {
                     const value = Reflect.get(target, event, target)
-                    if (event === 'onError' || event === 'onComplete') {
+                    if (event === 'onResponseError' || event === 'onResponseEnd') {
                       return (...args) => {
                         trace.push(event)
                         return value?.apply(target, args)
@@ -1060,8 +1063,8 @@ test('real Undici accepted requests keep deadline attribution and quarantine', a
               trace.filter((item) => /^(POST|GET|DELETE) /.test(item)),
               ['POST /session/deadline/actions']
             )
-            assert.ok(trace.includes('onError'))
-            assert.equal(trace.includes('onComplete'), false)
+            assert.ok(trace.includes('onResponseError'))
+            assert.equal(trace.includes('onResponseEnd'), false)
           } finally {
             await agent.destroy()
           }
@@ -1088,7 +1091,7 @@ test('framework timeout completion retires authority before the guard timer', as
     options.dispatcher = {
       dispatch(_options, handler) {
         dispatched.push(label)
-        if (!pending) handler.onComplete([])
+        if (!pending) handler.onResponseEnd(null, {})
         return true
       }
     }
@@ -1096,7 +1099,7 @@ test('framework timeout completion retires authority before the guard timer', as
   }
 
   function dispatch(options) {
-    return options.dispatcher.dispatch({}, { onComplete() {} })
+    return options.dispatcher.dispatch({}, { onResponseEnd() {} })
   }
 
   for (const phase of ['body', 'evidence']) {
