@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^26.6.6",
     "@types/pngjs": "^6.0.5",
     "@wdio/appium-service": "^9.0.0",
     "@wdio/cli": "^9.0.0",
