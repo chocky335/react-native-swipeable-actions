@@ -32,8 +32,6 @@ updates:
         update-types:
           - version-update:semver-major
       - dependency-name: expo-modules-core
-        update-types:
-          - version-update:semver-major
 
   - package-ecosystem: npm
     directory: /e2e
