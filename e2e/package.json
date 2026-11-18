@@ -25,7 +25,7 @@
     "pngjs": "^7.0.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.0.0",
-    "undici": "6.24.1"
+    "undici": "6.29.1"
   },
   "overrides": {
     "shell-quote": "^1.12.0"
